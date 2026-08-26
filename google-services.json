@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "12642862123",
+    "project_id": "sample-firebase-ai-app-f21e1",
+    "storage_bucket": "sample-firebase-ai-app-f21e1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:12642862123:android:768b62018294a03e0a166e",
+        "android_client_info": {
+          "package_name": "com.bkmsb.EduNex"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCRU_3LMXxpK8Dbkw8x5CfsbRYENeImxdU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

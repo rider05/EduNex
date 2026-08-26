@@ -1,0 +1,12 @@
+{
+  "_comment": "EduNEx local sync template. The app no longer ships default records — all live data is fetched from MongoDB at login and mirrored here per user (edunex_db_<username>).",
+  "institution": null,
+  "departments": [],
+  "primaryStudent": null,
+  "primaryFaculty": null,
+  "primaryParent": null,
+  "primaryAdmin": null,
+  "studentsRoster": [],
+  "notices": [],
+  "gradeLevels": []
+}
