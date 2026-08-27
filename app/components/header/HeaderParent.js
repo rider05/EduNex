@@ -1,12 +1,12 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Text,
   View,
   StyleSheet,
   TouchableOpacity,
   Animated,
-  Platform,
   StatusBar,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -15,61 +15,48 @@ import { useTheme } from "../../context/ThemeContext";
 import AssignmentModal from "./pmodal/AssignmentModal";
 import FeedbackModal from "./pmodal/FeedbackModal";
 import EntryExitModal from "./pmodal/EntryExitModal";
+import { getParentData } from "../../services/dataService";
+import { showToast } from "../../utils/toastService";
 
 export default function HeaderParent() {
-  const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const { colors, isDarkMode } = useTheme();
+  const styles = getStyles(colors, isDarkMode);
 
-  const [toastVisible, setToastVisible] = useState(false);
-  const [toastMessage, setToastMessage] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeModal, setActiveModal] = useState(null);
+  const [wardDept, setWardDept] = useState("");
+  const [wardName, setWardName] = useState("");
+  const [rollNo, setRollNo] = useState("");
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
   const bottomExpand = useRef(new Animated.Value(0)).current;
 
-  const showToast = (message) => {
-    if (toastVisible) return;
-    setToastMessage(message);
-    setToastVisible(true);
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      setTimeout(() => {
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }).start(() => setToastVisible(false));
-      }, 1500);
-    });
-  };
-
-  const handleAppIconPress = () => showToast("👋 Welcome, Parent!");
+  useEffect(() => {
+    getParentData().then((data) => {
+      if (data?.ward) {
+        setWardDept(data.ward.dept || "");
+        setWardName(data.ward.name || "");
+        setRollNo(data.ward.rollNo || "");
+      }
+    }).catch(() => {});
+  }, []);
 
   const handleMenuPress = () => {
     Animated.spring(bottomExpand, {
-      toValue: isExpanded ? 0 : 80,
+      toValue: isExpanded ? 0 : 86,
       friction: 7,
       useNativeDriver: false,
     }).start();
     setIsExpanded(!isExpanded);
   };
 
-  const handleIconPress = (type) => {
+  const handleIconPress = (modalType) => {
     Animated.timing(bottomExpand, {
       toValue: 0,
-      duration: 200,
+      duration: 180,
       useNativeDriver: false,
     }).start();
     setIsExpanded(false);
-    showToast(`${type} opened`);
-
-    if (type === "Assignments & Exam Schedule") setActiveModal("assignment");
-    else if (type === "Feedback & Queries") setActiveModal("feedback");
-    else if (type === "Campus Entry/Exit") setActiveModal("entryexit");
+    setActiveModal(modalType);
   };
 
   const closeModal = () => {
@@ -79,238 +66,225 @@ export default function HeaderParent() {
   return (
     <View style={styles.headerContainer}>
       <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
-      <LinearGradient colors={colors.primaryGradient || ["#4338CA", "#6366F1"]} style={styles.gradientHeader}>
-        {/* Header Content */}
+      <LinearGradient
+        colors={colors.primaryGradient || ["#4338CA", "#6366F1"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.gradientHeader}
+      >
+        {/* Top Header Row */}
         <View style={styles.headerContent}>
           <View style={styles.brandingSection}>
-            <TouchableOpacity onPress={handleAppIconPress} activeOpacity={0.8} style={styles.titleRow}>
+            <TouchableOpacity
+              onPress={() => showToast("👋 Welcome to EduNex Parent Portal", "info")}
+              activeOpacity={0.8}
+              style={styles.titleRow}
+            >
               <Text style={styles.appIconName}>EduNex</Text>
-              <View style={[styles.roleBadge, { backgroundColor: "rgba(168, 85, 247, 0.25)" }]}>
-                <View style={[styles.onlineDot, { backgroundColor: "#C084FC" }]} />
+              <View style={styles.roleBadge}>
+                <View style={styles.onlineDot} />
                 <Text style={styles.roleBadgeText}>PARENT PORTAL</Text>
               </View>
             </TouchableOpacity>
 
-            <Text style={styles.title}>Parent Portal</Text>
-            <Text style={styles.subtitle}>Stay connected with your child’s academic progress</Text>
+            <Text style={styles.title}>Ward Supervision & Welfare Hub</Text>
+            <Text style={styles.subtitle}>{wardDept ? `${wardDept} · ${wardName} (${rollNo})` : ""}</Text>
           </View>
 
           {/* Right Action Icons */}
           <View style={styles.iconGroup}>
             <TouchableOpacity
-              onPress={() => handleIconPress("Campus Entry/Exit")}
+              onPress={() => handleIconPress("entryexit")}
               style={styles.actionBtn}
               activeOpacity={0.7}
             >
-              <Icon name="door-open" size={24} color="#FFFFFF" />
+              <Icon name="door-open" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleIconPress("assignment")}
+              style={styles.actionBtn}
+              activeOpacity={0.7}
+            >
+              <Icon name="calendar-clock" size={22} color="#FFFFFF" />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.menuIcon} onPress={handleMenuPress} activeOpacity={0.8}>
-              <Icon name={isExpanded ? "chevron-up" : "dots-vertical"} size={26} color="#FFFFFF" />
+              <Icon name={isExpanded ? "chevron-up" : "dots-vertical"} size={24} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Expandable Menu */}
+        {/* Expandable Quick Drawer */}
         <Animated.View style={[styles.expandArea, { height: bottomExpand }]}>
           {isExpanded && (
             <View style={styles.quickActionsRow}>
               <TouchableOpacity
                 style={styles.quickActionItem}
-                onPress={() => handleIconPress("Assignments & Exam Schedule")}
+                onPress={() => handleIconPress("assignment")}
                 activeOpacity={0.8}
               >
                 <View style={styles.quickActionIcon}>
-                  <Icon name="calendar-text-outline" size={22} color="#FFFFFF" />
+                  <Icon name="calendar-text-outline" size={20} color="#FFFFFF" />
                 </View>
-                <Text style={styles.quickActionLabel}>Exams</Text>
+                <Text style={styles.quickActionLabel}>Exam Portions</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.quickActionItem}
-                onPress={() => handleIconPress("Feedback & Queries")}
+                onPress={() => handleIconPress("feedback")}
                 activeOpacity={0.8}
               >
                 <View style={styles.quickActionIcon}>
-                  <Icon name="message-question-outline" size={22} color="#FFFFFF" />
+                  <Icon name="message-draw" size={20} color="#FFFFFF" />
                 </View>
-                <Text style={styles.quickActionLabel}>Feedback</Text>
+                <Text style={styles.quickActionLabel}>Feedback Query</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.quickActionItem}
-                onPress={() => handleIconPress("Campus Entry/Exit")}
+                onPress={() => handleIconPress("entryexit")}
                 activeOpacity={0.8}
               >
                 <View style={styles.quickActionIcon}>
-                  <Icon name="shield-account-outline" size={22} color="#FFFFFF" />
+                  <Icon name="shield-account-outline" size={20} color="#FFFFFF" />
                 </View>
-                <Text style={styles.quickActionLabel}>Security Gate</Text>
+                <Text style={styles.quickActionLabel}>Gate Pass Log</Text>
               </TouchableOpacity>
             </View>
           )}
         </Animated.View>
       </LinearGradient>
 
-      {/* Modals */}
+      {/* Header Modals */}
       <AssignmentModal visible={activeModal === "assignment"} onClose={closeModal} />
       <FeedbackModal visible={activeModal === "feedback"} onClose={closeModal} />
       <EntryExitModal visible={activeModal === "entryexit"} onClose={closeModal} />
-
-      {/* Toast Message */}
-      {toastVisible && (
-        <Animated.View style={[styles.toastContainer, { opacity: fadeAnim }]}>
-          <Icon name="information" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </Animated.View>
-      )}
     </View>
   );
 }
 
-const getStyles = (colors) =>
+// ---------------- Styles ----------------
+const getStyles = (colors, isDarkMode) =>
   StyleSheet.create({
     headerContainer: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      zIndex: 1000,
-      elevation: 8,
-      shadowColor: "#000",
-      shadowOpacity: 0.25,
-      shadowOffset: { width: 0, height: 4 },
-      shadowRadius: 10,
+      overflow: "hidden",
+      backgroundColor: "transparent",
+      zIndex: 100,
     },
     gradientHeader: {
-      borderBottomLeftRadius: 30,
-      borderBottomRightRadius: 30,
-      paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight || 24) + 12 : 52,
-      paddingBottom: 16,
-      paddingHorizontal: 20,
+      paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight || 24) + 8 : 48,
+      paddingBottom: 14,
+      paddingHorizontal: 16,
+      borderBottomLeftRadius: 22,
+      borderBottomRightRadius: 22,
+      elevation: 6,
+      shadowColor: "#000",
+      shadowOpacity: 0.15,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
     },
     headerContent: {
       flexDirection: "row",
-      alignItems: "flex-start",
       justifyContent: "space-between",
+      alignItems: "center",
     },
     brandingSection: {
       flex: 1,
+      marginRight: 10,
     },
     titleRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
-      marginBottom: 2,
+      gap: 8,
+      marginBottom: 3,
     },
     appIconName: {
       color: "#FFFFFF",
-      fontSize: 28,
+      fontSize: 21,
       fontWeight: "900",
-      letterSpacing: -0.5,
+      letterSpacing: -0.3,
     },
     roleBadge: {
       flexDirection: "row",
       alignItems: "center",
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 12,
+      backgroundColor: "rgba(255, 255, 255, 0.2)",
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 10,
       gap: 5,
     },
     onlineDot: {
       width: 6,
       height: 6,
       borderRadius: 3,
+      backgroundColor: "#10B981",
     },
     roleBadgeText: {
       color: "#FFFFFF",
-      fontSize: 10,
-      fontWeight: "800",
-      letterSpacing: 0.8,
+      fontSize: 9,
+      fontWeight: "900",
+      letterSpacing: 0.5,
     },
     title: {
       color: "#FFFFFF",
-      fontSize: 16,
-      fontWeight: "700",
-      marginTop: 2,
+      fontSize: 13.5,
+      fontWeight: "800",
     },
     subtitle: {
-      color: "rgba(255, 255, 255, 0.8)",
-      fontSize: 12,
-      marginTop: 2,
+      color: "rgba(255, 255, 255, 0.85)",
+      fontSize: 11,
       fontWeight: "500",
+      marginTop: 1,
     },
     iconGroup: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
-      marginTop: 4,
+      gap: 6,
     },
     actionBtn: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: "rgba(255, 255, 255, 0.15)",
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      backgroundColor: "rgba(255, 255, 255, 0.18)",
       justifyContent: "center",
       alignItems: "center",
     },
     menuIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: "rgba(255, 255, 255, 0.15)",
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      backgroundColor: "rgba(255, 255, 255, 0.18)",
       justifyContent: "center",
       alignItems: "center",
     },
     expandArea: {
       overflow: "hidden",
-      width: "100%",
+      marginTop: 4,
     },
     quickActionsRow: {
       flexDirection: "row",
       justifyContent: "space-around",
       alignItems: "center",
-      paddingTop: 16,
+      paddingTop: 10,
       borderTopWidth: 1,
-      borderTopColor: "rgba(255, 255, 255, 0.15)",
-      marginTop: 12,
+      borderTopColor: "rgba(255, 255, 255, 0.2)",
     },
     quickActionItem: {
       alignItems: "center",
-      gap: 6,
     },
     quickActionIcon: {
-      width: 44,
-      height: 44,
-      borderRadius: 14,
+      width: 38,
+      height: 38,
+      borderRadius: 19,
       backgroundColor: "rgba(255, 255, 255, 0.2)",
       justifyContent: "center",
       alignItems: "center",
+      marginBottom: 4,
     },
     quickActionLabel: {
       color: "#FFFFFF",
-      fontSize: 11,
+      fontSize: 10.5,
       fontWeight: "700",
-    },
-    toastContainer: {
-      position: "absolute",
-      top: Platform.OS === "android" ? (StatusBar.currentHeight || 24) + 120 : 130,
-      alignSelf: "center",
-      zIndex: 9999,
-      backgroundColor: "rgba(15, 23, 42, 0.92)",
-      paddingHorizontal: 18,
-      paddingVertical: 10,
-      borderRadius: 25,
-      flexDirection: "row",
-      alignItems: "center",
-      shadowColor: "#000",
-      shadowOpacity: 0.2,
-      shadowRadius: 6,
-      elevation: 10,
-    },
-    toastText: {
-      color: "#FFFFFF",
-      fontSize: 13,
-      fontWeight: "600",
     },
   });

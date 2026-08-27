@@ -72,11 +72,7 @@ const PERMISSIONS_LIST = [
 ];
 
 /* Sample Multi-Role CSV Template for quick load */
-const SAMPLE_CSV_TEXT = `Name,Role,Email,Mobile,ID,Department,Year,Semester,Section,Position,WardRoll,Relation
-Aarav Sharma,Student,aarav.sharma@edunex.edu,9876543201,25ACSE010,CSE,II Year,Sem III,A,,,
-Dr. Priya Nair,Staff,priya.nair@edunex.edu,9876543202,STFCSEPR002,CSE,,,,Professor,,
-Suresh Sharma,Parent,suresh.sharma@edunex.edu,9876543203,PAR25ACSE0101,,,,,,,25ACSE010,Father
-Vikramaditya,Admin,vikram.admin@edunex.edu,9876543204,ADM25005,,,,,,,,`;
+const SAMPLE_CSV_TEXT = `name,email,phone,role,password`;
 
 /* Helper: find highest sequence for IDs */
 async function getNextSequence(collectionName, prefix) {
@@ -474,7 +470,7 @@ export default function AddUserModal({ visible, onClose }) {
 
         const rawName = getVal("name", "fullname", "studentname", "staffname", "username") || `User ${index + 1}`;
         const rawEmail = getVal("email", "mail", "emailaddress") || `${rawName.toLowerCase().replace(/[^a-z0-9]/g, "")}@edunex.edu`;
-        const rawMobile = getVal("mobile", "phone", "contact", "mobilenumber", "phonenumber") || "9876543210";
+        const rawMobile = getVal("mobile", "phone", "contact", "mobilenumber", "phonenumber") || "";
         const rawId = getVal("id", "roll", "rollno", "staffid", "adminid", "parentid", "userid");
         const rawDept = getVal("department", "dept", "branch") || "CSE";
         const rawYear = getVal("year", "academicyear") || "I Year";

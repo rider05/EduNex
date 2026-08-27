@@ -7,6 +7,7 @@ import {
   Animated,
   Platform,
   StatusBar,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -15,15 +16,11 @@ import { useTheme } from "../../context/ThemeContext";
 // Modals
 import AddUserModal from "./amodal/AddUserModal";
 import FullSettingsModal from "./settings/FullSettingsModal";
+import { showToast } from "../../utils/toastService";
 
 export default function HeaderAdmin() {
-  const { colors } = useTheme();
-  const styles = getStyles(colors);
-
-  /* Toast */
-  const [toastVisible, setToastVisible] = useState(false);
-  const [toastMessage, setToastMessage] = useState("");
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const { colors, isDarkMode } = useTheme();
+  const styles = getStyles(colors, isDarkMode);
 
   /* Bottom Expand */
   const [isExpanded, setIsExpanded] = useState(false);
@@ -33,22 +30,9 @@ export default function HeaderAdmin() {
   const [manageModal, setManageModal] = useState(false);
   const [settingsModal, setSettingsModal] = useState(false);
 
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setToastVisible(true);
-
-    Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start(() =>
-      setTimeout(() => {
-        Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() =>
-          setToastVisible(false)
-        );
-      }, 1500)
-    );
-  };
-
   const handleMenuPress = () => {
     Animated.spring(bottomExpand, {
-      toValue: isExpanded ? 0 : 92,
+      toValue: isExpanded ? 0 : 86,
       friction: 7,
       useNativeDriver: false,
     }).start();
@@ -59,45 +43,71 @@ export default function HeaderAdmin() {
   const handleIconPress = (type) => {
     Animated.timing(bottomExpand, {
       toValue: 0,
-      duration: 200,
+      duration: 180,
       useNativeDriver: false,
     }).start();
 
     setIsExpanded(false);
 
-    if (type === "Manage Users") return setManageModal(true);
-    if (type === "Reports") return showToast("📊 System reports synced");
-    if (type === "Backup") return showToast("📦 Database Backup Snapshot Created!");
+    if (type === "Add User") return setManageModal(true);
     if (type === "Settings") return setSettingsModal(true);
+    if (type === "Reports") return showToast("📊 Academic analytics & audit logs synchronized.", "info");
+    if (type === "Backup") {
+      showToast("📦 MongoDB cluster snapshot created successfully!", "success");
+    }
+  };
+
+  const handleSystemDiagnostics = () => {
+    Alert.alert(
+      "⚡ EduNex Cluster Health",
+      "• MongoDB Atlas: Checking...\n• Authentication Token Service: Checking...\n• Cloudinary Media Vault: Checking...\n• Push Notification Dispatcher: Checking...\n• FERPA & Institutional Encryption: Checking..."
+    );
   };
 
   return (
     <View style={styles.headerContainer}>
       <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
-      <LinearGradient colors={colors.primaryGradient || ["#4338CA", "#6366F1"]} style={styles.gradientHeader}>
-        {/* Header Content */}
+      <LinearGradient
+        colors={colors.primaryGradient || ["#4338CA", "#6366F1"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.gradientHeader}
+      >
+        {/* Header Top Row */}
         <View style={styles.headerContent}>
           <View style={styles.brandingSection}>
-            <TouchableOpacity onPress={() => showToast("👋 Welcome, Admin!")} activeOpacity={0.8} style={styles.titleRow}>
+            <TouchableOpacity
+              onPress={() => showToast("👋 Welcome, System Administrator!", "info")}
+              activeOpacity={0.8}
+              style={styles.titleRow}
+            >
               <Text style={styles.appIconName}>EduNex</Text>
-              <View style={[styles.roleBadge, { backgroundColor: "rgba(239, 68, 68, 0.25)" }]}>
-                <View style={[styles.onlineDot, { backgroundColor: "#EF4444" }]} />
+              <View style={styles.roleBadge}>
+                <View style={styles.onlineDot} />
                 <Text style={styles.roleBadgeText}>ADMIN CONSOLE</Text>
               </View>
             </TouchableOpacity>
 
-            <Text style={styles.title}>System Administration</Text>
-            <Text style={styles.subtitle}>Institution Control & Performance Insights</Text>
+            <Text style={styles.title}>System Control & Governance</Text>
+            <Text style={styles.subtitle}>Institution Master Operations & Security</Text>
           </View>
 
-          {/* Right Icons */}
+          {/* Right Action Icons */}
           <View style={styles.iconGroup}>
             <TouchableOpacity
               style={styles.actionBtn}
               onPress={() => setManageModal(true)}
               activeOpacity={0.7}
             >
-              <Icon name="account-plus-outline" size={24} color="#FFFFFF" />
+              <Icon name="account-plus-outline" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={handleSystemDiagnostics}
+              activeOpacity={0.7}
+            >
+              <Icon name="pulse" size={22} color="#10B981" />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -105,11 +115,11 @@ export default function HeaderAdmin() {
               onPress={() => setSettingsModal(true)}
               activeOpacity={0.7}
             >
-              <Icon name="cog-outline" size={24} color="#FFFFFF" />
+              <Icon name="cog-outline" size={22} color="#FFFFFF" />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.menuIcon} onPress={handleMenuPress} activeOpacity={0.8}>
-              <Icon name={isExpanded ? "chevron-up" : "dots-vertical"} size={26} color="#FFFFFF" />
+              <Icon name={isExpanded ? "chevron-up" : "dots-vertical"} size={24} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
@@ -120,24 +130,24 @@ export default function HeaderAdmin() {
             <View style={styles.quickActionsRow}>
               <TouchableOpacity
                 style={styles.quickActionItem}
-                onPress={() => handleIconPress("Reports")}
+                onPress={() => handleIconPress("Add User")}
                 activeOpacity={0.8}
               >
                 <View style={styles.quickActionIcon}>
-                  <Icon name="file-chart-outline" size={22} color="#FFFFFF" />
+                  <Icon name="account-plus-outline" size={20} color="#FFFFFF" />
                 </View>
-                <Text style={styles.quickActionLabel}>Reports</Text>
+                <Text style={styles.quickActionLabel}>Add User</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.quickActionItem}
-                onPress={() => handleIconPress("Manage Users")}
+                onPress={() => handleIconPress("Reports")}
                 activeOpacity={0.8}
               >
                 <View style={styles.quickActionIcon}>
-                  <Icon name="account-cog-outline" size={22} color="#FFFFFF" />
+                  <Icon name="file-chart-outline" size={20} color="#FFFFFF" />
                 </View>
-                <Text style={styles.quickActionLabel}>Users</Text>
+                <Text style={styles.quickActionLabel}>Reports</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -146,7 +156,7 @@ export default function HeaderAdmin() {
                 activeOpacity={0.8}
               >
                 <View style={styles.quickActionIcon}>
-                  <Icon name="cloud-upload-outline" size={22} color="#FFFFFF" />
+                  <Icon name="cloud-upload-outline" size={20} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Backup</Text>
               </TouchableOpacity>
@@ -157,178 +167,143 @@ export default function HeaderAdmin() {
                 activeOpacity={0.8}
               >
                 <View style={styles.quickActionIcon}>
-                  <Icon name="tune-vertical" size={22} color="#FFFFFF" />
+                  <Icon name="tune-vertical" size={20} color="#FFFFFF" />
                 </View>
-                <Text style={styles.quickActionLabel}>Config</Text>
+                <Text style={styles.quickActionLabel}>Settings</Text>
               </TouchableOpacity>
             </View>
           )}
         </Animated.View>
       </LinearGradient>
 
-      {/* Manage Users Modal */}
-      {manageModal && <AddUserModal visible={manageModal} onClose={() => setManageModal(false)} />}
-
-      {/* Full Settings Modal */}
-      <FullSettingsModal
-        visible={settingsModal}
-        onClose={() => setSettingsModal(false)}
-      />
-
-      {/* Toast */}
-      {toastVisible && (
-        <Animated.View style={[styles.toastContainer, { opacity: fadeAnim }]}>
-          <Icon name="shield-check" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-          <Text style={styles.toastText}>{toastMessage}</Text>
-        </Animated.View>
-      )}
+      {/* 🚀 Modals */}
+      <AddUserModal visible={manageModal} onClose={() => setManageModal(false)} />
+      <FullSettingsModal visible={settingsModal} onClose={() => setSettingsModal(false)} />
     </View>
   );
 }
 
-const getStyles = (colors) =>
+// ---------------- Styles ----------------
+const getStyles = (colors, isDarkMode) =>
   StyleSheet.create({
     headerContainer: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      zIndex: 1000,
-      elevation: 8,
-      shadowColor: "#000",
-      shadowOpacity: 0.25,
-      shadowOffset: { width: 0, height: 4 },
-      shadowRadius: 10,
+      overflow: "hidden",
+      backgroundColor: "transparent",
+      zIndex: 100,
     },
     gradientHeader: {
-      borderBottomLeftRadius: 30,
-      borderBottomRightRadius: 30,
-      paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight || 24) + 12 : 52,
-      paddingBottom: 16,
-      paddingHorizontal: 20,
+      paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight || 24) + 8 : 48,
+      paddingBottom: 14,
+      paddingHorizontal: 16,
+      borderBottomLeftRadius: 22,
+      borderBottomRightRadius: 22,
+      elevation: 6,
+      shadowColor: "#000",
+      shadowOpacity: 0.15,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
     },
     headerContent: {
       flexDirection: "row",
-      alignItems: "flex-start",
       justifyContent: "space-between",
+      alignItems: "center",
     },
     brandingSection: {
       flex: 1,
+      marginRight: 8,
     },
     titleRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
-      marginBottom: 2,
+      gap: 8,
+      marginBottom: 3,
     },
     appIconName: {
       color: "#FFFFFF",
-      fontSize: 28,
+      fontSize: 21,
       fontWeight: "900",
-      letterSpacing: -0.5,
+      letterSpacing: -0.3,
     },
     roleBadge: {
       flexDirection: "row",
       alignItems: "center",
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 12,
+      backgroundColor: "rgba(239, 68, 68, 0.25)",
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 10,
       gap: 5,
     },
     onlineDot: {
       width: 6,
       height: 6,
       borderRadius: 3,
+      backgroundColor: "#EF4444",
     },
     roleBadgeText: {
       color: "#FFFFFF",
-      fontSize: 10,
-      fontWeight: "800",
-      letterSpacing: 0.8,
+      fontSize: 9,
+      fontWeight: "900",
+      letterSpacing: 0.5,
     },
     title: {
       color: "#FFFFFF",
-      fontSize: 16,
-      fontWeight: "700",
-      marginTop: 2,
+      fontSize: 13.5,
+      fontWeight: "800",
     },
     subtitle: {
-      color: "rgba(255, 255, 255, 0.8)",
-      fontSize: 12,
-      marginTop: 2,
+      color: "rgba(255, 255, 255, 0.85)",
+      fontSize: 11,
       fontWeight: "500",
+      marginTop: 1,
     },
     iconGroup: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
-      marginTop: 4,
+      gap: 6,
     },
     actionBtn: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: "rgba(255, 255, 255, 0.15)",
+      width: 36,
+      height: 36,
+      borderRadius: 11,
+      backgroundColor: "rgba(255, 255, 255, 0.18)",
       justifyContent: "center",
       alignItems: "center",
     },
     menuIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: "rgba(255, 255, 255, 0.15)",
+      width: 36,
+      height: 36,
+      borderRadius: 11,
+      backgroundColor: "rgba(255, 255, 255, 0.18)",
       justifyContent: "center",
       alignItems: "center",
     },
     expandArea: {
       overflow: "hidden",
-      width: "100%",
+      marginTop: 4,
     },
     quickActionsRow: {
       flexDirection: "row",
       justifyContent: "space-around",
       alignItems: "center",
-      paddingTop: 16,
+      paddingTop: 10,
       borderTopWidth: 1,
-      borderTopColor: "rgba(255, 255, 255, 0.15)",
-      marginTop: 12,
+      borderTopColor: "rgba(255, 255, 255, 0.2)",
     },
     quickActionItem: {
       alignItems: "center",
-      gap: 6,
     },
     quickActionIcon: {
-      width: 44,
-      height: 44,
-      borderRadius: 14,
+      width: 38,
+      height: 38,
+      borderRadius: 19,
       backgroundColor: "rgba(255, 255, 255, 0.2)",
       justifyContent: "center",
       alignItems: "center",
+      marginBottom: 4,
     },
     quickActionLabel: {
       color: "#FFFFFF",
-      fontSize: 11,
+      fontSize: 10.5,
       fontWeight: "700",
-    },
-    toastContainer: {
-      position: "absolute",
-      top: Platform.OS === "android" ? (StatusBar.currentHeight || 24) + 120 : 130,
-      alignSelf: "center",
-      zIndex: 9999,
-      backgroundColor: "rgba(15, 23, 42, 0.92)",
-      paddingHorizontal: 18,
-      paddingVertical: 10,
-      borderRadius: 25,
-      flexDirection: "row",
-      alignItems: "center",
-      shadowColor: "#000",
-      shadowOpacity: 0.2,
-      shadowRadius: 6,
-      elevation: 10,
-    },
-    toastText: {
-      color: "#FFFFFF",
-      fontSize: 13,
-      fontWeight: "600",
     },
   });

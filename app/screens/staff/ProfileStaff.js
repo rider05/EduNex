@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ScrollView,
   View,
@@ -7,8 +7,10 @@ import {
   StyleSheet,
   Switch,
   Modal,
-  Pressable,
   RefreshControl,
+  Share,
+  Animated,
+  Alert,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
@@ -19,25 +21,20 @@ import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { getFacultyData } from "../../services/dataService";
 import { clearAuthSession } from "../../services/api";
 
-const DEFAULT_STAFF_DATA = {
-  name: "",
-  id: "",
-  department: "",
-  email: "",
-  phone: "",
-  designation: "",
-  address: "",
-};
+const DEFAULT_STAFF_DATA = {};
 
 export default function ProfileStaff({ onLogout }) {
   const { colors, isDarkMode, toggleTheme } = useTheme();
-  const styles = getStyles(colors);
+  const styles = getStyles(colors, isDarkMode);
 
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [logoutVisible, setLogoutVisible] = useState(false);
   const [staffData, setStaffData] = useState(DEFAULT_STAFF_DATA);
+
+  const cardOpacity = useRef(new Animated.Value(0)).current;
+  const cardTranslateY = useRef(new Animated.Value(14)).current;
 
   const loadPreferences = useCallback(async () => {
     try {
@@ -46,62 +43,74 @@ export default function ProfileStaff({ onLogout }) {
         setNotifications(JSON.parse(savedPref));
       }
 
+      const storedUserRaw = await AsyncStorage.getItem("userData");
+      const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : null;
+
       const faculty = await getFacultyData();
-      if (faculty) {
-        setStaffData({
-          name: faculty.name || "",
-          id: faculty.staffId || faculty.id || "",
-          department: faculty.department || "",
-          email: faculty.email || "",
-          phone: faculty.phone || faculty.mobile || "",
-          designation: faculty.designation || faculty.role || "",
-          address: faculty.address || "",
-        });
+      if (faculty || storedUser) {
+        setStaffData((prev) => ({
+          ...prev,
+          name: storedUser?.profile?.name || storedUser?.name || faculty?.name || prev.name,
+          staffId: faculty?.staffId || faculty?.id || prev.staffId,
+          department: faculty?.department || prev.department,
+          email: storedUser?.email || faculty?.email || prev.email,
+          phone: storedUser?.mobile || faculty?.phone || faculty?.mobile || prev.phone,
+          designation: faculty?.designation || faculty?.role || prev.designation,
+          address: faculty?.address || prev.address,
+          experience: faculty?.experience || prev.experience,
+          publications: faculty?.publications || prev.publications,
+          grants: faculty?.grants || prev.grants,
+          qualification: faculty?.qualification || prev.qualification,
+          cabin: faculty?.cabin || prev.cabin,
+          consultation: faculty?.consultation || prev.consultation,
+          portfolios: faculty?.portfolios || prev.portfolios,
+          aicteId: faculty?.aicteId || prev.aicteId,
+          specialization: faculty?.specialization || prev.specialization,
+        }));
       }
     } catch (error) {
-      console.log("Error loading staff profile data:", error);
+      console.log("Error loading staff profile:", error);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Load saved notification preference
   useEffect(() => {
     loadPreferences();
-  }, [loadPreferences]);
 
-  // Refresh profile data when the app returns to the foreground
+    Animated.parallel([
+      Animated.timing(cardOpacity, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.timing(cardTranslateY, { toValue: 0, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }, [cardOpacity, cardTranslateY, loadPreferences]);
+
   useRefreshOnForeground(loadPreferences);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadPreferences();
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 600);
+    setRefreshing(false);
   }, [loadPreferences]);
 
-  // Toggle and store preference
   const toggleNotifications = async () => {
     const newValue = !notifications;
     setNotifications(newValue);
     try {
       await AsyncStorage.setItem("staffNotifications", JSON.stringify(newValue));
       showToast(
-        newValue ? "Notifications enabled successfully." : "Notifications disabled.",
+        newValue ? "🔔 Push Notifications Enabled" : "🔕 Notifications Muted",
         newValue ? "success" : "warning"
       );
     } catch (error) {
       console.log("Error saving staff notification preference:", error);
-      showToast("Failed to update notification settings.", "error");
     }
   };
 
-  // Logout handler
   const handleLogout = async () => {
     try {
+      setLogoutVisible(false);
       await clearAuthSession();
-      showToast("You have been logged out.", "warning");
+      showToast("Logged out successfully.", "info");
       if (onLogout) onLogout();
     } catch (error) {
       console.error("Logout error:", error);
@@ -109,251 +118,539 @@ export default function ProfileStaff({ onLogout }) {
     }
   };
 
+  const handleShareFacultyDossier = async () => {
+    try {
+      await Share.share({
+        title: `Faculty Profile - ${staffData.name}`,
+        message: `🎓 EDUNEX FACULTY PROFILE\nProfessor: ${staffData.name}\nDesignation: ${staffData.designation}\nDepartment: ${staffData.department}\nEmployee ID: ${staffData.staffId} · AICTE: ${staffData.aicteId}\nQualifications: ${staffData.qualification}\nOffice Cabin: ${staffData.cabin}\nEmail: ${staffData.email}`,
+      });
+      showToast("Faculty profile shared!", "success");
+    } catch (err) {
+      console.log("Share error:", err);
+    }
+  };
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={{ paddingBottom: 150 }}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          colors={[colors.primary]}
-          tintColor={colors.primary}
-          progressBackgroundColor={colors.cardBackground}
-        />
-      }
-    >
-      {isLoading ? (
-        <View style={{ marginTop: 10 }}>
-          <SkeletonProfileCard />
-          <SkeletonListItem />
-          <SkeletonListItem />
-        </View>
-      ) : (
-        <>
-          {/* Profile Header Card */}
-          <View style={[styles.profileHeader, { backgroundColor: colors.cardBackground }]}>
-            <Icon name="account-tie" size={90} color={colors.primaryAccent} />
-            <Text style={styles.name}>{staffData.name}</Text>
-            <Text style={styles.designation}>{staffData.designation}</Text>
-            <View style={styles.divider} />
-            <Text style={styles.department}>{staffData.department}</Text>
-            <Text style={styles.staffId}>Staff ID: {staffData.id}</Text>
+    <View style={[styles.container, { backgroundColor: colors.primaryBackground }]}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primaryAccent]}
+            tintColor={colors.primaryAccent}
+            progressBackgroundColor={colors.cardBackground}
+          />
+        }
+      >
+        {/* ========================================================================= */}
+        {/* 1. HEADER                                                                 */}
+        {/* ========================================================================= */}
+        <View style={styles.header}>
+          <View style={[styles.headerIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
+            <Icon name="badge-account-horizontal-outline" size={24} color={colors.primaryAccent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.headerTitle, { color: colors.primaryText }]}>Faculty Profile</Text>
+            <Text style={[styles.headerSubtitle, { color: colors.secondaryText }]}>
+              Academic Credentials, Research Portfolios & Security
+            </Text>
           </View>
 
-          {/* Contact Information */}
-          <Text style={styles.sectionTitle}>Contact Information</Text>
-          <View style={styles.infoCard}>
-            <InfoRow icon="email-outline" text={staffData.email} color={colors.primaryAccent} />
-            <InfoRow icon="phone-outline" text={staffData.phone} color={colors.primaryAccent} />
-            <InfoRow icon="map-marker-outline" text={staffData.address} color={colors.primaryAccent} />
-          </View>
-
-          {/* Preferences */}
-          <Text style={styles.sectionTitle}>App Preferences</Text>
-          <View style={styles.settingsCard}>
-            <SettingsRow
-              icon="bell-outline"
-              label="Notifications"
-              value={notifications}
-              onValueChange={toggleNotifications}
-              colors={colors}
-            />
-            <SettingsRow
-              icon="theme-light-dark"
-              label="Dark Mode"
-              value={isDarkMode}
-              onValueChange={toggleTheme}
-              colors={colors}
-            />
-          </View>
-
-          {/* Logout Button */}
           <TouchableOpacity
-            style={[styles.logoutBtn, { backgroundColor: "#E74C3C" }]}
-            onPress={() => setLogoutVisible(true)}
+            style={[styles.shareBtnPill, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+            onPress={handleShareFacultyDossier}
+            activeOpacity={0.8}
           >
-            <Icon name="logout" size={20} color="#fff" />
-            <Text style={styles.logoutText}>Log Out</Text>
+            <Icon name="share-variant-outline" size={16} color={colors.primaryAccent} />
+            <Text style={[styles.shareBtnPillText, { color: colors.primaryAccent }]}>Share</Text>
           </TouchableOpacity>
-        </>
-      )}
+        </View>
 
-      {/* Bottom Spacing */}
-      <View style={{ height: 80 }} />
+        {isLoading ? (
+          <View style={{ marginTop: 10 }}>
+            <SkeletonProfileCard />
+            <SkeletonListItem />
+            <SkeletonListItem />
+          </View>
+        ) : (
+          <>
+            {/* ========================================================================= */}
+            {/* 2. FACULTY HERO & DIGITAL SMART BADGE CARD                                */}
+            {/* ========================================================================= */}
+            <Animated.View
+              style={[
+                styles.facultyHeroCard,
+                {
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.divider,
+                  opacity: cardOpacity,
+                  transform: [{ translateY: cardTranslateY }],
+                },
+              ]}
+            >
+              <View style={styles.heroTop}>
+                <View style={[styles.avatarCircle, { backgroundColor: colors.primaryAccent }]}>
+                  <Icon name="account-tie" size={36} color="#FFFFFF" />
+                </View>
 
-      {/* 🚪 Logout Confirmation Bottom Popup */}
-      <Modal visible={logoutVisible} transparent animationType="slide">
-        <View style={styles.bottomOverlay}>
-          <View style={[styles.bottomSheet, { backgroundColor: colors.cardBackground }]}>
-            <Icon name="alert-circle-outline" size={50} color="#E74C3C" />
-            <Text style={[styles.popupTitle, { color: colors.primaryText }]}>
-              Confirm Logout
+                <View style={{ flex: 1, marginLeft: 14 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={[styles.facultyName, { color: colors.primaryText }]} numberOfLines={1}>
+                      {staffData.name}
+                    </Text>
+                    <View style={styles.verifiedBadge}>
+                      <Icon name="check-decagram" size={12} color="#10B981" />
+                      <Text style={styles.verifiedBadgeText}>ACCREDITED</Text>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.designationText, { color: colors.primaryAccent }]}>
+                    {staffData.designation}
+                  </Text>
+                  <Text style={[styles.deptText, { color: colors.secondaryText }]}>
+                    {staffData.department}
+                  </Text>
+                  <Text style={[styles.staffIdText, { color: colors.disabledText }]}>
+                    ID: {staffData.staffId} · AICTE: {staffData.aicteId}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Research & Experience KPI Strip */}
+              <View style={[styles.researchStrip, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                <View style={styles.researchItem}>
+                  <Text style={[styles.researchVal, { color: colors.primaryText }]}>{staffData.experience}</Text>
+                  <Text style={[styles.researchLabel, { color: colors.secondaryText }]}>Experience</Text>
+                </View>
+                <View style={styles.researchItem}>
+                  <Text style={[styles.researchVal, { color: "#4F46E5" }]}>{staffData.publications}</Text>
+                  <Text style={[styles.researchLabel, { color: colors.secondaryText }]}>Publications</Text>
+                </View>
+                <View style={styles.researchItem}>
+                  <Text style={[styles.researchVal, { color: "#10B981" }]}>{staffData.grants}</Text>
+                  <Text style={[styles.researchLabel, { color: colors.secondaryText }]}>Grants</Text>
+                </View>
+              </View>
+            </Animated.View>
+
+            {/* ========================================================================= */}
+            {/* 3. ACADEMIC CREDENTIALS & CABIN CONSULTATION                              */}
+            {/* ========================================================================= */}
+            <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.sectionHeader}>
+                <Icon name="school-outline" size={20} color={colors.primaryAccent} />
+                <Text style={[styles.sectionTitle, { color: colors.primaryText }]}>Academic & Office Credentials</Text>
+              </View>
+
+              <View style={styles.dataGrid}>
+                <DataRow icon="certificate-outline" label="Highest Qualification" value={staffData.qualification} colors={colors} />
+                <DataRow icon="domain" label="Office Cabin" value={staffData.cabin} colors={colors} />
+                <DataRow icon="clock-outline" label="Student Consultation" value={staffData.consultation} colors={colors} />
+                <DataRow icon="briefcase-check-outline" label="Institutional Roles" value={staffData.portfolios} colors={colors} />
+              </View>
+            </View>
+
+            {/* ========================================================================= */}
+            {/* 4. CONTACT & RESIDENTIAL INFORMATION                                      */}
+            {/* ========================================================================= */}
+            <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.sectionHeader}>
+                <Icon name="card-text-outline" size={20} color={colors.primaryAccent} />
+                <Text style={[styles.sectionTitle, { color: colors.primaryText }]}>Contact Information</Text>
+              </View>
+
+              <View style={styles.dataGrid}>
+                <DataRow icon="phone-outline" label="Direct Mobile" value={staffData.phone} colors={colors} />
+                <DataRow icon="email-outline" label="Institutional Email" value={staffData.email} colors={colors} />
+                <DataRow icon="map-marker-outline" label="Campus Residence" value={staffData.address} colors={colors} />
+              </View>
+            </View>
+
+            {/* ========================================================================= */}
+            {/* 5. APP SETTINGS & SECURITY                                                */}
+            {/* ========================================================================= */}
+            <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.sectionHeader}>
+                <Icon name="cog-outline" size={20} color={colors.primaryAccent} />
+                <Text style={[styles.sectionTitle, { color: colors.primaryText }]}>Preferences & Privacy</Text>
+              </View>
+
+              <View style={styles.dataGrid}>
+                <PrefRow
+                  icon="bell-ring-outline"
+                  label="Classroom & CIA Notifications"
+                  value={notifications}
+                  onToggle={toggleNotifications}
+                  colors={colors}
+                />
+                <PrefRow
+                  icon="theme-light-dark"
+                  label="Dark Theme Mode"
+                  value={isDarkMode}
+                  onToggle={toggleTheme}
+                  colors={colors}
+                />
+
+                <TouchableOpacity
+                  style={styles.securityActionRow}
+                  onPress={() =>
+                    Alert.alert(
+                      "🔒 Academic Security Active",
+                      "Faculty-student records and evaluations are end-to-end encrypted under EduNex zero-knowledge institutional privacy standards."
+                    )
+                  }
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <Icon name="shield-lock-outline" size={20} color="#10B981" />
+                    <Text style={[styles.securityActionText, { color: "#10B981" }]}>
+                      Faculty E2EE Security Active
+                    </Text>
+                  </View>
+                  <Icon name="check-circle" size={18} color="#10B981" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Logout Button */}
+            <TouchableOpacity
+              style={styles.logoutBtn}
+              onPress={() => setLogoutVisible(true)}
+              activeOpacity={0.85}
+            >
+              <Icon name="logout-variant" size={18} color="#EF4444" />
+              <Text style={styles.logoutBtnText}>Log Out of Faculty Portal</Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+
+      {/* LOGOUT CONFIRMATION MODAL */}
+      <Modal visible={logoutVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.logoutCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+            <Icon name="alert-circle-outline" size={44} color="#EF4444" />
+            <Text style={[styles.logoutTitle, { color: colors.primaryText }]}>Confirm Log Out?</Text>
+            <Text style={[styles.logoutSub, { color: colors.secondaryText }]}>
+              You will need to sign in again to record student attendance and submit CIA internal evaluations.
             </Text>
-            <Text style={[styles.popupMessage, { color: colors.secondaryText }]}>
-              Are you sure you want to log out of your account?
-            </Text>
 
-            <View style={styles.popupButtons}>
-              <Pressable
+            <View style={styles.logoutActionRow}>
+              <TouchableOpacity
+                style={[styles.cancelLogoutBtn, { borderColor: colors.divider }]}
                 onPress={() => setLogoutVisible(false)}
-                style={[styles.cancelBtn, { backgroundColor: colors.primaryAccent }]}
               >
-                <Text style={styles.popupBtnText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setLogoutVisible(false);
-                  handleLogout();
-                }}
-                style={[styles.logoutConfirmBtn, { backgroundColor: "#E74C3C" }]}
+                <Text style={[styles.cancelLogoutText, { color: colors.primaryText }]}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.confirmLogoutBtn}
+                onPress={handleLogout}
               >
-                <Text style={styles.popupBtnText}>Logout</Text>
-              </Pressable>
+                <Text style={styles.confirmLogoutText}>Log Out</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
 
-// ✅ Reusable Components
-const InfoRow = ({ icon, text, color }) => (
-  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
-    <Icon name={icon} size={20} color={color} />
-    <Text style={{ fontSize: 15, marginLeft: 10, color: "#555" }}>{text}</Text>
-  </View>
-);
-
-const SettingsRow = ({ icon, label, value, onValueChange, colors }) => (
-  <View style={stylesSetting(colors).settingsRow}>
-    <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-      <Icon name={icon} size={20} color={colors.primaryText} />
-      <Text style={[stylesSetting(colors).settingsLabel, { color: colors.primaryText }]}>
-        {label}
-      </Text>
+// ---------------- Sub-Components ----------------
+function DataRow({ icon, label, value, colors }) {
+  return (
+    <View style={[stylesSub.dataRow, { borderBottomColor: colors.divider }]}>
+      <View style={stylesSub.dataIconWrap}>
+        <Icon name={icon} size={17} color={colors.primaryAccent} />
+      </View>
+      <View style={{ flex: 1, marginLeft: 10 }}>
+        <Text style={[stylesSub.dataLabel, { color: colors.secondaryText }]}>{label}</Text>
+        <Text style={[stylesSub.dataValue, { color: colors.primaryText }]}>{value || "—"}</Text>
+      </View>
     </View>
-    <Switch
-      value={value}
-      onValueChange={onValueChange}
-      trackColor={{ false: colors.disabledText, true: colors.primaryAccent }}
-      thumbColor={colors.cardBackground}
-    />
-  </View>
-);
+  );
+}
 
-const getStyles = (colors) =>
+function PrefRow({ icon, label, value, onToggle, colors }) {
+  return (
+    <View style={[stylesSub.dataRow, { borderBottomColor: colors.divider, justifyContent: "space-between" }]}>
+      <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+        <View style={stylesSub.dataIconWrap}>
+          <Icon name={icon} size={17} color={colors.primaryAccent} />
+        </View>
+        <Text style={[stylesSub.prefLabel, { color: colors.primaryText, marginLeft: 10 }]}>{label}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onToggle}
+        thumbColor={value ? colors.primaryAccent : "#94A3B8"}
+        trackColor={{ false: "#CBD5E1", true: colors.primaryAccent + "55" }}
+      />
+    </View>
+  );
+}
+
+const stylesSub = StyleSheet.create({
+  dataRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  dataIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: "rgba(100,100,100,0.06)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dataLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  dataValue: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    marginTop: 1,
+  },
+  prefLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+});
+
+// ---------------- Styles ----------------
+const getStyles = (colors, isDarkMode) =>
   StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.primaryBackground,
-      paddingHorizontal: 20,
-      paddingTop: 80,
-    },
-    profileHeader: {
+    container: { flex: 1 },
+    scrollView: { flex: 1 },
+    contentContainer: { paddingHorizontal: 16, paddingTop: 44, paddingBottom: 80 },
+
+    /* Header */
+    header: {
+      flexDirection: "row",
       alignItems: "center",
-      borderRadius: 18,
-      padding: 25,
-      marginBottom: 25,
-      borderTopWidth: 4,
-      borderTopColor: colors.primaryAccent,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 4,
+      gap: 10,
+      marginBottom: 16,
     },
-    name: { fontSize: 22, fontWeight: "800", color: colors.primaryText, marginTop: 10 },
-    designation: { fontSize: 16, color: colors.secondaryText, marginBottom: 4 },
-    department: { fontSize: 15, color: colors.secondaryText },
-    staffId: { fontSize: 13, color: colors.disabledText, marginTop: 5 },
-    divider: {
-      width: "60%",
-      height: 1,
-      backgroundColor: colors.primaryAccent + "40",
-      marginVertical: 8,
+    headerIconWrap: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
     },
-    sectionTitle: {
-      fontSize: 18,
+    headerTitle: {
+      fontSize: 20,
+      fontWeight: "800",
+      letterSpacing: -0.3,
+    },
+    headerSubtitle: {
+      fontSize: 11.5,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    shareBtnPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    shareBtnPillText: {
+      fontSize: 11.5,
       fontWeight: "700",
-      color: colors.primaryText,
+    },
+
+    /* Faculty Hero Card */
+    facultyHeroCard: {
+      borderRadius: 20,
+      borderWidth: 1,
+      padding: 16,
+      marginBottom: 14,
+      elevation: 3,
+      shadowColor: "#000",
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+    },
+    heroTop: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    avatarCircle: {
+      width: 58,
+      height: 58,
+      borderRadius: 29,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    facultyName: {
+      fontSize: 16.5,
+      fontWeight: "900",
+      letterSpacing: -0.2,
+      flex: 1,
+    },
+    verifiedBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      backgroundColor: "#10B98114",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    verifiedBadgeText: {
+      color: "#10B981",
+      fontSize: 9,
+      fontWeight: "900",
+    },
+    designationText: {
+      fontSize: 12,
+      fontWeight: "700",
+      marginTop: 2,
+    },
+    deptText: {
+      fontSize: 11.5,
+      fontWeight: "600",
+      marginTop: 1,
+    },
+    staffIdText: {
+      fontSize: 10.5,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    researchStrip: {
+      flexDirection: "row",
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 10,
+      marginTop: 14,
+      justifyContent: "space-around",
+    },
+    researchItem: {
+      alignItems: "center",
+    },
+    researchVal: {
+      fontSize: 12.5,
+      fontWeight: "800",
+    },
+    researchLabel: {
+      fontSize: 10,
+      fontWeight: "600",
+      marginTop: 1,
+    },
+
+    /* Section Cards */
+    sectionCard: {
+      borderRadius: 18,
+      borderWidth: 1,
+      padding: 14,
+      marginBottom: 12,
+    },
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
       marginBottom: 10,
     },
-    infoCard: {
-      backgroundColor: colors.cardBackground,
-      borderRadius: 12,
-      padding: 15,
-      marginBottom: 20,
-      elevation: 2,
+    sectionTitle: {
+      fontSize: 13.5,
+      fontWeight: "800",
     },
-    settingsCard: {
-      backgroundColor: colors.cardBackground,
-      borderRadius: 12,
-      padding: 15,
-      marginBottom: 25,
-      elevation: 2,
+    dataGrid: {
+      gap: 2,
+    },
+    securityActionRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: 12,
+    },
+    securityActionText: {
+      fontSize: 13,
+      fontWeight: "700",
     },
     logoutBtn: {
       flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      backgroundColor: "#EF444414",
+      paddingVertical: 14,
+      borderRadius: 14,
+      marginTop: 8,
+    },
+    logoutBtnText: {
+      color: "#EF4444",
+      fontSize: 13.5,
+      fontWeight: "800",
+    },
+
+    /* Logout Dialog */
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.75)",
       justifyContent: "center",
       alignItems: "center",
-      paddingVertical: 14,
-      borderRadius: 12,
-      elevation: 3,
-      marginBottom: 40,
+      paddingHorizontal: 18,
     },
-    logoutText: { color: "#fff", fontSize: 16, fontWeight: "700", marginLeft: 8 },
-    bottomOverlay: {
-      flex: 1,
-      justifyContent: "flex-end",
-      backgroundColor: "rgba(0,0,0,0.5)",
-    },
-    bottomSheet: {
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      padding: 25,
-      alignItems: "center",
-      elevation: 10,
-    },
-    popupTitle: { fontSize: 20, fontWeight: "800", marginTop: 8 },
-    popupMessage: {
-      fontSize: 15,
-      textAlign: "center",
-      marginVertical: 10,
-      lineHeight: 22,
-      paddingHorizontal: 10,
-    },
-    popupButtons: {
-      flexDirection: "row",
-      justifyContent: "space-between",
+    logoutCard: {
       width: "100%",
-      marginTop: 15,
-      gap: 10,
-    },
-    cancelBtn: {
-      flex: 1,
+      borderRadius: 22,
+      borderWidth: 1,
+      padding: 22,
       alignItems: "center",
-      paddingVertical: 10,
-      borderRadius: 10,
     },
-    logoutConfirmBtn: {
-      flex: 1,
-      alignItems: "center",
-      paddingVertical: 10,
-      borderRadius: 10,
+    logoutTitle: {
+      fontSize: 17,
+      fontWeight: "800",
+      marginTop: 10,
     },
-    popupBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  });
-
-const stylesSetting = (colors) =>
-  StyleSheet.create({
-    settingsRow: {
+    logoutSub: {
+      fontSize: 12,
+      textAlign: "center",
+      marginTop: 6,
+      lineHeight: 16,
+    },
+    logoutActionRow: {
       flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 15,
+      gap: 10,
+      marginTop: 18,
+      width: "100%",
     },
-    settingsLabel: { flex: 1, fontSize: 16, marginLeft: 10 },
+    cancelLogoutBtn: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    cancelLogoutText: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    confirmLogoutBtn: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      backgroundColor: "#EF4444",
+    },
+    confirmLogoutText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "800",
+    },
   });

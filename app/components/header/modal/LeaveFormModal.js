@@ -19,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import QRCode from "react-native-qrcode-svg";
 import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
+import { resolveIdentity } from "../../../services/identityService";
 import { showToast } from "../../../utils/toastService";
 
 // ---------------- Helpers ----------------
@@ -70,15 +71,15 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
   const [mode, setMode] = useState("form");
 
   // Form fields
-  const [studentName, setStudentName] = useState("Karthik Raja M");
-  const [rollNo, setRollNo] = useState("25ACSE001");
+  const [studentName, setStudentName] = useState("");
+  const [rollNo, setRollNo] = useState("");
   const [classSection] = useState("AI & DS - A");
-  const [dept, setDept] = useState("AI & DS");
-  const [year, setYear] = useState("III Year");
+  const [dept, setDept] = useState("");
+  const [year, setYear] = useState("");
   const [leaveType, setLeaveType] = useState("Academic OD");
   const [sessionTiming, setSessionTiming] = useState("Full Day");
   const [reason, setReason] = useState("");
-  const [emergencyContact, setEmergencyContact] = useState("+91 98765 43210");
+  const [emergencyContact, setEmergencyContact] = useState("");
 
   const [fromDate, setFromDate] = useState(new Date());
   const [toDate, setToDate] = useState(new Date());
@@ -112,6 +113,19 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
 
   useEffect(() => {
     if (visible) {
+      (async () => {
+        try {
+          const identity = await resolveIdentity();
+          if (identity?.name) setStudentName(identity.name);
+          if (identity?.rollNo || identity?.username) setRollNo(identity.rollNo || identity.username);
+          if (identity?.dept) setDept(identity.dept);
+          if (identity?.year) setYear(identity.year);
+          if (identity?.phone || identity?.parentContact) setEmergencyContact(identity.phone || identity.parentContact);
+        } catch (e) {
+          console.log("LeaveFormModal identity load error:", e);
+        }
+      })();
+
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 300,

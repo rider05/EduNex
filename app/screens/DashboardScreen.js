@@ -24,11 +24,11 @@ export default function DashboardScreen() {
   );
 
   const studentData = {
-    gpa: '3.85',
-    dueFees: '₹ 15,000',
-    upcomingExam: 'Calculus II',
-    libraryDues: '3 books (7 days)',
-    attendance: '85%',
+    gpa: '—',
+    dueFees: '—',
+    upcomingExam: '—',
+    libraryDues: '—',
+    attendance: '—',
   };
 
   const handleCardPress = (title) => {
@@ -38,7 +38,7 @@ export default function DashboardScreen() {
 
   return (
     <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
-      <Text style={styles.welcomeText}>Hello, Jane Doe 👋</Text>
+      <Text style={styles.welcomeText}>Hello 👋</Text>
       <Text style={styles.subHeaderText}>Your progress at a glance.</Text>
 
       {/* KPIs row */}

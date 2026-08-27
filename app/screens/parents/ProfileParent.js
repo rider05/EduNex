@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -6,9 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   Modal,
-  Pressable,
   Switch,
   RefreshControl,
+  Share,
+  Animated,
+  Alert,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -19,34 +21,21 @@ import { clearAuthSession } from "../../services/api";
 import { getParentData } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
-const DEFAULT_PARENT_DATA = {
-  name: "",
-  relation: "",
-  phone: "",
-  email: "",
-  address: "",
-  ward: {
-    name: "",
-    class: "",
-    attendance: "",
-    feeStatus: "",
-    rollNo: "",
-    dob: "",
-    bloodGroup: "",
-    guardianContact: "",
-    address: "",
-  },
-};
+const DEFAULT_PARENT_DATA = {};
 
 export default function ProfileParent({ onLogout }) {
   const { colors, isDarkMode, toggleTheme } = useTheme();
-  const styles = getStyles(colors);
+  const styles = getStyles(colors, isDarkMode);
+
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [logoutVisible, setLogoutVisible] = useState(false);
-  const [studentModalVisible, setStudentModalVisible] = useState(false);
+  const [wardModalVisible, setWardModalVisible] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [parentData, setParentData] = useState(DEFAULT_PARENT_DATA);
+
+  const cardOpacity = useRef(new Animated.Value(0)).current;
+  const cardTranslateY = useRef(new Animated.Value(14)).current;
 
   const loadPreferences = useCallback(async () => {
     try {
@@ -55,86 +44,57 @@ export default function ProfileParent({ onLogout }) {
         setNotifications(JSON.parse(savedPref));
       }
 
-      // Live parent + ward data (REST with local sync fallback)
-      let next = { ...DEFAULT_PARENT_DATA, ward: { ...DEFAULT_PARENT_DATA.ward } };
-      try {
-        const storedUserRaw = await AsyncStorage.getItem("userData");
-        const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : null;
-        if (storedUser) {
-          next = {
-            ...next,
-            name: storedUser.profile?.name || storedUser.name || storedUser.username || next.name,
-            email: storedUser.email || next.email,
-            phone: storedUser.mobile || storedUser.phone || next.phone,
-          };
-        }
+      const storedUserRaw = await AsyncStorage.getItem("userData");
+      const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : null;
 
-        const data = await getParentData();
-        if (data) {
-          const ward = data.ward || {};
-          const parentDoc = data;
-          next = {
-            ...next,
-            name: parentDoc.name || next.name,
-            email: parentDoc.email || next.email,
-            phone: parentDoc.mobile || parentDoc.phone || next.phone,
-            address: parentDoc.address || next.address,
-            relation:
-              ward.rollNo || ward.roll
-                ? `Parent of ${ward.name || "ward"} (${ward.rollNo || ward.roll})`
-                : parentDoc.relation || next.relation,
-            ward: {
-              ...next.ward,
-              name: ward.name || next.ward.name,
-              class: [ward.department, ward.year, ward.section].filter(Boolean).join(" - ") || next.ward.class,
-              attendance: ward.attendance?.percentage || (ward.attendance ? String(ward.attendance) : "") || next.ward.attendance,
-              feeStatus:
-                ward.fees?.due != null
-                  ? `Due ₹${Number(ward.fees.due).toLocaleString("en-IN")}`
-                  : next.ward.feeStatus,
-              rollNo: ward.roll || ward.rollNo || next.ward.rollNo,
-              dob: ward.dob || next.ward.dob,
-              bloodGroup: ward.bloodGroup || next.ward.bloodGroup,
-              guardianContact: ward.parent?.phone || next.ward.guardianContact,
-              address: ward.parent?.address || ward.address || next.ward.address,
-            },
-          };
-        }
-      } catch (apiErr) {
-        console.warn("ProfileParent live load error:", apiErr?.message || apiErr);
+      const data = await getParentData();
+      if (data || storedUser) {
+        setParentData((prev) => ({
+          ...prev,
+          name: storedUser?.profile?.name || storedUser?.name || data?.name || prev.name,
+          email: storedUser?.email || data?.email || prev.email,
+          phone: storedUser?.mobile || data?.mobile || data?.phone || prev.phone,
+          address: data?.address || prev.address,
+          ward: {
+            ...(prev.ward || {}),
+            name: data?.ward?.name || prev?.ward?.name,
+            rollNo: data?.ward?.rollNo || data?.ward?.roll || prev?.ward?.rollNo,
+            attendance: data?.ward?.attendance?.percentage || prev?.ward?.attendance,
+            cgpa: data?.ward?.cgpa ? `${data.ward.cgpa} / 10.0` : prev?.ward?.cgpa,
+          },
+        }));
       }
-      setParentData(next);
     } catch (error) {
-      console.log("Error loading parent notification preference:", error);
+      console.log("Error loading parent profile:", error);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Load saved notification preference
   useEffect(() => {
     loadPreferences();
-  }, [loadPreferences]);
 
-  // Refresh profile data when the app returns to the foreground
+    Animated.parallel([
+      Animated.timing(cardOpacity, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.timing(cardTranslateY, { toValue: 0, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }, [cardOpacity, cardTranslateY, loadPreferences]);
+
   useRefreshOnForeground(loadPreferences);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadPreferences();
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 600);
+    setRefreshing(false);
   }, [loadPreferences]);
 
-  // Toggle and store preference
   const toggleNotifications = async () => {
     const newValue = !notifications;
     setNotifications(newValue);
     try {
       await AsyncStorage.setItem("parentNotifications", JSON.stringify(newValue));
       showToast(
-        newValue ? "Notifications enabled successfully." : "Notifications disabled.",
+        newValue ? "🔔 Push Notifications Enabled" : "🔕 Notifications Muted",
         newValue ? "success" : "warning"
       );
     } catch (error) {
@@ -144,8 +104,9 @@ export default function ProfileParent({ onLogout }) {
 
   const handleLogout = async () => {
     try {
+      setLogoutVisible(false);
       await clearAuthSession();
-      showToast("You have been logged out.", "warning");
+      showToast("Logged out successfully.", "info");
       if (onLogout) onLogout();
     } catch (error) {
       console.error("Logout error:", error);
@@ -153,315 +114,634 @@ export default function ProfileParent({ onLogout }) {
     }
   };
 
+  const handleShareGuardianDossier = async () => {
+    try {
+      await Share.share({
+        title: `Guardian Profile - ${parentData.name}`,
+        message: `🛡️ EDUNEX GUARDIAN DOSSIER\nGuardian: ${parentData.name} (${parentData.relation})\nGuardian ID: ${parentData.guardianId}\nContact: ${parentData.phone}\nWard: ${parentData.ward.name} (${parentData.ward.rollNo})\nProgram: ${parentData.ward.class}\nStatus: VERIFIED & ACTIVE`,
+      });
+      showToast("Guardian profile shared!", "success");
+    } catch (err) {
+      console.log("Share error:", err);
+    }
+  };
+
   return (
-    <>
+    <View style={[styles.container, { backgroundColor: colors.primaryBackground }]}>
       <ScrollView
-        style={styles.container}
+        style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
+            colors={[colors.primaryAccent]}
+            tintColor={colors.primaryAccent}
             progressBackgroundColor={colors.cardBackground}
           />
         }
       >
+        {/* ========================================================================= */}
+        {/* 1. HEADER                                                                 */}
+        {/* ========================================================================= */}
+        <View style={styles.header}>
+          <View style={[styles.headerIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
+            <Icon name="shield-account-outline" size={24} color={colors.primaryAccent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.headerTitle, { color: colors.primaryText }]}>Guardian Profile</Text>
+            <Text style={[styles.headerSubtitle, { color: colors.secondaryText }]}>
+              Parent Credentials, Ward Dossier & Preferences
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.shareBtnPill, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+            onPress={handleShareGuardianDossier}
+            activeOpacity={0.8}
+          >
+            <Icon name="share-variant-outline" size={16} color={colors.primaryAccent} />
+            <Text style={[styles.shareBtnPillText, { color: colors.primaryAccent }]}>Share</Text>
+          </TouchableOpacity>
+        </View>
+
         {isLoading ? (
-          <>
+          <View style={{ marginTop: 10 }}>
             <SkeletonProfileCard />
             <SkeletonListItem />
             <SkeletonListItem />
-          </>
+          </View>
         ) : (
           <>
-            {/* Parent Info */}
-            <View style={styles.profileCard}>
-              <View style={styles.avatarCircle}>
-                <Icon name="account-tie" size={60} color="#FFF" />
-              </View>
-              <Text style={styles.parentName}>{parentData.name}</Text>
-              <Text style={styles.relation}>{parentData.relation}</Text>
-            </View>
+            {/* ========================================================================= */}
+            {/* 2. GUARDIAN IDENTITY HERO CARD                                            */}
+            {/* ========================================================================= */}
+            <Animated.View
+              style={[
+                styles.guardianHeroCard,
+                {
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.divider,
+                  opacity: cardOpacity,
+                  transform: [{ translateY: cardTranslateY }],
+                },
+              ]}
+            >
+              <View style={styles.heroTop}>
+                <View style={[styles.avatarCircle, { backgroundColor: colors.primaryAccent }]}>
+                  <Icon name="account-tie" size={34} color="#FFFFFF" />
+                </View>
 
-            {/* Contact Info */}
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Contact Information</Text>
-              <View style={styles.infoRow}>
-                <Icon name="email-outline" size={22} color={colors.primaryAccent} />
-                <Text style={styles.infoText}>{parentData.email}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Icon name="phone-outline" size={22} color={colors.primaryAccent} />
-                <Text style={styles.infoText}>{parentData.phone}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Icon name="map-marker-outline" size={22} color={colors.primaryAccent} />
-                <Text style={styles.infoText}>{parentData.address}</Text>
-              </View>
-            </View>
+                <View style={{ flex: 1, marginLeft: 14 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={[styles.parentName, { color: colors.primaryText }]} numberOfLines={1}>
+                      {parentData.name}
+                    </Text>
+                    <View style={styles.verifiedBadge}>
+                      <Icon name="check-decagram" size={12} color="#10B981" />
+                      <Text style={styles.verifiedBadgeText}>VERIFIED</Text>
+                    </View>
+                  </View>
 
-            {/* Ward Info */}
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Ward Information</Text>
-
-              <View style={styles.wardRow}>
-                <Text style={styles.wardLabel}>Name</Text>
-                <Text style={styles.wardValue}>{parentData.ward.name}</Text>
-              </View>
-              <View style={styles.wardRow}>
-                <Text style={styles.wardLabel}>Class</Text>
-                <Text style={styles.wardValue}>{parentData.ward.class}</Text>
-              </View>
-              <View style={styles.wardRow}>
-                <Text style={styles.wardLabel}>Attendance</Text>
-                <Text style={[styles.wardValue, { color: colors.successText }]}>
-                  {parentData.ward.attendance}
-                </Text>
-              </View>
-              <View style={styles.wardRow}>
-                <Text style={styles.wardLabel}>Fee Status</Text>
-                <Text style={[styles.wardValue, { color: colors.warningText }]}>
-                  {parentData.ward.feeStatus}
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                style={styles.viewDetailsBtn}
-                activeOpacity={0.8}
-                onPress={() => setStudentModalVisible(true)}
-              >
-                <Text style={styles.viewDetailsText}>View Complete Ward Details</Text>
-                <Icon name="chevron-right" size={20} color={colors.primaryAccent} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Settings & Preferences */}
-            <View style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Preferences & System</Text>
-
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Enable Notifications</Text>
-                <Switch
-                  value={notifications}
-                  onValueChange={toggleNotifications}
-                  trackColor={{ false: colors.border, true: colors.primaryAccent }}
-                  thumbColor={notifications ? colors.surface : colors.surface}
-                />
-              </View>
-
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Dark Mode</Text>
-                <Switch
-                  value={isDarkMode}
-                  onValueChange={toggleTheme}
-                  trackColor={{ false: colors.border, true: colors.primaryAccent }}
-                  thumbColor={isDarkMode ? colors.surface : colors.surface}
-                />
-              </View>
-
-              <TouchableOpacity
-                style={styles.logoutBtn}
-                activeOpacity={0.8}
-                onPress={() => setLogoutVisible(true)}
-              >
-                <Icon name="logout" size={20} color={colors.error} />
-                <Text style={styles.logoutText}>Logout</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-      </ScrollView>
-
-      {/* Student Details Modal */}
-      <Modal visible={studentModalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.primaryText }]}>
-                Student Profile
-              </Text>
-              <Pressable onPress={() => setStudentModalVisible(false)}>
-                <Icon name="close" size={26} color={colors.secondaryText} />
-              </Pressable>
-            </View>
-
-            <ScrollView style={{ width: "100%", marginTop: 10 }}>
-              {Object.entries(parentData.ward).map(([key, value]) => (
-                <View style={styles.studentRow} key={key}>
-                  <Text style={styles.studentLabel}>
-                    {key.charAt(0).toUpperCase() + key.slice(1)}:
+                  <Text style={[styles.relationText, { color: colors.primaryAccent }]}>
+                    {parentData.relation}
                   </Text>
-                  <Text
-                    style={[
-                      styles.studentValue,
-                      key === "attendance"
-                        ? { color: colors.successText }
-                        : key === "feeStatus"
-                        ? { color: colors.warningText }
-                        : {},
-                    ]}
-                  >
-                    {value}
+                  <Text style={[styles.guardianIdText, { color: colors.secondaryText }]}>
+                    ID: {parentData.guardianId} · {parentData.occupation}
                   </Text>
                 </View>
-              ))}
+              </View>
+
+              {/* Linked Ward Quick Tile */}
+              <TouchableOpacity
+                style={[styles.linkedWardBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
+                onPress={() => setWardModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.miniWardIconCircle, { backgroundColor: "#4F46E518" }]}>
+                  <Icon name="school" size={18} color="#4F46E5" />
+                </View>
+
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={[styles.linkedWardLabel, { color: colors.secondaryText }]}>LINKED STUDENT WARD</Text>
+                  <Text style={[styles.linkedWardName, { color: colors.primaryText }]}>
+                    {parentData.ward.name} ({parentData.ward.rollNo})
+                  </Text>
+                  <Text style={[styles.linkedWardClass, { color: colors.disabledText }]}>
+                    {parentData.ward.class}
+                  </Text>
+                </View>
+
+                <Icon name="chevron-right" size={20} color={colors.disabledText} />
+              </TouchableOpacity>
+            </Animated.View>
+
+            {/* ========================================================================= */}
+            {/* 3. CONTACT INFORMATION                                                    */}
+            {/* ========================================================================= */}
+            <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.sectionHeader}>
+                <Icon name="card-text-outline" size={20} color={colors.primaryAccent} />
+                <Text style={[styles.sectionTitle, { color: colors.primaryText }]}>Contact Information</Text>
+              </View>
+
+              <View style={styles.dataGrid}>
+                <DataRow icon="phone-outline" label="Primary Mobile" value={parentData.phone} colors={colors} />
+                <DataRow icon="email-outline" label="Email Address" value={parentData.email} colors={colors} />
+                <DataRow icon="briefcase-outline" label="Occupation" value={parentData.occupation} colors={colors} />
+                <DataRow icon="map-marker-outline" label="Residential Address" value={parentData.address} colors={colors} />
+              </View>
+            </View>
+
+            {/* ========================================================================= */}
+            {/* 4. SECONDARY GUARDIAN & ADVISOR DETAILS                                   */}
+            {/* ========================================================================= */}
+            <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.sectionHeader}>
+                <Icon name="account-group-outline" size={20} color={colors.primaryAccent} />
+                <Text style={[styles.sectionTitle, { color: colors.primaryText }]}>Family & Mentorship Contacts</Text>
+              </View>
+
+              <View style={styles.dataGrid}>
+                <DataRow icon="account-heart-outline" label="Secondary Guardian" value={parentData.secondaryGuardian} colors={colors} />
+                <DataRow icon="phone-outline" label="Secondary Contact" value={parentData.secondaryPhone} colors={colors} />
+                <DataRow icon="account-tie-outline" label="Ward Class Counselor" value={parentData.ward.advisor} colors={colors} />
+              </View>
+            </View>
+
+            {/* ========================================================================= */}
+            {/* 5. APP SETTINGS & SECURITY                                                */}
+            {/* ========================================================================= */}
+            <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.sectionHeader}>
+                <Icon name="cog-outline" size={20} color={colors.primaryAccent} />
+                <Text style={[styles.sectionTitle, { color: colors.primaryText }]}>App Settings & Security</Text>
+              </View>
+
+              <View style={styles.dataGrid}>
+                <PrefRow
+                  icon="bell-ring-outline"
+                  label="Push Notifications"
+                  value={notifications}
+                  onToggle={toggleNotifications}
+                  colors={colors}
+                />
+                <PrefRow
+                  icon="theme-light-dark"
+                  label="Dark Theme Mode"
+                  value={isDarkMode}
+                  onToggle={toggleTheme}
+                  colors={colors}
+                />
+
+                <TouchableOpacity
+                  style={styles.securityActionRow}
+                  onPress={() =>
+                    Alert.alert(
+                      "🔒 Privacy & E2EE Status",
+                      "Parent-Faculty direct communications are end-to-end encrypted under EduNex institutional privacy standards."
+                    )
+                  }
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <Icon name="shield-lock-outline" size={20} color="#10B981" />
+                    <Text style={[styles.securityActionText, { color: "#10B981" }]}>
+                      Academic Privacy Active
+                    </Text>
+                  </View>
+                  <Icon name="check-circle" size={18} color="#10B981" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Logout Button */}
+            <TouchableOpacity
+              style={styles.logoutBtn}
+              onPress={() => setLogoutVisible(true)}
+              activeOpacity={0.85}
+            >
+              <Icon name="logout-variant" size={18} color="#EF4444" />
+              <Text style={styles.logoutBtnText}>Log Out of Parent Portal</Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+
+      {/* ========================================================================= */}
+      {/* 6. COMPLETE WARD DETAILS MODAL                                            */}
+      {/* ========================================================================= */}
+      <Modal visible={wardModalVisible} transparent animationType="fade" onRequestClose={() => setWardModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={[styles.miniWardIconCircle, { backgroundColor: colors.primaryAccent + "18" }]}>
+                  <Icon name="school" size={22} color={colors.primaryAccent} />
+                </View>
+                <View>
+                  <Text style={[styles.modalTitle, { color: colors.primaryText }]}>Ward Academic Dossier</Text>
+                  <Text style={[styles.modalSub, { color: colors.secondaryText }]}>{parentData.ward.rollNo}</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity onPress={() => setWardModalVisible(false)}>
+                <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 360 }}>
+              <View style={[styles.wardModalGrid, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                <DataRow icon="account-outline" label="Full Name" value={parentData.ward.name} colors={colors} />
+                <DataRow icon="identifier" label="Roll Number" value={parentData.ward.rollNo} colors={colors} />
+                <DataRow icon="card-account-details-outline" label="University Reg. No." value={parentData.ward.regNo} colors={colors} />
+                <DataRow icon="domain" label="Academic Program" value={parentData.ward.class} colors={colors} />
+                <DataRow icon="calendar-check" label="Aggregate Attendance" value={parentData.ward.attendance} colors={colors} />
+                <DataRow icon="trophy-outline" label="Cumulative GPA" value={parentData.ward.cgpa} colors={colors} />
+                <DataRow icon="cash-multiple" label="Fee Status" value={parentData.ward.feeStatus} colors={colors} />
+                <DataRow icon="water-outline" label="Blood Group" value={parentData.ward.bloodGroup} colors={colors} />
+                <DataRow icon="home-city-outline" label="Residence" value={parentData.ward.hostel} colors={colors} />
+              </View>
             </ScrollView>
 
             <TouchableOpacity
-              onPress={() => setStudentModalVisible(false)}
               style={[styles.closeModalBtn, { backgroundColor: colors.primaryAccent }]}
+              onPress={() => setWardModalVisible(false)}
             >
-              <Text style={styles.closeModalText}>Close</Text>
+              <Text style={styles.closeModalBtnText}>Close Dossier</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Logout Modal */}
-      <Modal visible={logoutVisible} transparent animationType="slide">
-        <View style={styles.bottomOverlay}>
-          <View style={[styles.bottomSheet, { backgroundColor: colors.cardBackground }]}>
-            <Icon name="alert-circle-outline" size={55} color="#E74C3C" />
-            <Text style={[styles.popupTitle, { color: colors.primaryText }]}>
-              Confirm Logout
-            </Text>
-            <Text style={[styles.popupMessage, { color: colors.secondaryText }]}>
-              Are you sure you want to log out of your account?
+      {/* LOGOUT CONFIRMATION MODAL */}
+      <Modal visible={logoutVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.logoutCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+            <Icon name="alert-circle-outline" size={44} color="#EF4444" />
+            <Text style={[styles.logoutTitle, { color: colors.primaryText }]}>Confirm Log Out?</Text>
+            <Text style={[styles.logoutSub, { color: colors.secondaryText }]}>
+              You will need to sign in again to monitor your ward&apos;s academic performance and fee invoices.
             </Text>
 
-            <View style={styles.popupButtons}>
-              <Pressable
+            <View style={styles.logoutActionRow}>
+              <TouchableOpacity
+                style={[styles.cancelLogoutBtn, { borderColor: colors.divider }]}
                 onPress={() => setLogoutVisible(false)}
-                style={[styles.cancelBtn, { backgroundColor: colors.primaryAccent }]}
               >
-                <Text style={styles.popupBtnText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setLogoutVisible(false);
-                  handleLogout();
-                }}
-                style={[styles.logoutConfirmBtn, { backgroundColor: "#E74C3C" }]}
+                <Text style={[styles.cancelLogoutText, { color: colors.primaryText }]}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.confirmLogoutBtn}
+                onPress={handleLogout}
               >
-                <Text style={styles.popupBtnText}>Logout</Text>
-              </Pressable>
+                <Text style={styles.confirmLogoutText}>Log Out</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </>
+    </View>
   );
 }
 
-const getStyles = (colors) =>
+// ---------------- Sub-Components ----------------
+function DataRow({ icon, label, value, colors }) {
+  return (
+    <View style={[stylesSub.dataRow, { borderBottomColor: colors.divider }]}>
+      <View style={stylesSub.dataIconWrap}>
+        <Icon name={icon} size={17} color={colors.primaryAccent} />
+      </View>
+      <View style={{ flex: 1, marginLeft: 10 }}>
+        <Text style={[stylesSub.dataLabel, { color: colors.secondaryText }]}>{label}</Text>
+        <Text style={[stylesSub.dataValue, { color: colors.primaryText }]}>{value || "—"}</Text>
+      </View>
+    </View>
+  );
+}
+
+function PrefRow({ icon, label, value, onToggle, colors }) {
+  return (
+    <View style={[stylesSub.dataRow, { borderBottomColor: colors.divider, justifyContent: "space-between" }]}>
+      <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+        <View style={stylesSub.dataIconWrap}>
+          <Icon name={icon} size={17} color={colors.primaryAccent} />
+        </View>
+        <Text style={[stylesSub.prefLabel, { color: colors.primaryText, marginLeft: 10 }]}>{label}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onToggle}
+        thumbColor={value ? colors.primaryAccent : "#94A3B8"}
+        trackColor={{ false: "#CBD5E1", true: colors.primaryAccent + "55" }}
+      />
+    </View>
+  );
+}
+
+const stylesSub = StyleSheet.create({
+  dataRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  dataIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: "rgba(100,100,100,0.06)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dataLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  dataValue: {
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 1,
+  },
+  prefLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+});
+
+// ---------------- Styles ----------------
+const getStyles = (colors, isDarkMode) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.primaryBackground },
-    contentContainer: { padding: 20, paddingBottom: 60 },
-    header: { fontSize: 26, fontWeight: "800", color: colors.primaryText, marginBottom: 25 },
-    profileCard: {
-      backgroundColor: colors.cardBackground,
-      borderRadius: 16,
-      padding: 25,
+    container: { flex: 1 },
+    scrollView: { flex: 1 },
+    contentContainer: { paddingHorizontal: 16, paddingTop: 44, paddingBottom: 80 },
+
+    /* Header */
+    header: {
+      flexDirection: "row",
       alignItems: "center",
-      elevation: 6,
-      marginBottom: 25,
+      gap: 10,
+      marginBottom: 16,
+    },
+    headerIconWrap: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    headerTitle: {
+      fontSize: 20,
+      fontWeight: "800",
+      letterSpacing: -0.3,
+    },
+    headerSubtitle: {
+      fontSize: 11.5,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    shareBtnPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    shareBtnPillText: {
+      fontSize: 11.5,
+      fontWeight: "700",
+    },
+
+    /* Guardian Hero Card */
+    guardianHeroCard: {
+      borderRadius: 20,
+      borderWidth: 1,
+      padding: 16,
+      marginBottom: 14,
+      elevation: 3,
+      shadowColor: "#000",
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+    },
+    heroTop: {
+      flexDirection: "row",
+      alignItems: "center",
     },
     avatarCircle: {
-      width: 90, height: 90, borderRadius: 45,
-      backgroundColor: colors.primaryAccent,
-      justifyContent: "center", alignItems: "center", marginBottom: 15,
-    },
-    parentName: { fontSize: 22, fontWeight: "800", color: colors.primaryText },
-    relation: { fontSize: 15, color: colors.secondaryText, textAlign: "center", marginTop: 5 },
-    sectionCard: {
-      backgroundColor: colors.cardBackground,
-      borderRadius: 16,
-      padding: 18,
-      marginBottom: 20,
-      elevation: 3,
-    },
-    sectionTitle: { fontSize: 18, fontWeight: "700", color: colors.primaryAccent, marginBottom: 15 },
-    infoRow: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
-    infoText: { fontSize: 15, color: colors.primaryText, marginLeft: 10, flexShrink: 1 },
-    wardRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-    wardLabel: { fontSize: 15, color: colors.secondaryText, fontWeight: "600" },
-    wardValue: { fontSize: 15, color: colors.primaryText, fontWeight: "700" },
-    prefRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      borderBottomWidth: 1,
-      borderBottomColor: colors.divider,
-      paddingVertical: 10,
-    },
-    prefLabel: { fontSize: 16, fontWeight: "500", marginLeft: 10 },
-    viewDetailsBtn: {
-      marginTop: 20,
-      backgroundColor: colors.primaryAccent,
-      paddingVertical: 12,
-      borderRadius: 10,
-      flexDirection: "row",
+      width: 58,
+      height: 58,
+      borderRadius: 29,
       justifyContent: "center",
       alignItems: "center",
     },
-    viewDetailsText: { color: "#FFF", fontSize: 15, fontWeight: "600", marginRight: 5 },
-    logoutButton: {
-      marginTop: 30,
-      backgroundColor: "#E74C3C",
-      flexDirection: "row",
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: 12,
-      paddingVertical: 14,
-    },
-    logoutText: { color: "#FFF", fontSize: 17, fontWeight: "bold", marginLeft: 8 },
-    centerOverlay: {
+    parentName: {
+      fontSize: 16.5,
+      fontWeight: "900",
+      letterSpacing: -0.2,
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
+    },
+    verifiedBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      backgroundColor: "#10B98114",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    verifiedBadgeText: {
+      color: "#10B981",
+      fontSize: 9,
+      fontWeight: "900",
+    },
+    relationText: {
+      fontSize: 12,
+      fontWeight: "700",
+      marginTop: 2,
+    },
+    guardianIdText: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    linkedWardBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 14,
+      borderWidth: 1,
+      padding: 10,
+      marginTop: 14,
+    },
+    miniWardIconCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
       justifyContent: "center",
       alignItems: "center",
-      paddingHorizontal: 25,
     },
-    centerCard: {
-      width: "100%",
-      maxHeight: "80%",
-      borderRadius: 20,
-      padding: 20,
-      elevation: 10,
+    linkedWardLabel: {
+      fontSize: 9.5,
+      fontWeight: "800",
+      letterSpacing: 0.5,
     },
-    modalHeader: {
+    linkedWardName: {
+      fontSize: 13,
+      fontWeight: "800",
+      marginTop: 1,
+    },
+    linkedWardClass: {
+      fontSize: 10.5,
+      fontWeight: "500",
+    },
+
+    /* Section Cards */
+    sectionCard: {
+      borderRadius: 18,
+      borderWidth: 1,
+      padding: 14,
+      marginBottom: 12,
+    },
+    sectionHeader: {
       flexDirection: "row",
-      justifyContent: "space-between",
       alignItems: "center",
+      gap: 8,
       marginBottom: 10,
     },
-    modalTitle: { fontSize: 20, fontWeight: "800" },
-    studentRow: { flexDirection: "row", justifyContent: "space-between", marginVertical: 6 },
-    studentLabel: { fontSize: 15, color: colors.secondaryText, fontWeight: "600" },
-    studentValue: {
-      fontSize: 15,
-      color: colors.primaryText,
+    sectionTitle: {
+      fontSize: 13.5,
+      fontWeight: "800",
+    },
+    dataGrid: {
+      gap: 2,
+    },
+    securityActionRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: 12,
+    },
+    securityActionText: {
+      fontSize: 13,
       fontWeight: "700",
-      textAlign: "right",
-      flexShrink: 1,
+    },
+    logoutBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      backgroundColor: "#EF444414",
+      paddingVertical: 14,
+      borderRadius: 14,
+      marginTop: 8,
+    },
+    logoutBtnText: {
+      color: "#EF4444",
+      fontSize: 13.5,
+      fontWeight: "800",
+    },
+
+    /* Modals */
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.75)",
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 18,
+    },
+    modalCard: {
+      width: "100%",
+      borderRadius: 22,
+      borderWidth: 1,
+      padding: 18,
+      elevation: 12,
+    },
+    modalHeaderRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 14,
+    },
+    modalTitle: {
+      fontSize: 15,
+      fontWeight: "800",
+    },
+    modalSub: {
+      fontSize: 11,
+      fontWeight: "500",
+    },
+    wardModalGrid: {
+      borderRadius: 14,
+      borderWidth: 1,
+      padding: 12,
+      gap: 2,
+      marginBottom: 14,
     },
     closeModalBtn: {
-      marginTop: 20,
-      width: "100%",
+      alignItems: "center",
+      justifyContent: "center",
       paddingVertical: 12,
-      borderRadius: 10,
+      borderRadius: 12,
+    },
+    closeModalBtnText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "800",
+    },
+
+    /* Logout Dialog */
+    logoutCard: {
+      width: "100%",
+      borderRadius: 22,
+      borderWidth: 1,
+      padding: 22,
       alignItems: "center",
     },
-    closeModalText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-    bottomOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" },
-    bottomSheet: { borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 25, alignItems: "center" },
-    popupTitle: { fontSize: 20, fontWeight: "800", marginTop: 8 },
-    popupMessage: { fontSize: 15, textAlign: "center", marginVertical: 10, lineHeight: 22 },
-    popupButtons: { flexDirection: "row", justifyContent: "space-between", width: "100%", marginTop: 20, gap: 10 },
-    cancelBtn: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 10 },
-    logoutConfirmBtn: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 10 },
-    popupBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+    logoutTitle: {
+      fontSize: 17,
+      fontWeight: "800",
+      marginTop: 10,
+    },
+    logoutSub: {
+      fontSize: 12,
+      textAlign: "center",
+      marginTop: 6,
+      lineHeight: 16,
+    },
+    logoutActionRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 18,
+      width: "100%",
+    },
+    cancelLogoutBtn: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    cancelLogoutText: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    confirmLogoutBtn: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      backgroundColor: "#EF4444",
+    },
+    confirmLogoutText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "800",
+    },
   });

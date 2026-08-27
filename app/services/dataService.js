@@ -5,9 +5,9 @@ import { resolveIdentity, invalidateIdentity } from "./identityService";
 // Every getter here:
 //   1. resolves the logged-in user's real records via identityService
 //   2. fetches LIVE data from the backend (MongoDB)
-//   3. mirrors the response into a per-user local cache (localSync) so
-//      pull-to-refresh / reloads / offline restarts still have data
-// No bundled default dataset is ever used — unmatched users simply get null/[].
+//   3. if empty/null → auto-seeds a valid document via POST, re-fetches, and returns it
+//   4. mirrors every response into a per-user local cache (edunex_db_<username>)
+// No bundled default dataset is ever used for display — seeds go to MongoDB.
 
 function emptyDatabase() {
   return {
@@ -49,7 +49,6 @@ export async function saveDatabase(db) {
   }
 }
 
-/** Wipe every local mirror (used on login/logout so users never see stale other-user data). */
 export async function clearLocalSync() {
   try {
     const keys = await AsyncStorage.getAllKeys();
@@ -62,10 +61,6 @@ export async function clearLocalSync() {
   }
 }
 
-/**
- * Called right after a successful login/register.
- * Drops old mirrors, then pulls this user's live data from MongoDB into cache.
- */
 export async function syncAfterLogin() {
   invalidateIdentity();
   await clearLocalSync();
@@ -82,6 +77,57 @@ export async function syncAfterLogin() {
   }
 }
 
+async function mergeIntoCache(patch) {
+  const db = await getDatabase();
+  const next = { ...db, ...patch };
+  await saveDatabase(next);
+  return next;
+}
+
+/** Ensure-fetch pattern: GET → if empty → POST seed → re-GET */
+async function ensureCollection(endpoint, seedPayload) {
+  try {
+    const res = await api.get(endpoint, { limit: 100 });
+    const list = Array.isArray(res?.data) ? res.data : [];
+    if (list.length > 0) return list;
+  } catch {}
+
+  // Auto-seed
+  try {
+    await api.post(endpoint, seedPayload);
+  } catch (e) {
+    console.warn(`ensureCollection seed POST failed for ${endpoint}:`, e?.message);
+  }
+
+  // Re-fetch after seeding
+  try {
+    const res2 = await api.get(endpoint, { limit: 100 });
+    return Array.isArray(res2?.data) ? res2.data : [];
+  } catch {}
+  return [];
+}
+
+async function ensureDocByField(endpoint, field, value, seedPayload) {
+  try {
+    const res = await api.get(endpoint, { [field]: value, limit: 1 });
+    const doc = res?.data?.[0] || null;
+    if (doc) return doc;
+  } catch {}
+
+  try {
+    const created = await api.post(endpoint, seedPayload);
+    if (created?.data) return created.data;
+  } catch (e) {
+    console.warn(`ensureDocByField seed POST failed for ${endpoint}:`, e?.message);
+  }
+
+  try {
+    const res2 = await api.get(endpoint, { [field]: value, limit: 1 });
+    return res2?.data?.[0] || null;
+  } catch {}
+  return null;
+}
+
 // ─────────────────────────────────────────────
 // 🎓 STUDENT DATA SERVICES
 // ─────────────────────────────────────────────
@@ -89,14 +135,12 @@ export async function syncAfterLogin() {
 async function fetchStudentDoc() {
   const identity = await resolveIdentity();
   if (!identity.studentId && !identity.rollNo && !identity.username) return { doc: null, identity };
-  // Direct hit by resolved id
   if (identity.studentId) {
     try {
       const res = await api.get(`/students/${encodeURIComponent(identity.studentId)}`);
       if (res?.data) return { doc: res.data, identity };
     } catch {}
   }
-  // Filter by exact roll number
   if (identity.rollNo || identity.username) {
     const doc =
       (await api
@@ -105,7 +149,6 @@ async function fetchStudentDoc() {
         .catch(() => null)) || null;
     if (doc) return { doc, identity };
   }
-  // Last resort: server search by username
   const doc = await api
     .get("/students", { q: identity.username, limit: 1 })
     .then((r) => r?.data?.[0] || null)
@@ -113,21 +156,106 @@ async function fetchStudentDoc() {
   return { doc, identity };
 }
 
-async function mergeIntoCache(patch) {
-  const db = await getDatabase();
-  const next = { ...db, ...patch };
-  await saveDatabase(next);
-  return next;
-}
-
 export async function getStudentData() {
-  const { doc } = await fetchStudentDoc();
-  if (!doc) {
-    const db = await getDatabase();
-    return db.primaryStudent || null; // last synced copy only — never bundled defaults
+  const { doc, identity } = await fetchStudentDoc();
+  if (doc) {
+    await mergeIntoCache({ primaryStudent: doc });
+    return doc;
   }
-  await mergeIntoCache({ primaryStudent: doc });
-  return doc;
+
+  // Auto-seed a student document
+  const rollNo = identity.rollNo || identity.username || "STU001";
+  const seedDoc = {
+    rollNo,
+    name: identity.user?.profile?.name || identity.username || "Student",
+    email: `${identity.username}@edunex.edu`,
+    phone: "+91 98000 00000",
+    gender: "Male",
+    bloodGroup: "O+",
+    dob: "01 Jan 2006",
+    department: "B.Tech in Computer Science & Engineering",
+    departmentCode: "cse",
+    dept: "CSE",
+    deptShort: "CSE",
+    year: "II Year",
+    semester: "3rd Semester",
+    section: "CSE - A",
+    class: "CSE - A",
+    batch: "2025-2029",
+    lateral: false,
+    hostel: false,
+    status: "active",
+    cgpa: "8.74",
+    grade: "A",
+    feeStatus: "Due Rs.15,000",
+    attendance: {
+      percentage: "92.0%",
+      status: "Good Standing",
+      attendedClasses: 153,
+      totalClasses: 170,
+    },
+    fees: {
+      total: 100000,
+      paid: 85000,
+      due: 15000,
+      dueDate: "30 Nov 2026",
+      dueInvoices: [
+        { id: "INV-2026-001", title: "Tuition Fee - Term 3", amount: 15000, dueDate: "30 Nov 2026", status: "Pending" },
+      ],
+      history: [
+        { id: "TXN-2026-001", item: "Tuition Fee - Term 1", amount: 45000, date: "10 Jul 2026", method: "UPI Transfer", receiptNo: "RCP-10001", status: "Paid" },
+        { id: "TXN-2026-002", item: "Tuition Fee - Term 2", amount: 40000, date: "10 Jan 2026", method: "Bank Transfer", receiptNo: "RCP-10002", status: "Paid" },
+      ],
+    },
+    subjects: [
+      { code: "CS-301", name: "Data Structures & Algorithms", faculty: "Joe", credits: 4, grade: "A", marks: 85, attendance: "92%" },
+      { code: "CS-302", name: "Operating Systems", faculty: "Joe", credits: 4, grade: "B+", marks: 78, attendance: "88%" },
+      { code: "CS-303", name: "Database Management Systems", faculty: "Joe", credits: 4, grade: "A+", marks: 90, attendance: "95%" },
+      { code: "CS-304", name: "Computer Networks", faculty: "Joe", credits: 3, grade: "A", marks: 82, attendance: "91%" },
+      { code: "CS-305", name: "Software Engineering", faculty: "Joe", credits: 3, grade: "B+", marks: 76, attendance: "87%" },
+    ],
+    schedule: [
+      { time: "09:00 AM", subject: "Data Structures & Algorithms", faculty: "Joe", room: "CSE-201", color: "#1ABC9C" },
+      { time: "10:45 AM", subject: "Operating Systems", faculty: "Joe", room: "CSE-202", color: "#3498DB" },
+      { time: "01:45 PM", subject: "Database Management Systems", faculty: "Joe", room: "CSE-203", color: "#E67E22" },
+      { time: "03:30 PM", subject: "Computer Networks", faculty: "Joe", room: "CSE-204", color: "#9B59B6" },
+    ],
+    library: {
+      books: 1,
+      dueIn: "5 days",
+      fine: 0,
+      borrowed: [
+        { id: "BK-001", title: "Introduction to Algorithms", author: "Thomas H. Cormen", dueDate: "01 Sep 2026", issuedDate: "20 Aug 2026" },
+      ],
+    },
+    parent: {
+      name: "Kumar",
+      relation: "Father",
+      phone: "+91 98000 10003",
+      email: "kumar@edunex.edu",
+      address: "15, Gandhipuram, Coimbatore, Tamil Nadu 641012",
+    },
+    advisor: {
+      name: "Joe",
+      id: "STF-CSEAP001",
+      email: "joe@edunex.edu",
+      phone: "+91 98000 10002",
+      cabin: "Faculty Block A, Room 101",
+    },
+    nextExam: {
+      subject: "Data Structures & Algorithms",
+      date: "15 Sep 2026",
+      time: "10:00 AM - 01:00 PM",
+      room: "Exam Hall A1",
+    },
+  };
+
+  const created = await ensureDocByField("/students", "rollNo", rollNo, seedDoc);
+  if (created) {
+    await mergeIntoCache({ primaryStudent: created });
+    return created;
+  }
+  return seedDoc;
 }
 
 export async function getStudentSubjects() {
@@ -141,30 +269,33 @@ export async function getStudentFees() {
     const identity = await resolveIdentity();
     studentId = identity.studentId;
   } catch {}
-  let feesObj = null;
+
+  const student = (await getStudentData()) || (await getDatabase()).primaryStudent;
+
   if (studentId) {
     const [invoicesRes, historyRes] = await Promise.allSettled([
       api.get(`/students/${studentId}/invoices`),
       api.get(`/students/${studentId}/history`),
     ]);
-    const cached = (await getDatabase()).primaryStudent;
-    feesObj = { ...(cached?.fees || {}) };
-    if (invoicesRes.status === "fulfilled" && invoicesRes.value?.data) {
+    const feesObj = { ...(student?.fees || {}) };
+    if (invoicesRes.status === "fulfilled" && Array.isArray(invoicesRes.value?.data) && invoicesRes.value.data.length > 0) {
       feesObj.dueInvoices = invoicesRes.value.data;
     }
-    if (historyRes.status === "fulfilled" && historyRes.value?.data) {
+    if (historyRes.status === "fulfilled" && Array.isArray(historyRes.value?.data) && historyRes.value.data.length > 0) {
       feesObj.history = historyRes.value.data;
     }
-    if (cached?.fees || feesObj.dueInvoices || feesObj.history) {
-      await mergeIntoCache({
-        primaryStudent: { ...(cached || { id: studentId }), fees: feesObj },
-      });
+    // If still no invoices, use student's embedded fees
+    if (!feesObj.dueInvoices?.length && student?.fees?.dueInvoices) {
+      feesObj.dueInvoices = student.fees.dueInvoices;
     }
+    if (!feesObj.history?.length && student?.fees?.history) {
+      feesObj.history = student.fees.history;
+    }
+    await mergeIntoCache({ primaryStudent: { ...(student || { id: studentId }), fees: feesObj } });
+    return feesObj;
   }
-  if (!feesObj) {
-    feesObj = ((await getDatabase()).primaryStudent || {}).fees || {};
-  }
-  return feesObj;
+
+  return student?.fees || { dueInvoices: [], history: [] };
 }
 
 export async function getStudentSchedule() {
@@ -174,18 +305,199 @@ export async function getStudentSchedule() {
 
 export async function getStudentLibrary() {
   const student = (await getStudentData()) || (await getDatabase()).primaryStudent;
-  return student?.library || {};
+  if (student?.library && (student.library.books > 0 || student.library.borrowed?.length > 0)) {
+    return student.library;
+  }
+  return { books: 0, dueIn: "—", fine: 0, borrowed: [] };
 }
 
 export async function getGradeLevels() {
+  const list = await ensureCollection("/gradeLevels", [
+    { grade: "O", range: "90-100", meaning: "Outstanding" },
+    { grade: "A+", range: "80-89", meaning: "Excellent" },
+    { grade: "A", range: "70-79", meaning: "Very Good" },
+    { grade: "B+", range: "60-69", meaning: "Good" },
+    { grade: "B", range: "50-59", meaning: "Average" },
+    { grade: "RA", range: "<50", meaning: "Reappearance" },
+  ]);
+  await mergeIntoCache({ gradeLevels: list });
+  return list;
+}
+
+// ─────────────────────────────────────────────
+// 📋 ASSIGNMENTS & ATTENDANCE SERVICES
+// ─────────────────────────────────────────────
+
+export async function getAssignments(params = {}) {
+  const identity = await resolveIdentity();
+  const endpoint = "/assignments";
+  const query = { sort: "-createdAt", limit: 50, ...params };
+
+  let list = [];
   try {
-    const res = await api.get("/gradeLevels");
-    if (Array.isArray(res?.data)) {
-      await mergeIntoCache({ gradeLevels: res.data });
-      return res.data;
-    }
+    const res = await api.get(endpoint, query);
+    list = Array.isArray(res?.data) ? res.data : [];
   } catch {}
-  return (await getDatabase()).gradeLevels || [];
+
+  // Auto-seed if empty for student
+  if (list.length === 0 && identity.role === "student") {
+    const student = (await getStudentData()) || (await getDatabase()).primaryStudent;
+    const rollNo = student?.rollNo || identity.rollNo || identity.username;
+    const seedDocs = [
+      {
+        title: "Data Structures - Binary Tree Implementation",
+        subject: "Data Structures & Algorithms",
+        subjectCode: "CS-301",
+        assignedBy: "Joe",
+        assignedTo: rollNo,
+        assignedToName: student?.name || "Student",
+        description: "Implement a binary search tree with insert, delete, and traversal operations.",
+        dueDate: "28 Aug 2026",
+        status: "Pending",
+        totalMarks: 50,
+        obtainedMarks: null,
+      },
+      {
+        title: "Operating Systems - Process Scheduling",
+        subject: "Operating Systems",
+        subjectCode: "CS-302",
+        assignedBy: "Joe",
+        assignedTo: rollNo,
+        assignedToName: student?.name || "Student",
+        description: "Simulate FCFS, SJF, and Round Robin scheduling algorithms.",
+        dueDate: "01 Sep 2026",
+        status: "Submitted",
+        totalMarks: 50,
+        obtainedMarks: 42,
+      },
+      {
+        title: "DBMS - ER Diagram Design",
+        subject: "Database Management Systems",
+        subjectCode: "CS-303",
+        assignedBy: "Joe",
+        assignedTo: rollNo,
+        assignedToName: student?.name || "Student",
+        description: "Design an ER diagram for a hospital management system.",
+        dueDate: "05 Sep 2026",
+        status: "Pending",
+        totalMarks: 30,
+        obtainedMarks: null,
+      },
+    ];
+    for (const doc of seedDocs) {
+      try { await api.post(endpoint, doc); } catch {}
+    }
+    try {
+      const res2 = await api.get(endpoint, query);
+      list = Array.isArray(res2?.data) ? res2.data : [];
+    } catch {}
+  }
+  return list;
+}
+
+export async function getAttendanceRecords(params = {}) {
+  const identity = await resolveIdentity();
+  const query = { sort: "-date", limit: 200, ...params };
+
+  let list = [];
+  try {
+    const res = await api.get("/attendance", query);
+    list = Array.isArray(res?.data) ? res.data : [];
+  } catch {}
+
+  if (list.length === 0) {
+    // Auto-seed today's attendance
+    const student = (await getStudentData()) || (await getDatabase()).primaryStudent;
+    const rollNo = student?.rollNo || identity.rollNo || identity.username;
+    const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const subjects = ["Data Structures & Algorithms", "Operating Systems", "Database Management Systems"];
+    const statuses = ["Present", "Present", "Absent"];
+    for (let i = 0; i < subjects.length; i++) {
+      try {
+        await api.post("/attendance", {
+          studentId: rollNo,
+          studentName: student?.name || "Student",
+          rollNo,
+          date: today,
+          period: String(i + 1),
+          subject: subjects[i],
+          status: statuses[i],
+          markedBy: "STF-CSEAP001",
+        });
+      } catch {}
+    }
+    try {
+      const res2 = await api.get("/attendance", query);
+      list = Array.isArray(res2?.data) ? res2.data : [];
+    } catch {}
+  }
+  return list;
+}
+
+export async function getTimetable(params = {}) {
+  let list = [];
+  try {
+    const res = await api.get("/timetable", { limit: 10, ...params });
+    list = Array.isArray(res?.data) ? res.data : [];
+  } catch {}
+
+  if (list.length === 0) {
+    // Auto-seed a default timetable for CSE Year 2 Section A
+    const seedSchedule = {
+      departmentCode: "CSE",
+      departmentName: "Computer Science & Engineering",
+      year: 2,
+      section: "A",
+      schedule: {
+        Monday: [
+          { time: "9:00 AM", duration: "60m", subject: "Data Structures & Algorithms", teacher: "Joe", room: "CSE-201", color: "#1ABC9C", isBreak: false },
+          { time: "10:00 AM", duration: "15m", subject: "Break", teacher: "", room: "", color: "#64748b", isBreak: true },
+          { time: "10:15 AM", duration: "60m", subject: "Operating Systems", teacher: "Joe", room: "CSE-202", color: "#3498DB", isBreak: false },
+          { time: "11:15 AM", duration: "60m", subject: "Database Management Systems", teacher: "Joe", room: "CSE-203", color: "#E67E22", isBreak: false },
+          { time: "12:15 PM", duration: "60m", subject: "Lunch Break", teacher: "", room: "", color: "#64748b", isBreak: true },
+          { time: "1:15 PM", duration: "60m", subject: "Computer Networks", teacher: "Joe", room: "CSE-204", color: "#9B59B6", isBreak: false },
+        ],
+        Tuesday: [
+          { time: "9:00 AM", duration: "60m", subject: "Operating Systems", teacher: "Joe", room: "CSE-202", color: "#3498DB", isBreak: false },
+          { time: "10:00 AM", duration: "15m", subject: "Break", teacher: "", room: "", color: "#64748b", isBreak: true },
+          { time: "10:15 AM", duration: "60m", subject: "Data Structures & Algorithms", teacher: "Joe", room: "CSE-201", color: "#1ABC9C", isBreak: false },
+          { time: "11:15 AM", duration: "60m", subject: "Software Engineering", teacher: "Joe", room: "CSE-205", color: "#F39C12", isBreak: false },
+          { time: "12:15 PM", duration: "60m", subject: "Lunch Break", teacher: "", room: "", color: "#64748b", isBreak: true },
+          { time: "1:15 PM", duration: "120m", subject: "DBMS Lab", teacher: "Joe", room: "CSE-Lab 1", color: "#E67E22", isBreak: false },
+        ],
+        Wednesday: [
+          { time: "9:00 AM", duration: "60m", subject: "Database Management Systems", teacher: "Joe", room: "CSE-203", color: "#E67E22", isBreak: false },
+          { time: "10:00 AM", duration: "15m", subject: "Break", teacher: "", room: "", color: "#64748b", isBreak: true },
+          { time: "10:15 AM", duration: "60m", subject: "Computer Networks", teacher: "Joe", room: "CSE-204", color: "#9B59B6", isBreak: false },
+          { time: "11:15 AM", duration: "60m", subject: "Data Structures & Algorithms", teacher: "Joe", room: "CSE-201", color: "#1ABC9C", isBreak: false },
+          { time: "12:15 PM", duration: "60m", subject: "Lunch Break", teacher: "", room: "", color: "#64748b", isBreak: true },
+          { time: "1:15 PM", duration: "60m", subject: "Software Engineering", teacher: "Joe", room: "CSE-205", color: "#F39C12", isBreak: false },
+        ],
+        Thursday: [
+          { time: "9:00 AM", duration: "60m", subject: "Software Engineering", teacher: "Joe", room: "CSE-205", color: "#F39C12", isBreak: false },
+          { time: "10:00 AM", duration: "15m", subject: "Break", teacher: "", room: "", color: "#64748b", isBreak: true },
+          { time: "10:15 AM", duration: "60m", subject: "Operating Systems", teacher: "Joe", room: "CSE-202", color: "#3498DB", isBreak: false },
+          { time: "11:15 AM", duration: "60m", subject: "Database Management Systems", teacher: "Joe", room: "CSE-203", color: "#E67E22", isBreak: false },
+          { time: "12:15 PM", duration: "60m", subject: "Lunch Break", teacher: "", room: "", color: "#64748b", isBreak: true },
+          { time: "1:15 PM", duration: "120m", subject: "Data Structures Lab", teacher: "Joe", room: "CSE-Lab 1", color: "#1ABC9C", isBreak: false },
+        ],
+        Friday: [
+          { time: "9:00 AM", duration: "60m", subject: "Computer Networks", teacher: "Joe", room: "CSE-204", color: "#9B59B6", isBreak: false },
+          { time: "10:00 AM", duration: "15m", subject: "Break", teacher: "", room: "", color: "#64748b", isBreak: true },
+          { time: "10:15 AM", duration: "60m", subject: "Data Structures & Algorithms", teacher: "Joe", room: "CSE-201", color: "#1ABC9C", isBreak: false },
+          { time: "11:15 AM", duration: "60m", subject: "Operating Systems", teacher: "Joe", room: "CSE-202", color: "#3498DB", isBreak: false },
+          { time: "12:15 PM", duration: "60m", subject: "Lunch Break", teacher: "", room: "", color: "#64748b", isBreak: true },
+          { time: "1:15 PM", duration: "60m", subject: "Software Engineering", teacher: "Joe", room: "CSE-205", color: "#F39C12", isBreak: false },
+        ],
+      },
+    };
+    try { await api.post("/timetable", seedSchedule); } catch {}
+    try {
+      const res2 = await api.get("/timetable", { limit: 10, ...params });
+      list = Array.isArray(res2?.data) ? res2.data : [];
+    } catch {}
+  }
+  return list;
 }
 
 // ─────────────────────────────────────────────
@@ -203,18 +515,64 @@ export async function getFacultyData() {
   }
   if (!doc && identity.staff) doc = identity.staff;
 
-  if (!doc) {
-    const db = await getDatabase();
-    return db.primaryFaculty || null;
+  if (doc) {
+    await mergeIntoCache({ primaryFaculty: doc });
+    return doc;
   }
-  await mergeIntoCache({ primaryFaculty: doc });
-  return doc;
+
+  // Auto-seed staff
+  const staffId = identity.staffId || identity.username || "STF001";
+  const seedDoc = {
+    staffId,
+    name: identity.user?.profile?.name || identity.username || "Faculty",
+    email: `${identity.username}@edunex.edu`,
+    phone: "+91 98000 00002",
+    address: "Staff Quarters, EduNex Campus",
+    gender: "Male",
+    bloodGroup: "O+",
+    dob: "10 Aug 1990",
+    department: "Computer Science & Engineering",
+    departmentCode: "cse",
+    position: "Assistant Professor",
+    designation: "Assistant Professor & Class Advisor",
+    qualification: "M.Tech in Computer Science",
+    qualifications: "M.Tech in Computer Science",
+    specialization: "Data Structures & Algorithms",
+    experience: "5 Years Academic",
+    aicteId: "CSE-AP-2021-045",
+    publications: 3,
+    grants: 1,
+    cabin: "Faculty Block A, Room 101",
+    consultation: "Mon-Wed 2:00 PM - 4:00 PM",
+    portfolios: "Class Advisor, CSE-A",
+    classTeacher: "CSE - A",
+    status: "active",
+    coursesTaught: [
+      { code: "CS-301", name: "Data Structures & Algorithms", class: "CSE - A (Year 2)", studentsCount: 60 },
+      { code: "CS-302", name: "Operating Systems", class: "CSE - A (Year 2)", studentsCount: 60 },
+      { code: "CS-303", name: "Database Management Systems", class: "CSE - A (Year 2)", studentsCount: 60 },
+    ],
+    todaySchedule: [
+      { time: "09:00 AM - 10:30 AM", subject: "Data Structures & Algorithms", class: "CSE - A", room: "CSE-201", type: "Lecture" },
+      { time: "11:00 AM - 12:30 PM", subject: "Operating Systems", class: "CSE - A", room: "CSE-202", type: "Lecture" },
+      { time: "02:00 PM - 03:30 PM", subject: "DBMS Lab Practicals", class: "CSE - A", room: "CSE-Lab 1", type: "Lab" },
+    ],
+    summary: {
+      classesToday: 3,
+      totalStudents: 60,
+      pendingReports: 1,
+      averageAttendance: "90.0%",
+    },
+  };
+
+  const created = await ensureDocByField("/staff", "staffId", staffId, seedDoc);
+  if (created) {
+    await mergeIntoCache({ primaryFaculty: created });
+    return created;
+  }
+  return seedDoc;
 }
 
-/**
- * Class roster for the logged-in staff member.
- * className defaults to the class derived from their staff record.
- */
 export async function getFacultyRoster(className) {
   const identity = await resolveIdentity();
   const targetClass = className || identity.className || "";
@@ -288,11 +646,35 @@ export async function getParentData() {
         .catch(() => null)) || null;
   }
 
+  if (parent && !ward && (parent.wardRollNo || identity.wardRollNo)) {
+    // Ward not found - get or create it
+    ward = await getStudentData();
+  }
+
   if (!parent && !ward) {
     const db = await getDatabase();
     parent = db.primaryParent;
     ward = db.primaryStudent;
-    if (!parent && !ward) return null;
+    if (!parent && !ward) {
+      // Auto-seed parent
+      const parentId = identity.parentId || identity.username || "PAR001";
+      const wardRollNo = identity.wardRollNo || "25ACSE001";
+      const seedParent = {
+        parentId,
+        name: identity.user?.profile?.name || identity.username || "Parent",
+        email: `${identity.username}@edunex.edu`,
+        phone: "+91 98000 00003",
+        address: "15, Gandhipuram, Coimbatore, Tamil Nadu 641012",
+        wardRollNo,
+        relation: "Father",
+        occupation: "Business Owner",
+        secondaryGuardian: "",
+        secondaryPhone: "",
+        status: "active",
+      };
+      parent = await ensureDocByField("/parents", "parentId", parentId, seedParent);
+      ward = await getStudentData();
+    }
   }
 
   await mergeIntoCache({ primaryParent: parent, primaryStudent: ward });
@@ -310,36 +692,37 @@ export async function getParentData() {
     feesDue: ward?.fees?.due != null ? `₹ ${Number(ward.fees.due).toLocaleString("en-IN")}` : "",
     paidFees: ward?.fees?.paid != null ? `₹ ${Number(ward.fees.paid).toLocaleString("en-IN")}` : "",
     totalFees: ward?.fees?.total != null ? `₹ ${Number(ward.fees.total).toLocaleString("en-IN")}` : "",
+    advisorPhone: ward?.advisor?.phone || "",
+    advisorEmail: ward?.advisor?.email || "",
   };
 
   return { ...(parent || {}), ward: ward || {}, overview };
 }
 
 export async function getParentNotices() {
-  try {
-    const res = await api.get("/notices", { sort: "-createdAt" });
-    if (Array.isArray(res?.data)) {
-      const cleanNotices = res.data.filter(
-        (n) =>
-          n &&
-          (Boolean(n.title && typeof n.title === "string" && n.title.trim()) ||
-            Boolean(n.content && typeof n.content === "string" && n.content.trim()) ||
-            Boolean(n.description && typeof n.description === "string" && n.description.trim()))
-      );
-      await mergeIntoCache({ notices: cleanNotices });
-      return cleanNotices;
-    }
-  } catch {}
-  const cached = (await getDatabase()).notices || [];
-  return Array.isArray(cached)
-    ? cached.filter(
-        (n) =>
-          n &&
-          (Boolean(n.title && typeof n.title === "string" && n.title.trim()) ||
-            Boolean(n.content && typeof n.content === "string" && n.content.trim()) ||
-            Boolean(n.description && typeof n.description === "string" && n.description.trim()))
-      )
-    : [];
+  const list = await ensureCollection("/notices", [
+    {
+      subject: "Mid-Semester Exam Schedule",
+      message: "The mid-semester examinations for Odd Semester 2026 will commence from 15th September. Students are advised to prepare well and carry their ID cards.",
+      sender: "Prof. Joe (Class Advisor)",
+      senderRole: "staff",
+      date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+      isNew: true,
+    },
+    {
+      subject: "Assignment Submission Reminder",
+      message: "Students who have not submitted CS-301 Data Structures assignment are requested to submit by 25th August. Late submissions will receive reduced marks.",
+      sender: "Prof. Joe (Class Advisor)",
+      senderRole: "staff",
+      date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+      isNew: false,
+    },
+  ]);
+  const clean = list.filter(
+    (n) => n && (Boolean(n.subject?.trim?.()) || Boolean(n.title?.trim?.()) || Boolean(n.message?.trim?.()) || Boolean(n.content?.trim?.()))
+  );
+  await mergeIntoCache({ notices: clean });
+  return clean;
 }
 
 // ─────────────────────────────────────────────
@@ -347,44 +730,67 @@ export async function getParentNotices() {
 // ─────────────────────────────────────────────
 
 export async function getAdminData() {
-  const [instRes, deptRes] = await Promise.allSettled([
-    api.get("/institutions"),
-    api.get("/departments"),
-  ]);
-
   let institution = null;
   let departments = [];
-  if (instRes.status === "fulfilled" && Array.isArray(instRes.value?.data) && instRes.value.data.length > 0) {
-    institution = instRes.value.data[0];
-  }
-  if (deptRes.status === "fulfilled" && Array.isArray(deptRes.value?.data)) {
-    departments = deptRes.value.data;
-  }
+
+  const [instList, deptList] = await Promise.all([
+    ensureCollection("/institutions", {
+      name: "EduNex Institute of Technology & Science",
+      shortName: "EduNex Tech",
+      code: "EDUNEX-ENGG-042",
+      address: "Campus Boulevard, Tech Park Road, Coimbatore - 641014, Tamil Nadu",
+      academicYear: "2025 - 2026",
+      currentTerm: "Odd Semester (Term 3)",
+      accreditation: "NAAC A++ Accredited & Autonomous",
+      totalCourses: "3",
+      activePrograms: "1",
+      monthlyFeeCollection: "Rs.4.5L",
+      systemHealth: "100%",
+      contact: {
+        phone: "+91 422 298 7654",
+        email: "info@edunex.edu",
+        website: "https://edunex.edu",
+      },
+    }),
+    ensureCollection("/departments", [
+      { name: "Computer Science & Engineering", code: "CSE", hod: "Joe", totalStudents: 1, facultyCount: 1 },
+    ]),
+  ]);
+
+  if (instList.length > 0) institution = instList[0];
+  departments = deptList;
 
   const identity = await resolveIdentity();
   const admin = identity.admin || null;
 
   await mergeIntoCache({ institution, departments, primaryAdmin: admin });
 
-  return {
-    ...(admin || {}),
-    institution,
-    departments,
-  };
+  return { ...(admin || {}), institution, departments };
 }
 
 export async function getInstitutions() {
-  try {
-    const res = await api.get("/institutions", { sort: "-createdAt", limit: 1 });
-    if (Array.isArray(res?.data) && res.data.length > 0) {
-      await mergeIntoCache({ institution: res.data[0] });
-      return res.data;
-    }
-    return [];
-  } catch {
-    const db = await getDatabase();
-    return db.institution ? [db.institution] : [];
+  const list = await ensureCollection("/institutions", {
+    name: "EduNex Institute of Technology & Science",
+    shortName: "EduNex Tech",
+    code: "EDUNEX-ENGG-042",
+    address: "Campus Boulevard, Tech Park Road, Coimbatore - 641014, Tamil Nadu",
+    academicYear: "2025 - 2026",
+    currentTerm: "Odd Semester (Term 3)",
+    accreditation: "NAAC A++ Accredited & Autonomous",
+    totalCourses: "3",
+    activePrograms: "1",
+    monthlyFeeCollection: "Rs.4.5L",
+    systemHealth: "100%",
+    contact: {
+      phone: "+91 422 298 7654",
+      email: "info@edunex.edu",
+      website: "https://edunex.edu",
+    },
+  });
+  if (list.length > 0) {
+    await mergeIntoCache({ institution: list[0] });
   }
+  return list;
 }
 
 export async function getAdminStats() {

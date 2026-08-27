@@ -33,11 +33,7 @@ export default function MessagesModal({ visible, onClose, colors }) {
     outputRange: [0, 500],
   });
 
-  const messages = [
-    { icon: "alert-circle-outline", text: "Internal marks updated for DBMS" },
-    { icon: "calendar-outline", text: "PTA meeting scheduled for Friday" },
-    { icon: "book-open-outline", text: "New assignment posted in OOP" },
-  ];
+  const messages = [];
 
   if (!visible) return null;
 

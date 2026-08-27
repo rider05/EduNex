@@ -24,225 +24,9 @@ import { api } from "../../../services/api";
 import { showToast } from "../../../utils/toastService";
 
 // ---------------- Faculty Roster Dataset ----------------
-const STAFF_ROSTER = [
-  {
-    id: "staff_1",
-    name: "Dr. Meenakshi Sundaram",
-    role: "HOD & Professor",
-    dept: "AI & DS",
-    subject: "Deep Learning & Neural Networks",
-    cabin: "Staff Block A · Room 201",
-    email: "meenakshi.s@edunex.edu.in",
-    phone: "+919876511001",
-    avatarColor: "#4F46E5",
-    initials: "MS",
-    status: "online",
-    statusText: "Office Hours (Available)",
-    fingerprint: "58291 04928 17492 84920 39581 02938 48102 93847 50192 38471 92837 40192",
-    e2eeKey: "EDX-E2EE-7F9A-4B2C-910D-334E",
-    unreadCount: 1,
-    initialMessages: [
-      {
-        id: "m_ms_1",
-        text: "Good morning Karthik. Please ensure the Deep Learning CNN benchmark graphs are submitted by Thursday evening.",
-        sender: "staff",
-        time: "09:15 AM",
-        encrypted: true,
-      },
-      {
-        id: "m_ms_2",
-        text: "Good morning Ma'am. Yes, the model training is complete and I am formatting the comparative confusion matrix now.",
-        sender: "student",
-        time: "09:30 AM",
-        encrypted: true,
-      },
-      {
-        id: "m_ms_3",
-        text: "Excellent. Drop by my cabin (Room 201) if you need assistance with TensorBoard visualization.",
-        sender: "staff",
-        time: "09:32 AM",
-        encrypted: true,
-      },
-    ],
-  },
-  {
-    id: "staff_2",
-    name: "Prof. Rajesh Kumar",
-    role: "Associate Professor",
-    dept: "AI & DS",
-    subject: "Big Data Analytics & PySpark",
-    cabin: "Staff Block A · Room 204",
-    email: "rajesh.k@edunex.edu.in",
-    phone: "+919876511002",
-    avatarColor: "#0D9488",
-    initials: "RK",
-    status: "in_lecture",
-    statusText: "In Lecture (Lab AI-201)",
-    fingerprint: "39482 10928 47291 03847 19284 01928 37461 92837 46519 28374 91823 48192",
-    e2eeKey: "EDX-E2EE-8A1C-5C3D-021E-445F",
-    unreadCount: 0,
-    initialMessages: [
-      {
-        id: "m_rk_1",
-        text: "Hello everyone, the PySpark cluster credentials have been renewed. Check your student emails.",
-        sender: "staff",
-        time: "Yesterday",
-        encrypted: true,
-      },
-      {
-        id: "m_rk_2",
-        text: "Thank you Sir! Verified access to the Hadoop worker nodes.",
-        sender: "student",
-        time: "Yesterday",
-        encrypted: true,
-      },
-    ],
-  },
-  {
-    id: "staff_3",
-    name: "Ms. Chandra Mohan",
-    role: "Assistant Professor",
-    dept: "AI & DS",
-    subject: "Natural Language Processing",
-    cabin: "Staff Block A · Room 208",
-    email: "chandra.m@edunex.edu.in",
-    phone: "+919876511003",
-    avatarColor: "#DB2777",
-    initials: "CM",
-    status: "online",
-    statusText: "Online · Responding actively",
-    fingerprint: "19284 01928 37461 92837 46519 28374 58291 04928 17492 84920 39581 02938",
-    e2eeKey: "EDX-E2EE-9B2D-6D4E-132F-556A",
-    unreadCount: 2,
-    initialMessages: [
-      {
-        id: "m_cm_1",
-        text: "Reminder: The transformer attention mechanism quiz is scheduled for tomorrow during Period 3.",
-        sender: "staff",
-        time: "10:45 AM",
-        encrypted: true,
-      },
-      {
-        id: "m_cm_2",
-        text: "Make sure to review BERT and GPT tokenization formulas.",
-        sender: "staff",
-        time: "10:46 AM",
-        encrypted: true,
-      },
-    ],
-  },
-  {
-    id: "staff_4",
-    name: "Dr. Vigneshwaran S",
-    role: "Assistant Professor Sr.",
-    dept: "CSE",
-    subject: "Compiler Design & Automation",
-    cabin: "Tech Tower · Room 412",
-    email: "vignesh.s@edunex.edu.in",
-    phone: "+919876511004",
-    avatarColor: "#2563EB",
-    initials: "VS",
-    status: "away",
-    statusText: "Away · Returns 02:00 PM",
-    fingerprint: "48102 93847 50192 38471 92837 40192 39482 10928 47291 03847 19284 01928",
-    e2eeKey: "EDX-E2EE-0C3E-7E5F-243A-667B",
-    unreadCount: 0,
-    initialMessages: [
-      {
-        id: "m_vs_1",
-        text: "Lexical analyzer code review completed. Great job on the LR(1) parser implementation.",
-        sender: "staff",
-        time: "Oct 12",
-        encrypted: true,
-      },
-    ],
-  },
-  {
-    id: "staff_5",
-    name: "Prof. Ananya Iyer",
-    role: "Assistant Professor",
-    dept: "Mathematics",
-    subject: "Applied Probability & Statistics",
-    cabin: "Science Block · Room 102",
-    email: "ananya.i@edunex.edu.in",
-    phone: "+919876511005",
-    avatarColor: "#D97706",
-    initials: "AI",
-    status: "online",
-    statusText: "Available for consultation",
-    fingerprint: "37461 92837 46519 28374 91823 48192 58291 04928 17492 84920 39581 02938",
-    e2eeKey: "EDX-E2EE-1D4F-8F6A-354B-778C",
-    unreadCount: 0,
-    initialMessages: [
-      {
-        id: "m_ai_1",
-        text: "Hi Karthik, I have uploaded the Poisson distribution problem set to the portal.",
-        sender: "staff",
-        time: "Oct 10",
-        encrypted: true,
-      },
-    ],
-  },
-  {
-    id: "staff_6",
-    name: "Dr. Sundar Raman",
-    role: "Dean of Student Affairs",
-    dept: "Academic Mentorship",
-    subject: "Student Welfare & Advising",
-    cabin: "Admin Block · Level 1",
-    email: "dean.students@edunex.edu.in",
-    phone: "+919876511006",
-    avatarColor: "#9333EA",
-    initials: "SR",
-    status: "busy",
-    statusText: "In Faculty Meeting",
-    fingerprint: "92837 40192 39482 10928 47291 03847 48102 93847 50192 38471 92837 40192",
-    e2eeKey: "EDX-E2EE-2E5A-9A7B-465C-889D",
-    unreadCount: 0,
-    initialMessages: [
-      {
-        id: "m_sr_1",
-        text: "Your Smart India Hackathon participation endorsement letter has been signed and dispatched to the HOD office.",
-        sender: "staff",
-        time: "Oct 08",
-        encrypted: true,
-      },
-    ],
-  },
-  {
-    id: "staff_7",
-    name: "Dr. Preethi K",
-    role: "Chief Hostel Warden",
-    dept: "Campus Residence",
-    subject: "Hostel Operations & Permits",
-    cabin: "Hostel Admin Hub",
-    email: "warden.preethi@edunex.edu.in",
-    phone: "+919876511007",
-    avatarColor: "#059669",
-    initials: "PK",
-    status: "online",
-    statusText: "Hostel Office Open",
-    fingerprint: "50192 38471 92837 40192 39482 10928 37461 92837 46519 28374 91823 48192",
-    e2eeKey: "EDX-E2EE-3F6B-0B8C-576D-990E",
-    unreadCount: 0,
-    initialMessages: [
-      {
-        id: "m_pk_1",
-        text: "Hostel biometric system maintenance is completed. Outing passes will be scanned at Gate 3.",
-        sender: "staff",
-        time: "Oct 05",
-        encrypted: true,
-      },
-    ],
-  },
-];
+let STAFF_ROSTER = [];
 
-const QUICK_PROMPTS = [
-  "📝 Requesting 1-day extension on assignment",
-  "❓ Doubt regarding Unit 3 syllabus topics",
-  "🤝 Requesting 1-on-1 consultation slot",
-  "📄 Regarding On-Duty (OD) form sign-off",
-];
+const QUICK_PROMPTS = [];
 
 export default function ChatModal({ visible, onClose }) {
   const { colors, isDarkMode } = useTheme();
@@ -257,6 +41,9 @@ export default function ChatModal({ visible, onClose }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [deptFilter, setDeptFilter] = useState("All");
 
+  // Staff roster from API
+  const [staffRoster, setStaffRoster] = useState([]);
+
   // Chat message state keyed by staff id
   const [threads, setThreads] = useState({});
   const [newMsg, setNewMsg] = useState("");
@@ -269,6 +56,16 @@ export default function ChatModal({ visible, onClose }) {
   // Initialize Threads from Storage / Default Roster
   useEffect(() => {
     async function loadAllThreads() {
+      // Fetch staff from API
+      try {
+        const staffRes = await api.get("/staff");
+        if (Array.isArray(staffRes?.data) && staffRes.data.length > 0) {
+          setStaffRoster(staffRes.data);
+        }
+      } catch (e) {
+        console.log("Staff fetch err:", e?.message || e);
+      }
+
       const loaded = {};
       for (const staff of STAFF_ROSTER) {
         try {
@@ -431,7 +228,8 @@ export default function ChatModal({ visible, onClose }) {
 
   // Filtered Staff Roster
   const filteredStaffList = useMemo(() => {
-    return STAFF_ROSTER.filter((staff) => {
+    const roster = staffRoster.length > 0 ? staffRoster : STAFF_ROSTER;
+    return roster.filter((staff) => {
       if (deptFilter !== "All" && !staff.dept.toLowerCase().includes(deptFilter.toLowerCase())) {
         return false;
       }
@@ -444,7 +242,7 @@ export default function ChatModal({ visible, onClose }) {
       }
       return true;
     });
-  }, [searchQuery, deptFilter]);
+  }, [searchQuery, deptFilter, staffRoster]);
 
   const currentMessages = useMemo(() => {
     if (!selectedStaff) return [];

@@ -27,12 +27,8 @@ export default function DashboardAdmin() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Overview Stats
-  const [stats, setStats] = useState([
-    { id: "1", label: "Total Students", value: "2,314", icon: "account-group", color: "#3B82F6", sub: "Active Enrolled" },
-    { id: "2", label: "Total Faculty", value: "128", icon: "account-tie", color: "#10B981", sub: "98% On Campus" },
-    { id: "3", label: "Departments", value: "8", icon: "domain", color: "#F59E0B", sub: "All Accredited" },
-    { id: "4", label: "Fee Collection", value: "₹42.8 L", icon: "currency-inr", color: "#8B5CF6", sub: "79% of Target" },
-  ]);
+  const [stats, setStats] = useState([]);
+  const [live, setLive] = useState({});
 
   // Live Notices
   const [notices, setNotices] = useState([]);
@@ -45,38 +41,7 @@ export default function DashboardAdmin() {
   const [fleetModalVisible, setFleetModalVisible] = useState(false);
 
   // Leave Approvals State
-  const [leaveRequests, setLeaveRequests] = useState([
-    {
-      id: "L1",
-      name: "Dr. Ramesh Kumar",
-      dept: "CSE",
-      role: "Professor",
-      type: "Casual Leave",
-      dates: "Tomorrow (1 Day)",
-      reason: "Attending IEEE Conference at Bengaluru",
-      status: "pending",
-    },
-    {
-      id: "L2",
-      name: "Prof. Anita Varma",
-      dept: "AI-DS",
-      role: "Asst. Professor",
-      type: "Medical Leave",
-      dates: "28 Nov - 30 Nov (3 Days)",
-      reason: "Family health emergency",
-      status: "pending",
-    },
-    {
-      id: "L3",
-      name: "Dr. S. Nair",
-      dept: "ECE",
-      role: "Associate Prof",
-      type: "On Duty (OD)",
-      dates: "02 Dec (1 Day)",
-      reason: "External Lab Examiner at Anna Univ",
-      status: "pending",
-    },
-  ]);
+  const [leaveRequests, setLeaveRequests] = useState([]);
 
   // Publish Notice Form
   const [newNoticeTitle, setNewNoticeTitle] = useState("");
@@ -95,36 +60,38 @@ export default function DashboardAdmin() {
   // Load Data
   const loadData = useCallback(async () => {
     try {
-      const [institutionsRes, statsRes, noticesRes] = await Promise.all([
+      const [institutionsRes, statsRes, noticesRes, leavesRes] = await Promise.all([
         getInstitutions().catch(() => null),
         getAdminStats().catch(() => null),
         getNoticesList().catch(() => []),
+        api.get("/leaves", { status: "pending" }).catch(() => null),
       ]);
 
       const inst = Array.isArray(institutionsRes) && institutionsRes.length > 0 ? institutionsRes[0] : null;
-      const live = statsRes || {};
+      const liveData = statsRes || {};
+      setLive(liveData);
 
       setStats([
         {
           id: "1",
           label: "Total Students",
-          value: String(inst?.overview?.students || live.totalStudents || "2,314"),
+          value: String(inst?.overview?.students || liveData.totalStudents || "—"),
           icon: "account-group",
           color: "#3B82F6",
-          sub: "94.2% Attendance",
+          sub: "",
         },
         {
           id: "2",
           label: "Total Faculty",
-          value: String(inst?.overview?.faculty || live.totalFaculty || "128"),
+          value: String(inst?.overview?.faculty || liveData.totalFaculty || "—"),
           icon: "account-tie",
           color: "#10B981",
-          sub: "98.4% Present",
+          sub: "",
         },
         {
           id: "3",
           label: "Departments",
-          value: String(inst?.overview?.departments || live.totalDepartments || "8"),
+          value: String(inst?.overview?.departments || liveData.totalDepartments || "8"),
           icon: "domain",
           color: "#F59E0B",
           sub: "Active Programs",
@@ -132,32 +99,23 @@ export default function DashboardAdmin() {
         {
           id: "4",
           label: "Monthly Fees",
-          value: inst?.monthlyFeeCollection || live.monthlyFeeCollection || "₹42.8 L",
+          value: inst?.monthlyFeeCollection || liveData.monthlyFeeCollection || "—",
           icon: "currency-inr",
           color: "#8B5CF6",
-          sub: "79% Realized",
+          sub: "",
         },
       ]);
 
       if (Array.isArray(noticesRes) && noticesRes.length > 0) {
         setNotices(noticesRes.slice(0, 3));
       } else {
-        setNotices([
-          {
-            id: "n1",
-            title: "End Semester Examinations Schedule Nov/Dec 2025",
-            category: "Academic",
-            date: "Today, 10:30 AM",
-            audience: "All Students",
-          },
-          {
-            id: "n2",
-            title: "Faculty Development Program on Generative AI & Cloud",
-            category: "Faculty",
-            date: "Yesterday",
-            audience: "Teaching Staff",
-          },
-        ]);
+        setNotices([]);
+      }
+
+      if (Array.isArray(leavesRes?.data) && leavesRes.data.length > 0) {
+        setLeaveRequests(leavesRes.data.slice(0, 10));
+      } else {
+        setLeaveRequests([]);
       }
     } catch (err) {
       console.log("DashboardAdmin load error:", err);
@@ -208,7 +166,7 @@ export default function DashboardAdmin() {
         category: newNoticeCategory,
         audience: newNoticeAudience,
         date: new Date().toISOString(),
-        author: "Campus Administrator",
+        author: "Administrator",
       });
       showToast("📢 Circular published to campus portals!", "success");
       setPublishModalVisible(false);
@@ -241,7 +199,7 @@ export default function DashboardAdmin() {
     setIsSendingFeeAlert(true);
     setTimeout(() => {
       setIsSendingFeeAlert(false);
-      showToast("📩 Automated Fee Due Reminders sent to 142 parent contacts!", "success");
+      showToast("📩 Fee Due Reminders sent!", "success");
     }, 1200);
   };
 
@@ -250,13 +208,7 @@ export default function DashboardAdmin() {
     setLogsVisible(true);
     setLogsLoading(true);
     setTimeout(() => {
-      setLogs([
-        { id: 1, label: "Render Backend API", value: "Online (38ms latency)", color: "#10B981", icon: "server-network" },
-        { id: 2, label: "MongoDB Atlas Primary", value: "Connected & Synced", color: "#3B82F6", icon: "database-check" },
-        { id: 3, label: "Cloud Snapshot Backup", value: "Completed Today 04:30 AM", color: "#F59E0B", icon: "cloud-check" },
-        { id: 4, label: "Active Mobile Sessions", value: "358 Logged In", color: "#8B5CF6", icon: "account-multiple-check" },
-        { id: 5, label: "Security & Firewall", value: "Zero threat flags detected", color: "#10B981", icon: "shield-check" },
-      ]);
+      setLogs([]);
       setLogsLoading(false);
     }, 500);
   };
@@ -351,15 +303,15 @@ export default function DashboardAdmin() {
               {/* Top Row: Attendance Rates */}
               <View style={styles.healthStatsRow}>
                 <View style={styles.healthStatBox}>
-                  <Text style={[styles.healthStatPercent, { color: "#3B82F6" }]}>94.2%</Text>
+                  <Text style={[styles.healthStatPercent, { color: "#3B82F6" }]}>—%</Text>
                   <Text style={[styles.healthStatTitle, { color: colors.primaryText }]}>Student Attendance</Text>
-                  <Text style={[styles.healthStatSub, { color: colors.secondaryText }]}>2,180 / 2,314 Present</Text>
+                   <Text style={[styles.healthStatSub, { color: colors.secondaryText }]}>— / — Present</Text>
                 </View>
                 <View style={[styles.healthStatDivider, { backgroundColor: colors.divider }]} />
                 <View style={styles.healthStatBox}>
-                  <Text style={[styles.healthStatPercent, { color: "#10B981" }]}>98.4%</Text>
+                  <Text style={[styles.healthStatPercent, { color: "#10B981" }]}>—%</Text>
                   <Text style={[styles.healthStatTitle, { color: colors.primaryText }]}>Faculty On Campus</Text>
-                  <Text style={[styles.healthStatSub, { color: colors.secondaryText }]}>126 / 128 On Duty</Text>
+                  <Text style={[styles.healthStatSub, { color: colors.secondaryText }]}>— / — On Duty</Text>
                 </View>
               </View>
 
@@ -369,37 +321,25 @@ export default function DashboardAdmin() {
                   DEPARTMENT ATTENDANCE
                 </Text>
 
-                <View style={styles.deptBarRow}>
-                  <Text style={[styles.deptName, { color: colors.primaryText }]}>CSE</Text>
-                  <View style={[styles.progressBarBg, { backgroundColor: colors.primaryBackground }]}>
-                    <View style={[styles.progressBarFill, { width: "96.5%", backgroundColor: "#3B82F6" }]} />
+                {(live.departmentAttendance || []).length > 0 ? (
+                  (live.departmentAttendance || []).map((dept, idx) => {
+                    const colors_list = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EF4444"];
+                    const pct = Number(dept.percentage) || 0;
+                    return (
+                      <View key={idx} style={styles.deptBarRow}>
+                        <Text style={[styles.deptName, { color: colors.primaryText }]}>{dept.name || dept.department || "—"}</Text>
+                        <View style={[styles.progressBarBg, { backgroundColor: colors.primaryBackground }]}>
+                          <View style={[styles.progressBarFill, { width: `${pct}%`, backgroundColor: colors_list[idx % colors_list.length] }]} />
+                        </View>
+                        <Text style={[styles.deptPercent, { color: colors.primaryText }]}>{pct > 0 ? `${pct}%` : "—"}</Text>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <View style={{ alignItems: "center", paddingVertical: 10 }}>
+                    <Text style={{ fontSize: 12, color: colors.secondaryText }}>No department data available</Text>
                   </View>
-                  <Text style={[styles.deptPercent, { color: colors.primaryText }]}>96.5%</Text>
-                </View>
-
-                <View style={styles.deptBarRow}>
-                  <Text style={[styles.deptName, { color: colors.primaryText }]}>AI-DS</Text>
-                  <View style={[styles.progressBarBg, { backgroundColor: colors.primaryBackground }]}>
-                    <View style={[styles.progressBarFill, { width: "95.0%", backgroundColor: "#10B981" }]} />
-                  </View>
-                  <Text style={[styles.deptPercent, { color: colors.primaryText }]}>95.0%</Text>
-                </View>
-
-                <View style={styles.deptBarRow}>
-                  <Text style={[styles.deptName, { color: colors.primaryText }]}>ECE</Text>
-                  <View style={[styles.progressBarBg, { backgroundColor: colors.primaryBackground }]}>
-                    <View style={[styles.progressBarFill, { width: "91.2%", backgroundColor: "#F59E0B" }]} />
-                  </View>
-                  <Text style={[styles.deptPercent, { color: colors.primaryText }]}>91.2%</Text>
-                </View>
-
-                <View style={styles.deptBarRow}>
-                  <Text style={[styles.deptName, { color: colors.primaryText }]}>MECH</Text>
-                  <View style={[styles.progressBarBg, { backgroundColor: colors.primaryBackground }]}>
-                    <View style={[styles.progressBarFill, { width: "89.0%", backgroundColor: "#8B5CF6" }]} />
-                  </View>
-                  <Text style={[styles.deptPercent, { color: colors.primaryText }]}>89.0%</Text>
-                </View>
+                )}
               </View>
             </View>
 
@@ -423,7 +363,7 @@ export default function DashboardAdmin() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.opTitle, { color: colors.primaryText }]}>Exams & Seating Plan</Text>
                   <Text style={[styles.opSub, { color: colors.secondaryText }]}>
-                    End-Sem Nov 28 · 16 Halls Active
+                    Exam schedule & hall allocation
                   </Text>
                 </View>
                 <Icon name="chevron-right" size={20} color={colors.secondaryText} />
@@ -484,7 +424,7 @@ export default function DashboardAdmin() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.opTitle, { color: colors.primaryText }]}>Transport Fleet & GPS</Text>
                   <Text style={[styles.opSub, { color: colors.secondaryText }]}>
-                    18/20 Active Routes · All On Time
+                    {live.transportRoutes ? `${live.transportRoutes} Active Routes` : "Transport data unavailable"}
                   </Text>
                 </View>
                 <Icon name="chevron-right" size={20} color={colors.secondaryText} />
@@ -501,30 +441,30 @@ export default function DashboardAdmin() {
             <View style={[styles.feeCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
               <View style={styles.feeCardTop}>
                 <View>
-                  <Text style={[styles.feeMainAmount, { color: colors.primaryText }]}>₹42,80,000</Text>
+                   <Text style={[styles.feeMainAmount, { color: colors.primaryText }]}>{live.feeCollected ? `₹ ${Number(live.feeCollected).toLocaleString("en-IN")}` : "—"}</Text>
                   <Text style={[styles.feeMainLabel, { color: colors.secondaryText }]}>
-                    Total Fee Realized This Term (79%)
+                    Total Fee Realized {live.feeCollectionPct ? `(${live.feeCollectionPct}%)` : ""}
                   </Text>
                 </View>
                 <View style={[styles.pendingFeeBadge, { backgroundColor: "#EF444418" }]}>
                   <Icon name="alert-circle-outline" size={14} color="#EF4444" />
-                  <Text style={[styles.pendingFeeText, { color: "#EF4444" }]}>₹11.4L Pending</Text>
+                   <Text style={[styles.pendingFeeText, { color: "#EF4444" }]}>{live.feePending ? `${live.feePending} Pending` : "—"}</Text>
                 </View>
               </View>
 
               {/* Dual Colored Progress Bar */}
               <View style={[styles.feeProgressBar, { backgroundColor: "#EF444440" }]}>
-                <View style={[styles.feeCollectedBar, { width: "79%", backgroundColor: "#10B981" }]} />
+                <View style={[styles.feeCollectedBar, { width: `${live.feeCollectionPct || 0}%`, backgroundColor: "#10B981" }]} />
               </View>
 
               <View style={styles.feeLegendRow}>
                 <View style={styles.feeLegendItem}>
                   <View style={[styles.legendDot, { backgroundColor: "#10B981" }]} />
-                  <Text style={[styles.legendText, { color: colors.secondaryText }]}>Collected: 1,842 Students</Text>
+                  <Text style={[styles.legendText, { color: colors.secondaryText }]}>Collected: {live.feeCollectedStudents || "—"} Students</Text>
                 </View>
                 <View style={styles.feeLegendItem}>
                   <View style={[styles.legendDot, { backgroundColor: "#EF4444" }]} />
-                  <Text style={[styles.legendText, { color: colors.secondaryText }]}>Pending: 142 Students</Text>
+                  <Text style={[styles.legendText, { color: colors.secondaryText }]}>Pending: {live.feePendingStudents || "—"} Students</Text>
                 </View>
               </View>
 
@@ -539,7 +479,7 @@ export default function DashboardAdmin() {
                 ) : (
                   <>
                     <Icon name="message-alert-outline" size={18} color="#fff" />
-                    <Text style={styles.sendAlertBtnText}>Send Fee Due Alerts to 142 Parents</Text>
+                    <Text style={styles.sendAlertBtnText}>Send Fee Due Alerts{live.feePendingStudents ? ` to ${live.feePendingStudents} Parents` : ""}</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -557,27 +497,27 @@ export default function DashboardAdmin() {
                 <View style={[styles.facilityIcon, { backgroundColor: "#3B82F618" }]}>
                   <Icon name="home-city-outline" size={22} color="#3B82F6" />
                 </View>
-                <Text style={[styles.facilityValue, { color: colors.primaryText }]}>93%</Text>
+                <Text style={[styles.facilityValue, { color: colors.primaryText }]}>{live.hostelOccupancy || "—"}</Text>
                 <Text style={[styles.facilityLabel, { color: colors.secondaryText }]}>Hostel Occupancy</Text>
-                <Text style={[styles.facilitySub, { color: colors.primaryText }]}>418 / 450 Beds</Text>
+                <Text style={[styles.facilitySub, { color: colors.primaryText }]}>{live.hostelBeds || ""}</Text>
               </View>
 
               <View style={[styles.facilityCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
                 <View style={[styles.facilityIcon, { backgroundColor: "#10B98118" }]}>
                   <Icon name="laptop" size={22} color="#10B981" />
                 </View>
-                <Text style={[styles.facilityValue, { color: colors.primaryText }]}>88%</Text>
+                <Text style={[styles.facilityValue, { color: colors.primaryText }]}>{live.labOccupancy || "—"}</Text>
                 <Text style={[styles.facilityLabel, { color: colors.secondaryText }]}>Computing Labs</Text>
-                <Text style={[styles.facilitySub, { color: colors.primaryText }]}>185 / 210 Systems</Text>
+                <Text style={[styles.facilitySub, { color: colors.primaryText }]}>{live.labSystems || ""}</Text>
               </View>
 
               <View style={[styles.facilityCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
                 <View style={[styles.facilityIcon, { backgroundColor: "#8B5CF618" }]}>
                   <Icon name="book-open-page-variant-outline" size={22} color="#8B5CF6" />
                 </View>
-                <Text style={[styles.facilityValue, { color: colors.primaryText }]}>1,420</Text>
+                <Text style={[styles.facilityValue, { color: colors.primaryText }]}>{live.libraryIssues || "—"}</Text>
                 <Text style={[styles.facilityLabel, { color: colors.secondaryText }]}>Library Issues</Text>
-                <Text style={[styles.facilitySub, { color: colors.primaryText }]}>96.4% Returned</Text>
+                <Text style={[styles.facilitySub, { color: colors.primaryText }]}>{live.libraryReturnRate || ""}</Text>
               </View>
             </View>
 
@@ -644,36 +584,37 @@ export default function DashboardAdmin() {
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
               <View style={[styles.examBanner, { backgroundColor: "#3B82F618", borderColor: "#3B82F640" }]}>
                 <Text style={[styles.examBannerTitle, { color: "#3B82F6" }]}>
-                  Odd Semester End-Examinations 2025
+                   Examination Schedule
                 </Text>
                 <Text style={[styles.examBannerSub, { color: colors.primaryText }]}>
-                  Schedule: 28 Nov 2025 - 14 Dec 2025 · 8 Departments Participating
+                  {live.examSchedule || "Examination schedule pending"}
                 </Text>
               </View>
 
               <Text style={[styles.subModalSection, { color: colors.secondaryText }]}>
-                ALLOCATED EXAMINATION HALLS (16 READY)
+                ALLOCATED EXAMINATION HALLS
               </Text>
 
-              {[
-                { hall: "Main Exam Hall A", cap: "120 Seats", chief: "Dr. K. Swaminathan", status: "Ready" },
-                { hall: "Tech Block Hall 201", cap: "60 Seats", chief: "Prof. S. Rangan", status: "Ready" },
-                { hall: "AI & Data Lab B", cap: "80 Systems", chief: "Dr. P. Nalini", status: "Configured" },
-                { hall: "Mechanical Seminar Hall", cap: "100 Seats", chief: "Dr. M. Varman", status: "Ready" },
-              ].map((h, i) => (
-                <View key={i} style={[styles.hallItem, { borderBottomColor: colors.divider }]}>
-                  <View>
-                    <Text style={[styles.hallName, { color: colors.primaryText }]}>{h.hall}</Text>
-                    <Text style={[styles.hallChief, { color: colors.secondaryText }]}>Supervisor: {h.chief}</Text>
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text style={[styles.hallCap, { color: colors.primaryAccent }]}>{h.cap}</Text>
-                    <View style={[styles.hallStatusBadge, { backgroundColor: "#10B98120" }]}>
-                      <Text style={[styles.hallStatusText, { color: "#10B981" }]}>{h.status}</Text>
+              {(live.examHalls || []).length > 0 ? (
+                (live.examHalls || []).map((h, i) => (
+                  <View key={i} style={[styles.hallItem, { borderBottomColor: colors.divider }]}>
+                    <View>
+                      <Text style={[styles.hallName, { color: colors.primaryText }]}>{h.hall || h.name || "—"}</Text>
+                      <Text style={[styles.hallChief, { color: colors.secondaryText }]}>Supervisor: {h.chief || h.supervisor || "—"}</Text>
+                    </View>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text style={[styles.hallCap, { color: colors.primaryAccent }]}>{h.cap || h.capacity || "—"}</Text>
+                      <View style={[styles.hallStatusBadge, { backgroundColor: "#10B98120" }]}>
+                        <Text style={[styles.hallStatusText, { color: "#10B981" }]}>{h.status || "Ready"}</Text>
+                      </View>
                     </View>
                   </View>
+                ))
+              ) : (
+                <View style={{ alignItems: "center", paddingVertical: 20 }}>
+                  <Text style={{ fontSize: 12, color: colors.secondaryText }}>No exam hall data available</Text>
                 </View>
-              ))}
+              )}
             </ScrollView>
 
             <TouchableOpacity
@@ -897,27 +838,28 @@ export default function DashboardAdmin() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-              {[
-                { route: "Route 01 - City Central & Station", driver: "G. Murugan", bus: "TN-37-AB-1204", status: "On Time", speed: "42 km/h" },
-                { route: "Route 04 - Airport & Tech Park", driver: "S. Johnson", bus: "TN-37-CD-4819", status: "On Time", speed: "38 km/h" },
-                { route: "Route 07 - South Suburbs & Ring Road", driver: "M. Abdul", bus: "TN-37-EF-9022", status: "On Time", speed: "45 km/h" },
-                { route: "Route 12 - North Campus Shuttle", driver: "P. Vignesh", bus: "TN-37-GH-3311", status: "Boarding", speed: "0 km/h" },
-              ].map((f, idx) => (
-                <View key={idx} style={[styles.fleetItem, { borderBottomColor: colors.divider }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.fleetRoute, { color: colors.primaryText }]}>{f.route}</Text>
-                    <Text style={[styles.fleetDriver, { color: colors.secondaryText }]}>
-                      Driver: {f.driver} · Bus: {f.bus}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <View style={[styles.fleetBadge, { backgroundColor: "#10B98120" }]}>
-                      <Text style={[styles.fleetBadgeText, { color: "#10B981" }]}>{f.status}</Text>
+              {(live.fleetRoutes || []).length > 0 ? (
+                (live.fleetRoutes || []).map((f, idx) => (
+                  <View key={idx} style={[styles.fleetItem, { borderBottomColor: colors.divider }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.fleetRoute, { color: colors.primaryText }]}>{f.route || f.name || "—"}</Text>
+                      <Text style={[styles.fleetDriver, { color: colors.secondaryText }]}>
+                        Driver: {f.driver || "—"} · Bus: {f.bus || f.vehicleNo || "—"}
+                      </Text>
                     </View>
-                    <Text style={[styles.fleetSpeed, { color: colors.secondaryText }]}>{f.speed}</Text>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <View style={[styles.fleetBadge, { backgroundColor: "#10B98120" }]}>
+                        <Text style={[styles.fleetBadgeText, { color: "#10B981" }]}>{f.status || "On Time"}</Text>
+                      </View>
+                      <Text style={[styles.fleetSpeed, { color: colors.secondaryText }]}>{f.speed || ""}</Text>
+                    </View>
                   </View>
+                ))
+              ) : (
+                <View style={{ alignItems: "center", paddingVertical: 20 }}>
+                  <Text style={{ fontSize: 12, color: colors.secondaryText }}>No fleet data available</Text>
                 </View>
-              ))}
+              )}
             </ScrollView>
 
             <TouchableOpacity

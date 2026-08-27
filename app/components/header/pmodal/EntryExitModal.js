@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Modal,
   View,
@@ -6,228 +6,344 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  Share,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../../context/ThemeContext";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
+import { getParentData } from "../../../services/dataService";
+import { showToast } from "../../../utils/toastService";
+import { api } from "../../../services/api";
 
 export default function EntryExitModal({ visible, onClose }) {
-  const { colors } = useTheme();
+  const { colors, isDarkMode } = useTheme();
+  const styles = getStyles(colors, isDarkMode);
+
+  const [filter, setFilter] = useState("All");
+  const [wardName, setWardName] = useState("");
+  const [rollNo, setRollNo] = useState("");
+  const [movements, setMovements] = useState([]);
+  const [currentLocation, setCurrentLocation] = useState("—");
+
+  const fetchAttendance = useCallback(async () => {
+    try {
+      const res = await api.get("/attendance");
+      const items = res?.data || res || [];
+      const mapped = (Array.isArray(items) ? items : []).map((a, i) => ({
+        id: a._id || a.id || String(i),
+        time: a.time || a.timestamp || "—",
+        location: a.location || a.room || "—",
+        action: a.action || a.type || (a.isEntry ? "Entry" : "Exit"),
+        status: a.status || (a.isPresent ? "Present" : "Absent"),
+        isEntry: a.isEntry !== undefined ? a.isEntry : (a.action || "").toLowerCase() === "entry",
+      }));
+      setMovements(mapped);
+      if (mapped.length > 0) {
+        const latest = mapped[0];
+        setCurrentLocation(latest.location);
+      }
+    } catch {
+      setMovements([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    getParentData().then((data) => {
+      if (data?.ward) {
+        setWardName(data.ward.name || "");
+        setRollNo(data.ward.rollNo || "");
+      }
+    }).catch(() => {});
+    fetchAttendance();
+  }, [fetchAttendance]);
+
   if (!visible) return null;
 
-  const isDark = colors.mode === "dark";
-  const sectionBg = isDark
-    ? colors.cardBackground + "AA"
-    : colors.primaryAccent + "11";
+  const handleShareLog = async () => {
+    try {
+      const summary = movements.map(
+        (m) => `🕒 ${m.time}\n📍 ${m.location}\n⚡ ${m.action} (${m.status})`
+      ).join("\n\n");
 
-  const entries = [
-    { time: "08:55 AM", action: "Entered Main Gate" },
-    { time: "09:02 AM", action: "Entered Classroom Block" },
-    { time: "12:45 PM", action: "Exited for Lunch" },
-    { time: "01:20 PM", action: "Re-entered Campus" },
-    { time: "04:30 PM", action: "Exited Campus" },
-    { time: "05:00 PM", action: "Returned for Extra Class" },
-    { time: "06:15 PM", action: "Exited Campus" },
-  ];
+      await Share.share({
+        title: "Campus Movement & Gate Log",
+        message: `🛡️ EDUNEX BIOMETRIC GATE LOG\nWard: ${wardName || "—"} (${rollNo || "—"})\n\n${summary}`,
+      });
+      showToast("Gate movement log shared!", "success");
+    } catch (err) {
+      console.log("Share error:", err);
+    }
+  };
+
+  const filtered = movements.filter((m) => {
+    if (filter === "Entries" && !m.isEntry) return false;
+    if (filter === "Exits" && m.isEntry) return false;
+    return true;
+  });
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <View
-          style={[
-            styles.modalContainer,
-            { backgroundColor: colors.cardBackground },
-          ]}
-        >
+        <View style={[styles.modalContainer, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
           {/* Header */}
-          <LinearGradient
-            colors={[colors.primaryAccent, colors.primaryAccent + "CC"]}
-            style={styles.headerContainer}
-          >
-            <Icon name="door-open" size={22} color="#fff" />
-            <Text style={styles.headerText}>Campus Entry / Exit Log</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Icon name="close-circle" size={22} color="#fff" />
-            </TouchableOpacity>
-          </LinearGradient>
-
-          {/* Scrollable Content */}
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollBody}
-          >
-            {/* Inner Section */}
-            <View
-              style={[
-                styles.innerCard,
-                {
-                  backgroundColor: sectionBg,
-                  borderColor: colors.primaryAccent + "22",
-                },
-              ]}
-            >
-              {entries.map((entry, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.entryBox,
-                    {
-                      backgroundColor: colors.cardBackground,
-                      borderColor: colors.primaryAccent + "22",
-                    },
-                  ]}
-                >
-                  <View style={styles.entryRow}>
-                    <Icon
-                      name={
-                        entry.action.toLowerCase().includes("enter")
-                          ? "login-variant"
-                          : "logout-variant"
-                      }
-                      size={18}
-                      color={
-                        entry.action.toLowerCase().includes("enter")
-                          ? "#2ECC71"
-                          : "#FF6B6B"
-                      }
-                    />
-                    <Text style={[styles.timeText, { color: colors.primaryText }]}>
-                      {entry.time}
-                    </Text>
-                  </View>
-                  <Text
-                    style={[styles.actionText, { color: colors.secondaryText }]}
-                  >
-                    {entry.action}
-                  </Text>
-                </View>
-              ))}
+          <View style={styles.header}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+              <View style={[styles.iconWrap, { backgroundColor: "#10B98118" }]}>
+                <Icon name="door-open" size={24} color="#10B981" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.headerTitle, { color: colors.primaryText }]}>Campus Presence & Gate Log</Text>
+                <Text style={[styles.headerSubtitle, { color: colors.secondaryText }]}>
+                  Biometric Turnstile Scans · {wardName || "—"}
+                </Text>
+              </View>
             </View>
 
-            {/* Footer Note */}
-            <Text style={[styles.note, { color: colors.secondaryText }]}>
-              🕒 Logs update in real-time for accurate attendance tracking.
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+              <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Real-time Status Badge */}
+          <View style={[styles.liveStatusBadge, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+            <View style={styles.pulseDot} />
+            <Text style={[styles.liveStatusText, { color: colors.primaryText }]}>
+              Current Location: <Text style={{ color: "#10B981", fontWeight: "800" }}>{currentLocation}</Text>
             </Text>
+          </View>
+
+          {/* Filter Pills */}
+          <View style={styles.filterRow}>
+            {["All", "Entries", "Exits"].map((f) => {
+              const isSel = filter === f;
+              return (
+                <TouchableOpacity
+                  key={f}
+                  style={[
+                    styles.filterPill,
+                    isSel
+                      ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
+                      : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                  ]}
+                  onPress={() => setFilter(f)}
+                >
+                  <Text style={[styles.filterPillText, { color: isSel ? "#FFFFFF" : colors.secondaryText }]}>
+                    {f}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Timeline List */}
+          <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
+            {filtered.map((item) => (
+              <View
+                key={item.id}
+                style={[styles.movementCard, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
+              >
+                <View
+                  style={[
+                    styles.iconCircle,
+                    { backgroundColor: item.isEntry ? "#10B98118" : "#EF444418" },
+                  ]}
+                >
+                  <Icon
+                    name={item.isEntry ? "login-variant" : "logout-variant"}
+                    size={20}
+                    color={item.isEntry ? "#10B981" : "#EF4444"}
+                  />
+                </View>
+
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={[styles.actionTitle, { color: colors.primaryText }]}>{item.action}</Text>
+                    <Text style={[styles.movementTime, { color: colors.secondaryText }]}>{item.time}</Text>
+                  </View>
+
+                  <Text style={[styles.locationText, { color: colors.secondaryText }]}>
+                    📍 {item.location}
+                  </Text>
+
+                  <View style={styles.statusTag}>
+                    <Text style={[styles.statusTagText, { color: item.isEntry ? "#10B981" : "#EF4444" }]}>
+                      {item.status}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))}
           </ScrollView>
 
-          {/* Close Button */}
-          <TouchableOpacity
-            onPress={onClose}
-            style={[
-              styles.closeButton,
-              { backgroundColor: colors.primaryAccent },
-            ]}
-            activeOpacity={0.85}
-          >
-            <Icon name="check-circle-outline" size={18} color="#fff" />
-            <Text style={styles.closeText}>Close</Text>
-          </TouchableOpacity>
+          {/* Footer Actions */}
+          <View style={styles.footerRow}>
+            <TouchableOpacity
+              style={[styles.shareBtn, { backgroundColor: colors.primaryAccent }]}
+              onPress={handleShareLog}
+              activeOpacity={0.85}
+            >
+              <Icon name="share-variant" size={16} color="#FFFFFF" />
+              <Text style={styles.shareBtnText}>Share Movement Log</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.closeModalBtn, { borderColor: colors.divider }]}
+              onPress={onClose}
+            >
+              <Text style={[styles.closeModalBtnText, { color: colors.primaryText }]}>Close</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-
-  modalContainer: {
-    width: "90%",
-    maxHeight: "85%",
-    borderRadius: 20,
-    overflow: "hidden",
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 8,
-  },
-
-  headerContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-
-  headerText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 17,
-  },
-
-  scrollBody: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-
-  innerCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 12,
-    marginBottom: 14,
-    shadowColor: "#00000010",
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-
-  entryBox: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-    shadowColor: "#00000015",
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 3,
-    elevation: 2,
-  },
-
-  entryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 4,
-    gap: 8,
-  },
-
-  timeText: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-
-  actionText: {
-    fontSize: 13,
-    opacity: 0.9,
-  },
-
-  note: {
-    fontSize: 13,
-    textAlign: "center",
-    marginTop: 4,
-    marginBottom: 12,
-    fontStyle: "italic",
-  },
-
-  closeButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-  },
-
-  closeText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#fff",
-    marginLeft: 6,
-  },
-});
+// ---------------- Styles ----------------
+const getStyles = (colors, isDarkMode) =>
+  StyleSheet.create({
+    overlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.75)",
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 16,
+    },
+    modalContainer: {
+      width: "100%",
+      maxHeight: "85%",
+      borderRadius: 22,
+      borderWidth: 1,
+      padding: 18,
+      elevation: 12,
+    },
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 10,
+    },
+    iconWrap: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    headerTitle: {
+      fontSize: 16,
+      fontWeight: "800",
+      letterSpacing: -0.2,
+    },
+    headerSubtitle: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+    closeBtn: {
+      padding: 4,
+    },
+    liveStatusBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+      marginBottom: 10,
+    },
+    pulseDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: "#10B981",
+    },
+    liveStatusText: {
+      fontSize: 11.5,
+      fontWeight: "600",
+    },
+    filterRow: {
+      flexDirection: "row",
+      gap: 6,
+      marginBottom: 10,
+    },
+    filterPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    filterPillText: {
+      fontSize: 11,
+      fontWeight: "700",
+    },
+    scrollBody: {
+      gap: 8,
+      paddingBottom: 10,
+    },
+    movementCard: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      borderRadius: 14,
+      borderWidth: 1,
+      padding: 12,
+    },
+    iconCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    actionTitle: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    movementTime: {
+      fontSize: 10.5,
+      fontWeight: "500",
+    },
+    locationText: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    statusTag: {
+      marginTop: 4,
+    },
+    statusTagText: {
+      fontSize: 10,
+      fontWeight: "800",
+    },
+    footerRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginTop: 12,
+    },
+    shareBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 12,
+      borderRadius: 12,
+    },
+    shareBtnText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    closeModalBtn: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    closeModalBtnText: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+  });

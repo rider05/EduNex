@@ -14,12 +14,24 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../../context/ThemeContext";  // ✅ added
 
+import api from "../../../services/api";
+import { resolveIdentity } from "../../../services/identityService";
+
 function EditProfileModal({ visible, onClose, user }) {
-  const { colors } = useTheme();  // ✅ use theme directly
+  const { colors } = useTheme();
 
   const [name, setName] = useState(user.name);
   const [phone, setPhone] = useState(user.phone);
   const [address, setAddress] = useState(user.address);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setName(user.name || "");
+      setPhone(user.phone || "");
+      setAddress(user.address || "");
+    }
+  }, [visible]);
 
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -132,9 +144,20 @@ function EditProfileModal({ visible, onClose, user }) {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => {
-                    Alert.alert("Saved", "Profile updated successfully!");
-                    onClose();
+                  disabled={saving}
+                  onPress={async () => {
+                    try {
+                      setSaving(true);
+                      const identity = await resolveIdentity();
+                      const collection = identity.role === "student" ? "students" : identity.role === "parent" ? "parents" : "staff";
+                      await api.patch(`/${collection}/${identity.id}`, { name, phone, address });
+                      Alert.alert("Saved", "Profile updated successfully!");
+                      onClose();
+                    } catch (e) {
+                      Alert.alert("Error", "Failed to save profile. Please try again.");
+                    } finally {
+                      setSaving(false);
+                    }
                   }}
                 >
                   <LinearGradient
@@ -150,7 +173,7 @@ function EditProfileModal({ visible, onClose, user }) {
                         fontSize: 16,
                       }}
                     >
-                      Save
+                      {saving ? "Saving..." : "Save"}
                     </Text>
                   </LinearGradient>
                 </TouchableOpacity>

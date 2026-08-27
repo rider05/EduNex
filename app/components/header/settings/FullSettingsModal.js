@@ -37,10 +37,10 @@ const DEFAULT_SETTINGS = {
   smsAlerts: true,
 
   // Academic Controls
-  academicYear: "2025 - 2026",
-  currentSemester: "Odd Semester (III & V)",
+  academicYear: "—",
+  currentSemester: "—",
   gradeLock: false,
-  minAttendancePercent: "75%",
+  minAttendancePercent: "—",
   feeGatewayActive: true,
 
   // Portal & User Permissions
@@ -48,7 +48,7 @@ const DEFAULT_SETTINGS = {
   parentPortalActive: true,
   facultyAttendanceCutoff: true,
   twoFactorAuth: false,
-  sessionTimeout: "30 Minutes",
+  sessionTimeout: "—",
 
   // System & Security
   maintenanceMode: false,
@@ -75,8 +75,8 @@ export default function FullSettingsModal({ visible, onClose }) {
   // Action states
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isPinging, setIsPinging] = useState(false);
-  const [serverPing, setServerPing] = useState("46 ms");
-  const [lastBackupTime, setLastBackupTime] = useState("Today, 04:30 AM");
+  const [serverPing, setServerPing] = useState("—");
+  const [lastBackupTime, setLastBackupTime] = useState("—");
 
   // Broadcast text
   const [broadcastTitle, setBroadcastTitle] = useState("");

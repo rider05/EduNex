@@ -33,12 +33,7 @@ export default function ReportModal({ visible, onClose, colors, data }) {
     outputRange: [0, 500],
   });
 
-  const subjects = [
-    { name: "Data Structures", grade: "A" },
-    { name: "DBMS", grade: "A+" },
-    { name: "OOP", grade: "B+" },
-    { name: "Probability & Statistics", grade: "A" },
-  ];
+  const subjects = [];
 
   if (!visible) return null;
 

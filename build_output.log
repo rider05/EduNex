@@ -1,0 +1,12 @@
+Starting prebuild + build at 26-08-2026 19:39:57.49 
+! No git repo found in current directory
+› Use git to track file changes before running commands that modify project files.
+Git status is dirty but the command will continue because the terminal is not interactive.
+- Clearing android
+√ Cleared android code
+- Creating native directory (./android)
+√ Created native directory
+- Updating package.json
+√ Updated package.json | no changes
+- Running prebuild
+√ Finished prebuild

@@ -9,11 +9,10 @@ import {
   Modal,
   Pressable,
   Image,
-  TextInput,
   Animated,
-  Platform,
-  KeyboardAvoidingView,
   RefreshControl,
+  Share,
+  Alert,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -21,45 +20,43 @@ import * as ImagePicker from "expo-image-picker";
 import QRCode from "react-native-qrcode-svg";
 import { useTheme } from "../../context/ThemeContext";
 import ResetPasswordModal from "./ResetPasswordModal";
+import EditProfileModal from "./modals/EditProfileModal";
 import { showToast } from "../../utils/toastService";
 import { SkeletonProfileCard, SkeletonListItem } from "../../components/common/SkeletonLoader";
-import { getStudentData } from "../../services/dataService";
+import { getStudentData, getInstitutions } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
-const PROFILE_IMAGE_KEY = "student_profile_image_v2";
-const PROFILE_DATA_KEY = "student_profile_data_v2";
-const NOTIF_PREF_KEY = "student_notifications_v2";
+const PROFILE_IMAGE_KEY = "student_profile_image_v3";
+const PROFILE_DATA_KEY = "student_profile_data_v3";
+const NOTIF_PREF_KEY = "student_notifications_v3";
 
-const DEFAULT_USER = {
-  name: "",
-  id: "",
-  email: "",
-  phone: "",
-  program: "",
-  address: "",
-};
+const DEFAULT_USER = {};
 
 export default function ProfileScreen({ onLogout }) {
   const { colors, isDarkMode, toggleTheme } = useTheme();
-  const styles = getStyles(colors);
+  const styles = getStyles(colors, isDarkMode);
 
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState(DEFAULT_USER);
+  const [institution, setInstitution] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
+
+  // Modals
   const [showFullImage, setShowFullImage] = useState(false);
   const [photoOptionsVisible, setPhotoOptionsVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [resetModalVisible, setResetModalVisible] = useState(false);
-
+  const [showIdCardModal, setShowIdCardModal] = useState(false);
   const [logoutVisible, setLogoutVisible] = useState(false);
-  const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(false);
-  const [showQr, setShowQr] = useState(false);
 
-  const avatarScale = useRef(new Animated.Value(1)).current;
+  // Preferences
+  const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(true);
+
+  // Animations
   const cardOpacity = useRef(new Animated.Value(0)).current;
-  const cardTranslateY = useRef(new Animated.Value(12)).current;
-  const qrScale = useRef(new Animated.Value(0.9)).current;
+  const cardTranslateY = useRef(new Animated.Value(14)).current;
+  const avatarScale = useRef(new Animated.Value(1)).current;
 
   const loadData = useCallback(async () => {
     try {
@@ -69,24 +66,37 @@ export default function ProfileScreen({ onLogout }) {
       const pref = await AsyncStorage.getItem(NOTIF_PREF_KEY);
       if (pref !== null) setIsNotificationsEnabled(JSON.parse(pref));
 
-      const apiStudent = await getStudentData();
+      const [apiStudent, instRes] = await Promise.all([
+        getStudentData().catch(() => null),
+        getInstitutions().catch(() => []),
+      ]);
+
+      const inst = Array.isArray(instRes) && instRes.length > 0 ? instRes[0] : null;
+      if (inst) setInstitution(inst);
+
       const sessionRaw = await AsyncStorage.getItem("userData");
       let sessionUser = null;
       try {
         sessionUser = sessionRaw ? JSON.parse(sessionRaw) : null;
       } catch {}
+
       if (apiStudent || sessionUser) {
-        setUser({
-          name: apiStudent?.name || sessionUser?.profile?.name || sessionUser?.name || "",
-          id: apiStudent?.rollNo || apiStudent?.id || "",
-          email: apiStudent?.email || sessionUser?.email || "",
-          phone: apiStudent?.phone || sessionUser?.mobile || "",
-          program: apiStudent?.department || "",
-          address: apiStudent?.parent?.address || apiStudent?.address || "",
-        });
+        setUser((prev) => ({
+          ...prev,
+          name: apiStudent?.name || sessionUser?.profile?.name || sessionUser?.name || prev.name,
+          id: apiStudent?.rollNo || apiStudent?.id || prev.id,
+          email: apiStudent?.email || sessionUser?.email || prev.email,
+          phone: apiStudent?.phone || sessionUser?.mobile || prev.phone,
+          program: apiStudent?.department || prev.program,
+          address: apiStudent?.parent?.address || apiStudent?.address || prev.address,
+          bloodGroup: apiStudent?.bloodGroup || prev.bloodGroup || "—",
+          batch: apiStudent?.batch || prev.batch || "",
+          department: apiStudent?.department || prev.department || "",
+          semester: apiStudent?.semester || prev.semester || "",
+        }));
       } else {
-        const data = await AsyncStorage.getItem(PROFILE_DATA_KEY);
-        if (data) setUser(JSON.parse(data));
+        const local = await AsyncStorage.getItem(PROFILE_DATA_KEY);
+        if (local) setUser(JSON.parse(local));
       }
     } catch (_e) {
       console.warn("Profile load error:", _e);
@@ -99,32 +109,26 @@ export default function ProfileScreen({ onLogout }) {
     loadData();
 
     Animated.parallel([
-      Animated.timing(cardOpacity, { toValue: 1, duration: 260, useNativeDriver: true }),
-      Animated.timing(cardTranslateY, { toValue: 0, duration: 260, useNativeDriver: true }),
+      Animated.timing(cardOpacity, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.timing(cardTranslateY, { toValue: 0, duration: 280, useNativeDriver: true }),
     ]).start();
   }, [cardOpacity, cardTranslateY, loadData]);
 
-  // Refresh profile data when the app returns to the foreground
   useRefreshOnForeground(loadData);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 600);
+    setRefreshing(false);
   }, [loadData]);
-
-  const pressIn = () =>
-    Animated.spring(avatarScale, { toValue: 0.95, useNativeDriver: true }).start();
-
-  const pressOut = () =>
-    Animated.spring(avatarScale, { toValue: 1, useNativeDriver: true }).start();
 
   const pickFromGallery = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) return alert("Gallery permission required");
+      if (!perm.granted) {
+        Alert.alert("Permission Required", "Media library access is needed to select a profile photo.");
+        return;
+      }
 
       const res = await ImagePicker.launchImageLibraryAsync({
         allowsEditing: true,
@@ -132,12 +136,12 @@ export default function ProfileScreen({ onLogout }) {
         quality: 0.9,
       });
 
-      if (!res.canceled) {
+      if (!res.canceled && res.assets && res.assets[0]?.uri) {
         const uri = res.assets[0].uri;
         setProfileImage(uri);
         await AsyncStorage.setItem(PROFILE_IMAGE_KEY, uri);
         setPhotoOptionsVisible(false);
-        showToast("Profile photo updated", "success");
+        showToast("Profile photo updated!", "success");
       }
     } catch (_e) {
       showToast("Failed to pick image", "error");
@@ -147,7 +151,10 @@ export default function ProfileScreen({ onLogout }) {
   const takePhoto = async () => {
     try {
       const perm = await ImagePicker.requestCameraPermissionsAsync();
-      if (!perm.granted) return alert("Camera permission required");
+      if (!perm.granted) {
+        Alert.alert("Permission Required", "Camera access is needed to take a profile photo.");
+        return;
+      }
 
       const res = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
@@ -155,12 +162,12 @@ export default function ProfileScreen({ onLogout }) {
         quality: 0.9,
       });
 
-      if (!res.canceled) {
+      if (!res.canceled && res.assets && res.assets[0]?.uri) {
         const uri = res.assets[0].uri;
         setProfileImage(uri);
         await AsyncStorage.setItem(PROFILE_IMAGE_KEY, uri);
         setPhotoOptionsVisible(false);
-        showToast("Profile photo updated", "success");
+        showToast("Profile photo captured!", "success");
       }
     } catch (_e) {
       showToast("Failed to take photo", "error");
@@ -171,63 +178,84 @@ export default function ProfileScreen({ onLogout }) {
     setProfileImage(null);
     await AsyncStorage.removeItem(PROFILE_IMAGE_KEY);
     setPhotoOptionsVisible(false);
-    showToast("Profile photo removed", "warning");
+    showToast("Profile photo reset", "info");
   };
 
   const toggleNotifications = async () => {
     const nv = !isNotificationsEnabled;
     setIsNotificationsEnabled(nv);
     await AsyncStorage.setItem(NOTIF_PREF_KEY, JSON.stringify(nv));
-    showToast(nv ? "Notifications Enabled" : "Notifications Disabled", nv ? "success" : "warning");
+    showToast(nv ? "🔔 Push Notifications Enabled" : "🔕 Notifications Muted", nv ? "success" : "warning");
   };
 
   const handleProfileUpdate = async (newData) => {
     const updated = { ...user, ...newData };
     setUser(updated);
     await AsyncStorage.setItem(PROFILE_DATA_KEY, JSON.stringify(updated));
-    showToast("Profile updated", "success");
+    setEditModalVisible(false);
+    showToast("Profile details saved successfully!", "success");
   };
 
   const handleLogout = async () => {
+    setLogoutVisible(false);
     await AsyncStorage.removeItem("userRole");
     await AsyncStorage.removeItem("userData");
+    showToast("Logged out successfully", "info");
     if (onLogout) onLogout();
   };
 
-  const openQr = () => {
-    qrScale.setValue(0.85);
-    setShowQr(true);
-    Animated.spring(qrScale, { toValue: 1, friction: 6, useNativeDriver: true }).start();
-  };
-
-  const closeQr = () => {
-    Animated.timing(qrScale, {
-      toValue: 0.85,
-      duration: 120,
-      useNativeDriver: true,
-    }).start(() => setShowQr(false));
+  const handleShareIdCard = async () => {
+    try {
+      await Share.share({
+        title: `Digital Student ID - ${user.name}`,
+        message: `🎓 EDUNEX DIGITAL STUDENT IDENTITY CARD\nName: ${user.name}\nRoll No: ${user.id} · Reg No: ${user.regNo}\nProgram: ${user.program}\nDepartment: ${user.department}\nBlood Group: ${user.bloodGroup}\nValid Upto: ${user.batch || "—"} · Status: ACTIVE & VERIFIED`,
+      });
+      showToast("Student ID credential shared!", "success");
+    } catch (err) {
+      console.log("Share error:", err);
+    }
   };
 
   return (
-    <>
-      {/* ─────────────────────────────────────────────── */}
-      {/* PROFILE CONTENT */}
-      {/* ─────────────────────────────────────────────── */}
-
+    <View style={[styles.container, { backgroundColor: colors.primaryBackground }]}>
       <ScrollView
-        style={styles.container}
+        style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
+            colors={[colors.primaryAccent]}
+            tintColor={colors.primaryAccent}
             progressBackgroundColor={colors.cardBackground}
           />
         }
       >
-        <Text style={styles.pageHeader}>My Profile & Settings</Text>
+        {/* ========================================================================= */}
+        {/* 1. HEADER                                                                 */}
+        {/* ========================================================================= */}
+        <View style={styles.header}>
+          <View style={[styles.headerIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
+            <Icon name="account-circle" size={24} color={colors.primaryAccent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.headerTitle, { color: colors.primaryText }]}>Student Profile</Text>
+            <Text style={[styles.headerSubtitle, { color: colors.secondaryText }]}>
+              Digital Campus ID & Personal Credentials
+            </Text>
+          </View>
+
+          {/* Quick ID Card Launcher */}
+          <TouchableOpacity
+            style={[styles.idCardPillBtn, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+            onPress={() => setShowIdCardModal(true)}
+            activeOpacity={0.8}
+          >
+            <Icon name="smart-card" size={16} color={colors.primaryAccent} />
+            <Text style={[styles.idCardPillBtnText, { color: colors.primaryAccent }]}>Smart ID</Text>
+          </TouchableOpacity>
+        </View>
 
         {isLoading ? (
           <View style={{ marginTop: 10 }}>
@@ -238,387 +266,1030 @@ export default function ProfileScreen({ onLogout }) {
           </View>
         ) : (
           <>
-            {/* PROFILE CARD */}
+            {/* ========================================================================= */}
+            {/* 2. DIGITAL STUDENT ID CARD HERO                                           */}
+            {/* ========================================================================= */}
             <Animated.View
               style={[
-                styles.profileCard,
-                { opacity: cardOpacity, transform: [{ translateY: cardTranslateY }] },
+                styles.idHeroCard,
+                {
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.divider,
+                  opacity: cardOpacity,
+                  transform: [{ translateY: cardTranslateY }],
+                },
               ]}
             >
-          <Animated.View style={{ transform: [{ scale: avatarScale }] }}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => setShowFullImage(true)}
-              onLongPress={() => setPhotoOptionsVisible(true)}
-              onPressIn={pressIn}
-              onPressOut={pressOut}
-            >
-              <View style={styles.avatarCircle}>
-                {profileImage ? (
-                  <Image source={{ uri: profileImage }} style={styles.avatarImage} />
-                ) : (
-                  <Icon name="account" size={48} color="#fff" />
-                )}
+              {/* Card Top Strip */}
+              <View style={styles.idHeroTop}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Icon name="shield-check" size={16} color="#10B981" />
+                  <Text style={[styles.idHeroUniversity, { color: colors.secondaryText }]}>
+                    {institution?.name?.toUpperCase() || "EDUNEX INSTITUTE OF TECHNOLOGY"}
+                  </Text>
+                </View>
+                <View style={styles.activeStatusPill}>
+                  <View style={styles.greenDot} />
+                  <Text style={styles.activeStatusText}>STUDENT ACTIVE</Text>
+                </View>
+              </View>
 
-                <TouchableOpacity style={styles.qrBadge} onPress={openQr}>
-                  <Icon name="qrcode-scan" size={12} color="#fff" />
+              {/* Middle Row: Avatar + Info */}
+              <View style={styles.idHeroMiddle}>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => setShowFullImage(true)}
+                  onLongPress={() => setPhotoOptionsVisible(true)}
+                  style={styles.avatarWrap}
+                >
+                  <Animated.View style={{ transform: [{ scale: avatarScale }] }}>
+                    <View style={[styles.avatarCircle, { borderColor: colors.primaryAccent }]}>
+                      {profileImage ? (
+                        <Image source={{ uri: profileImage }} style={styles.avatarImage} />
+                      ) : (
+                        <View style={[styles.avatarPlaceholder, { backgroundColor: colors.primaryAccent }]}>
+                          <Text style={styles.avatarInitials}>
+                            {(user.name || "")
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .slice(0, 2) || "?"}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </Animated.View>
+
+                  <TouchableOpacity
+                    style={[styles.cameraBadge, { backgroundColor: colors.primaryAccent }]}
+                    onPress={() => setPhotoOptionsVisible(true)}
+                  >
+                    <Icon name="camera" size={12} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </TouchableOpacity>
+
+                <View style={styles.idHeroDetails}>
+                  <Text style={[styles.idHeroName, { color: colors.primaryText }]} numberOfLines={1}>
+                    {user.name}
+                  </Text>
+                  <Text style={[styles.idHeroProgram, { color: colors.primaryAccent }]} numberOfLines={1}>
+                    {user.program}
+                  </Text>
+
+                  <View style={styles.idHeroMetaRow}>
+                    <Text style={[styles.idHeroMetaBadge, { backgroundColor: colors.primaryBackground, color: colors.secondaryText }]}>
+                      Roll: {user.id}
+                    </Text>
+                    <Text style={[styles.idHeroMetaBadge, { backgroundColor: colors.primaryBackground, color: colors.secondaryText }]}>
+                      Blood: {(user.bloodGroup || "—").split(" ")[0]}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Card Footer: Quick Actions */}
+              <View style={[styles.idHeroFooter, { borderTopColor: colors.divider }]}>
+                <TouchableOpacity
+                  style={[styles.idActionBtn, { borderColor: colors.divider }]}
+                  onPress={() => setShowIdCardModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <Icon name="qrcode-scan" size={15} color={colors.primaryAccent} />
+                  <Text style={[styles.idActionBtnText, { color: colors.primaryAccent }]}>Digital QR Pass</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.idActionBtn, { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }]}
+                  onPress={() => setEditModalVisible(true)}
+                  activeOpacity={0.85}
+                >
+                  <Icon name="account-edit-outline" size={15} color="#FFFFFF" />
+                  <Text style={[styles.idActionBtnText, { color: "#FFFFFF" }]}>Edit Profile</Text>
                 </TouchableOpacity>
               </View>
+            </Animated.View>
+
+            {/* ========================================================================= */}
+            {/* 3. ACADEMIC ADVISOR & MENTORSHIP CARD                                     */}
+            {/* ========================================================================= */}
+            <View style={[styles.infoSectionCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.infoSectionHeader}>
+                <Icon name="account-tie-outline" size={20} color={colors.primaryAccent} />
+                <Text style={[styles.infoSectionTitle, { color: colors.primaryText }]}>Class Advisor & Mentorship</Text>
+              </View>
+
+              <View style={[styles.advisorRow, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                <View style={[styles.advisorIconCircle, { backgroundColor: colors.primaryAccent + "18" }]}>
+                  <Icon name="school-outline" size={22} color={colors.primaryAccent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.advisorName, { color: colors.primaryText }]}>{user.advisor}</Text>
+                  <Text style={[styles.advisorEmail, { color: colors.secondaryText }]}>{user.mentorEmail}</Text>
+                  <Text style={[styles.advisorDept, { color: colors.disabledText }]}>Head Class Counselor · Office Hours: 09:00 - 16:30</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* ========================================================================= */}
+            {/* 4. ACADEMIC & INSTITUTIONAL CREDENTIALS                                   */}
+            {/* ========================================================================= */}
+            <View style={[styles.infoSectionCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.infoSectionHeader}>
+                <Icon name="certificate-outline" size={20} color={colors.primaryAccent} />
+                <Text style={[styles.infoSectionTitle, { color: colors.primaryText }]}>Academic Credentials</Text>
+              </View>
+
+              <View style={styles.dataGrid}>
+                <DataRow icon="card-account-details-outline" label="University Reg. No." value={user.regNo} colors={colors} />
+                <DataRow icon="identifier" label="Roll Number" value={user.id} colors={colors} />
+                <DataRow icon="school-outline" label="Academic Batch" value={user.batch} colors={colors} />
+                <DataRow icon="domain" label="Department" value={user.department} colors={colors} />
+                <DataRow icon="home-city-outline" label="Residence Status" value={user.hostel} colors={colors} />
+              </View>
+            </View>
+
+            {/* ========================================================================= */}
+            {/* 5. CONTACT & BIOGRAPHICAL DETAILS                                         */}
+            {/* ========================================================================= */}
+            <View style={[styles.infoSectionCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.infoSectionHeader}>
+                <Icon name="card-text-outline" size={20} color={colors.primaryAccent} />
+                <Text style={[styles.infoSectionTitle, { color: colors.primaryText }]}>Personal & Contact Information</Text>
+              </View>
+
+              <View style={styles.dataGrid}>
+                <DataRow icon="email-outline" label="Official Email" value={user.email} colors={colors} />
+                <DataRow icon="phone-outline" label="Mobile Number" value={user.phone} colors={colors} />
+                <DataRow icon="calendar-account" label="Date of Birth" value={user.dob} colors={colors} />
+                <DataRow icon="water-outline" label="Blood Group" value={user.bloodGroup} colors={colors} />
+                <DataRow icon="map-marker-outline" label="Permanent Address" value={user.address} colors={colors} />
+              </View>
+            </View>
+
+            {/* ========================================================================= */}
+            {/* 6. GUARDIAN & EMERGENCY CONTACTS                                          */}
+            {/* ========================================================================= */}
+            <View style={[styles.infoSectionCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.infoSectionHeader}>
+                <Icon name="shield-account-outline" size={20} color={colors.primaryAccent} />
+                <Text style={[styles.infoSectionTitle, { color: colors.primaryText }]}>Guardian & Emergency Contacts</Text>
+              </View>
+
+              <View style={styles.dataGrid}>
+                <DataRow icon="account-supervisor-circle" label="Father's Name" value={user.fatherName} colors={colors} />
+                <DataRow icon="phone-outline" label="Father's Contact" value={user.fatherPhone} colors={colors} />
+                <DataRow icon="account-heart-outline" label="Mother's Name" value={user.motherName} colors={colors} />
+                <DataRow icon="alert-decagram-outline" label="Emergency Contact" value={user.emergencyContact} colors={colors} />
+              </View>
+            </View>
+
+            {/* ========================================================================= */}
+            {/* 7. APP PREFERENCES & SECURITY SETTINGS                                    */}
+            {/* ========================================================================= */}
+            <View style={[styles.infoSectionCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.infoSectionHeader}>
+                <Icon name="cog-outline" size={20} color={colors.primaryAccent} />
+                <Text style={[styles.infoSectionTitle, { color: colors.primaryText }]}>App Settings & Security</Text>
+              </View>
+
+              <View style={styles.dataGrid}>
+                <PrefRow
+                  icon="bell-ring-outline"
+                  label="Push Notifications"
+                  value={isNotificationsEnabled}
+                  onToggle={toggleNotifications}
+                  colors={colors}
+                />
+                <PrefRow
+                  icon="theme-light-dark"
+                  label="Dark Theme Mode"
+                  value={isDarkMode}
+                  onToggle={toggleTheme}
+                  colors={colors}
+                />
+
+                <TouchableOpacity
+                  style={[styles.securityActionRow, { borderBottomColor: colors.divider }]}
+                  onPress={() => setResetModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <Icon name="lock-reset" size={20} color={colors.primaryAccent} />
+                    <Text style={[styles.securityActionText, { color: colors.primaryText }]}>
+                      Change Account Password
+                    </Text>
+                  </View>
+                  <Icon name="chevron-right" size={20} color={colors.disabledText} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.securityActionRow}
+                  onPress={() =>
+                    Alert.alert(
+                      "🔒 E2EE & Privacy Status",
+                      "Your device is protected under EduNex End-to-End Encryption and Institutional Privacy Consent."
+                    )
+                  }
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <Icon name="shield-lock-outline" size={20} color="#10B981" />
+                    <Text style={[styles.securityActionText, { color: "#10B981" }]}>
+                      Privacy & E2EE Verified
+                    </Text>
+                  </View>
+                  <Icon name="check-circle" size={18} color="#10B981" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Logout Button */}
+            <TouchableOpacity
+              style={styles.logoutBtn}
+              onPress={() => setLogoutVisible(true)}
+              activeOpacity={0.85}
+            >
+              <Icon name="logout-variant" size={18} color="#EF4444" />
+              <Text style={styles.logoutBtnText}>Log Out of EduNex</Text>
             </TouchableOpacity>
-          </Animated.View>
-
-          <View style={styles.detailsArea}>
-            <Text style={styles.nameText}>{user.name}</Text>
-            <Text style={styles.programText}>{user.program}</Text>
-            <Text style={styles.idText}>ID: {user.id}</Text>
-
-            <TouchableOpacity style={styles.editBtn} onPress={() => setEditModalVisible(true)}>
-              <Icon name="pencil" size={16} color="#fff" />
-              <Text style={styles.editBtnText}>Edit Profile</Text>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-
-        <Text style={styles.sectionHeader}>Contact Information</Text>
-        <View style={styles.card}>
-          <ContactRow icon="email-outline" label="Email" value={user.email} colors={colors} />
-          <ContactRow icon="phone-outline" label="Phone" value={user.phone} colors={colors} />
-          <ContactRow icon="map-marker-outline" label="Address" value={user.address} colors={colors} />
-        </View>
-
-        <Text style={styles.sectionHeader}>App Preferences</Text>
-        <View style={styles.card}>
-          <PrefRow icon="bell-outline" label="Notifications" value={isNotificationsEnabled} onToggle={toggleNotifications} colors={colors} />
-          <PrefRow icon="theme-light-dark" label="Dark Mode" value={isDarkMode} onToggle={toggleTheme} colors={colors} />
-
-          <TouchableOpacity style={styles.rowTouch} onPress={() => setResetModalVisible(true)}>
-            <Icon name="lock-outline" size={20} color={colors.primaryAccent} />
-            <Text style={[styles.rowLabel, { color: colors.primaryAccent }]}>Change Password</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={styles.logoutBtn} onPress={() => setLogoutVisible(true)}>
-          <Icon name="logout" size={18} color="#fff" />
-          <Text style={styles.logoutBtnText}>Log Out</Text>
-        </TouchableOpacity>
-        </>
+          </>
         )}
 
-        <View style={{ height: 90 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* FULL IMAGE */}
+      {/* ========================================================================= */}
+      {/* 8. DIGITAL SMART ID CARD MODAL                                            */}
+      {/* ========================================================================= */}
+      {showIdCardModal && (
+        <Modal visible={showIdCardModal} transparent animationType="fade" onRequestClose={() => setShowIdCardModal(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.idCardModalBody, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              {/* Top Bar */}
+              <View style={styles.idCardModalHeader}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Icon name="school" size={22} color={colors.primaryAccent} />
+                  <Text style={[styles.idCardModalHeaderTitle, { color: colors.primaryText }]}>Digital Campus ID Card</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowIdCardModal(false)}>
+                  <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Physical Card Mockup */}
+              <View style={styles.idCardPhysicalFrame}>
+                <View style={[styles.idCardBadgeHeader, { backgroundColor: colors.primaryAccent }]}>
+                  <Text style={styles.idCardInstituteText}>{institution?.name?.toUpperCase() || "EDUNEX INSTITUTE OF TECHNOLOGY"}</Text>
+                  <Text style={styles.idCardInstituteSub}>{institution?.accreditation || "Autonomous Institution"}</Text>
+                </View>
+
+                <View style={styles.idCardInnerBody}>
+                  <View style={styles.idCardInnerTop}>
+                    <View style={styles.idCardPhotoBox}>
+                      {profileImage ? (
+                        <Image source={{ uri: profileImage }} style={styles.idCardPhotoImage} />
+                      ) : (
+                        <Icon name="account" size={48} color="#94A3B8" />
+                      )}
+                    </View>
+
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.idCardCandidateName}>{user.name}</Text>
+                      <Text style={styles.idCardCandidateDept}>{user.department}</Text>
+                      <Text style={styles.idCardCandidateRoll}>Roll: {user.id}</Text>
+                      <Text style={styles.idCardCandidateReg}>Reg: {user.regNo}</Text>
+                    </View>
+                  </View>
+
+                  {/* QR Code Biometric Gate Pass */}
+                  <View style={styles.idCardQrWrapper}>
+                    <View style={styles.qrFrameWhite}>
+                      <QRCode
+                        value={JSON.stringify({
+                          student: user.name,
+                          rollNo: user.id,
+                          regNo: user.regNo,
+                          dept: user.department,
+                          validity: user.batch || "MAY-2027",
+                          status: "VERIFIED_ACTIVE",
+                        })}
+                        size={120}
+                        color="#0F172A"
+                        backgroundColor="#FFFFFF"
+                      />
+                    </View>
+                    <Text style={styles.qrScanInstruction}>Scan at Campus Library & Biometric Gate 1</Text>
+                  </View>
+
+                  <View style={styles.idCardMetaFooter}>
+                    <Text style={styles.idCardValidity}>Valid Upto: {user.batch || "—"}</Text>
+                    <Text style={styles.idCardBlood}>Blood: {user.bloodGroup}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Modal Actions */}
+              <View style={styles.idModalActionRow}>
+                <TouchableOpacity
+                  style={[styles.shareIdBtn, { backgroundColor: colors.primaryAccent }]}
+                  onPress={handleShareIdCard}
+                  activeOpacity={0.85}
+                >
+                  <Icon name="share-variant" size={16} color="#FFFFFF" />
+                  <Text style={styles.shareIdBtnText}>Share Digital ID</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.closeIdBtn, { borderColor: colors.divider }]}
+                  onPress={() => setShowIdCardModal(false)}
+                >
+                  <Text style={[styles.closeIdBtnText, { color: colors.primaryText }]}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* FULL-SCREEN AVATAR MODAL */}
       <Modal visible={showFullImage} transparent animationType="fade">
         <Pressable style={styles.fullImageOverlay} onPress={() => setShowFullImage(false)}>
           {profileImage ? (
-            <Image source={{ uri: profileImage }} style={styles.fullImage} />
+            <Image source={{ uri: profileImage }} style={styles.fullImage} resizeMode="contain" />
           ) : (
-            <Icon name="account" size={160} color="#fff" />
+            <Icon name="account" size={160} color="#FFFFFF" />
           )}
         </Pressable>
       </Modal>
 
-      {/* QR MODAL */}
-      <Modal visible={showQr} transparent>
-        <Pressable style={styles.qrFullScreen} onPress={closeQr}>
-          <Animated.View style={{ transform: [{ scale: qrScale }] }}>
-            <View style={styles.qrCard}>
-              <QRCode value="https://www.instagram.com/geek_kid_offc" size={220} color={colors.primaryText} backgroundColor="transparent" />
-            </View>
-          </Animated.View>
-        </Pressable>
-      </Modal>
-
-      {/* PHOTO OPTIONS */}
+      {/* PHOTO PICKER SHEET */}
       <Modal visible={photoOptionsVisible} transparent animationType="fade">
         <View style={styles.optionsOverlay}>
-          <View style={[styles.optionsCard, { backgroundColor: colors.cardBackground }]}>
-            <Pressable style={styles.optionRow} onPress={() => setShowFullImage(true)}>
-              <Icon name="eye-outline" size={22} color={colors.primaryAccent} />
-              <Text style={styles.optionText}>View Photo</Text>
-            </Pressable>
+          <View style={[styles.optionsCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+            <Text style={[styles.optionsTitle, { color: colors.primaryText }]}>Profile Photo Options</Text>
 
-            <Pressable style={styles.optionRow} onPress={pickFromGallery}>
-              <Icon name="image-outline" size={22} color={colors.primaryAccent} />
-              <Text style={styles.optionText}>Choose from Gallery</Text>
-            </Pressable>
+            <TouchableOpacity style={styles.optionRow} onPress={() => { setPhotoOptionsVisible(false); setShowFullImage(true); }}>
+              <Icon name="eye-outline" size={20} color={colors.primaryAccent} />
+              <Text style={[styles.optionText, { color: colors.primaryText }]}>View Current Photo</Text>
+            </TouchableOpacity>
 
-            <Pressable style={styles.optionRow} onPress={takePhoto}>
-              <Icon name="camera-outline" size={22} color={colors.primaryAccent} />
-              <Text style={styles.optionText}>Take Photo</Text>
-            </Pressable>
+            <TouchableOpacity style={styles.optionRow} onPress={pickFromGallery}>
+              <Icon name="image-outline" size={20} color={colors.primaryAccent} />
+              <Text style={[styles.optionText, { color: colors.primaryText }]}>Choose from Gallery</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.optionRow} onPress={takePhoto}>
+              <Icon name="camera-outline" size={20} color={colors.primaryAccent} />
+              <Text style={[styles.optionText, { color: colors.primaryText }]}>Take New Photo</Text>
+            </TouchableOpacity>
 
             {profileImage && (
-              <Pressable style={styles.optionRow} onPress={removePhoto}>
-                <Icon name="delete-outline" size={22} color="#E74C3C" />
-                <Text style={[styles.optionText, { color: "#E74C3C" }]}>Remove Photo</Text>
-              </Pressable>
+              <TouchableOpacity style={styles.optionRow} onPress={removePhoto}>
+                <Icon name="trash-can-outline" size={20} color="#EF4444" />
+                <Text style={[styles.optionText, { color: "#EF4444" }]}>Remove Photo</Text>
+              </TouchableOpacity>
             )}
 
-            <Pressable style={[styles.optionRow, styles.cancelOption]} onPress={() => setPhotoOptionsVisible(false)}>
-              <Text style={[styles.optionText, { color: colors.primaryAccent, fontWeight: "700" }]}>Cancel</Text>
-            </Pressable>
+            <TouchableOpacity
+              style={[styles.cancelOptionBtn, { borderColor: colors.divider }]}
+              onPress={() => setPhotoOptionsVisible(false)}
+            >
+              <Text style={[styles.cancelOptionText, { color: colors.secondaryText }]}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* EDIT PROFILE (UPDATED UI) */}
+      {/* EDIT PROFILE MODAL */}
       <EditProfileModal
         visible={editModalVisible}
         onClose={() => setEditModalVisible(false)}
         user={user}
         onSave={handleProfileUpdate}
-        colors={colors}
       />
 
-      {/* RESET PASSWORD */}
-      <ResetPasswordModal visible={resetModalVisible} onClose={() => setResetModalVisible(false)} />
+      {/* RESET PASSWORD MODAL */}
+      <ResetPasswordModal
+        visible={resetModalVisible}
+        onClose={() => setResetModalVisible(false)}
+      />
 
-      {/* LOGOUT BOTTOM SHEET */}
-      <Modal visible={logoutVisible} transparent animationType="slide">
-        <View style={styles.bottomOverlay}>
-          <View style={[styles.bottomSheet, { backgroundColor: colors.cardBackground }]}>
-            <Icon name="alert-circle-outline" size={50} color="#E74C3C" />
-            <Text style={[styles.popupTitle, { color: colors.primaryText }]}>Confirm Logout</Text>
-            <Text style={[styles.popupMessage, { color: colors.secondaryText }]}>
-              Are you sure you want to log out of your account?
+      {/* LOGOUT CONFIRMATION MODAL */}
+      <Modal visible={logoutVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.logoutCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+            <Icon name="alert-circle-outline" size={44} color="#EF4444" />
+            <Text style={[styles.logoutTitle, { color: colors.primaryText }]}>Log Out of EduNex?</Text>
+            <Text style={[styles.logoutSub, { color: colors.secondaryText }]}>
+              You will need to sign in again with your institutional credentials to access student services.
             </Text>
 
-            <View style={styles.popupButtons}>
-              <Pressable onPress={() => setLogoutVisible(false)} style={[styles.cancelBtn, { backgroundColor: colors.primaryAccent }]}>
-                <Text style={styles.popupBtnText}>Cancel</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => {
-                  setLogoutVisible(false);
-                  handleLogout();
-                }}
-                style={[styles.logoutConfirmBtn, { backgroundColor: "#E74C3C" }]}
+            <View style={styles.logoutActionRow}>
+              <TouchableOpacity
+                style={[styles.cancelLogoutBtn, { borderColor: colors.divider }]}
+                onPress={() => setLogoutVisible(false)}
               >
-                <Text style={styles.popupBtnText}>Logout</Text>
-              </Pressable>
+                <Text style={[styles.cancelLogoutText, { color: colors.primaryText }]}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.confirmLogoutBtn}
+                onPress={handleLogout}
+              >
+                <Text style={styles.confirmLogoutText}>Log Out</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </>
+    </View>
   );
 }
 
-/* ─────────────────────────────────────────────────────────── */
-/* CONTACT ROW + PREF ROW */
-/* ─────────────────────────────────────────────────────────── */
-
-const ContactRow = ({ icon, label, value, colors }) => (
-  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
-    <Icon name={icon} size={20} color={colors.primaryAccent} />
-    <View style={{ marginLeft: 12, flex: 1 }}>
-      <Text style={{ fontSize: 13, color: colors.secondaryText }}>{label}</Text>
-      <Text style={{ fontSize: 15, fontWeight: "600", color: colors.primaryText }}>{value}</Text>
-    </View>
-  </View>
-);
-
-const PrefRow = ({ icon, label, value, onToggle, colors }) => (
-  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-    <View style={{ flexDirection: "row", alignItems: "center" }}>
-      <Icon name={icon} size={20} color={colors.primaryAccent} />
-      <Text style={{ marginLeft: 10, fontSize: 16, color: colors.primaryText }}>{label}</Text>
-    </View>
-
-    <Switch
-      value={value}
-      onValueChange={onToggle}
-      thumbColor={colors.cardBackground}
-      trackColor={{ false: colors.divider, true: colors.primaryAccent }}
-    />
-  </View>
-);
-
-/* ─────────────────────────────────────────────────────────── */
-/* UPDATED EDIT PROFILE MODAL (WITH NEW INPUT STYLE) */
-/* ─────────────────────────────────────────────────────────── */
-
-function EditProfileModal({ visible, onClose, user, onSave, colors }) {
-  const styles = editModalStyles(colors);
-
-  const [name, setName] = useState(user.name || "");
-  const [program, setProgram] = useState(user.program || "");
-  const [email, setEmail] = useState(user.email || "");
-  const [phone, setPhone] = useState(user.phone || "");
-  const [address, setAddress] = useState(user.address || "");
-
-  useEffect(() => {
-    setName(user.name || "");
-    setProgram(user.program || "");
-    setEmail(user.email || "");
-    setPhone(user.phone || "");
-    setAddress(user.address || "");
-  }, [user, visible]);
-
-  const handleSave = () => {
-    onSave({ name, program, email, phone, address });
-    onClose();
-  };
-
+// ---------------- Sub-Components ----------------
+function DataRow({ icon, label, value, colors }) {
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.container}
-      >
-        <Pressable style={styles.backdrop} onPress={onClose} />
-
-        <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
-          <Text style={[styles.title, { color: colors.primaryText }]}>Edit Profile</Text>
-
-          <ScrollView style={{ width: "100%", marginTop: 8 }}>
-            <EditField icon="account" value={name} onChange={setName} placeholder="Full name" colors={colors} />
-            <EditField icon="school-outline" value={program} onChange={setProgram} placeholder="Program" colors={colors} />
-            <EditField icon="email-outline" value={email} onChange={setEmail} placeholder="Email" keyboardType="email-address" colors={colors} />
-            <EditField icon="phone-outline" value={phone} onChange={setPhone} placeholder="Phone" keyboardType="phone-pad" colors={colors} />
-            <EditField icon="map-marker-outline" value={address} onChange={setAddress} placeholder="Address" multiline colors={colors} />
-          </ScrollView>
-
-          <View style={styles.buttonsRow}>
-            <Pressable onPress={onClose} style={[styles.btn, { backgroundColor: "#999" }]}>
-              <Text style={styles.btnText}>Cancel</Text>
-            </Pressable>
-
-            <Pressable onPress={handleSave} style={[styles.btn, { backgroundColor: colors.primaryAccent }]}>
-              <Text style={styles.btnText}>Save</Text>
-            </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    <View style={[stylesSub.dataRow, { borderBottomColor: colors.divider }]}>
+      <View style={stylesSub.dataIconWrap}>
+        <Icon name={icon} size={18} color={colors.primaryAccent} />
+      </View>
+      <View style={{ flex: 1, marginLeft: 10 }}>
+        <Text style={[stylesSub.dataLabel, { color: colors.secondaryText }]}>{label}</Text>
+        <Text style={[stylesSub.dataValue, { color: colors.primaryText }]}>{value || "—"}</Text>
+      </View>
+    </View>
   );
 }
 
-/* UPDATED INPUT FIELD (LIKE YOUR SCREENSHOT) */
-const EditField = ({ icon, value, onChange, placeholder, colors, multiline, keyboardType }) => (
-  <View
-    style={{
-      flexDirection: "row",
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: colors.divider,
-      borderRadius: 16,
-      paddingHorizontal: 14,
-      paddingVertical: multiline ? 12 : 10,
-      marginBottom: 14,
-      backgroundColor: colors.primaryBackground,
-      elevation: 1,
-    }}
-  >
-    <Icon name={icon} size={22} color={colors.primaryAccent} style={{ marginRight: 12 }} />
+function PrefRow({ icon, label, value, onToggle, colors }) {
+  return (
+    <View style={[stylesSub.dataRow, { borderBottomColor: colors.divider, justifyContent: "space-between" }]}>
+      <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+        <View style={stylesSub.dataIconWrap}>
+          <Icon name={icon} size={18} color={colors.primaryAccent} />
+        </View>
+        <Text style={[stylesSub.prefLabel, { color: colors.primaryText, marginLeft: 10 }]}>{label}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onToggle}
+        thumbColor={value ? colors.primaryAccent : "#94A3B8"}
+        trackColor={{ false: "#CBD5E1", true: colors.primaryAccent + "55" }}
+      />
+    </View>
+  );
+}
 
-    <TextInput
-      value={value}
-      onChangeText={onChange}
-      placeholder={placeholder}
-      placeholderTextColor={colors.secondaryText}
-      style={{
-        flex: 1,
-        color: colors.primaryText,
-        fontSize: 15,
-        paddingVertical: 2,
-        minHeight: multiline ? 60 : 24,
-      }}
-      multiline={multiline}
-      keyboardType={keyboardType}
-    />
-  </View>
-);
+const stylesSub = StyleSheet.create({
+  dataRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  dataIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "rgba(100,100,100,0.06)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dataLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  dataValue: {
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  prefLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+});
 
-/* ─────────────────────────────────────────────────────────── */
-/* STYLES */
-/* ─────────────────────────────────────────────────────────── */
-
-const getStyles = (colors) =>
+// ---------------- Styles ----------------
+const getStyles = (colors, isDarkMode) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.primaryBackground },
-    contentContainer: { padding: 20, paddingTop: Platform.OS === "android" ? 70 : 50 },
-    pageHeader: { fontSize: 24, fontWeight: "800", marginBottom: 18, color: colors.primaryText },
-    profileCard: {
+    container: { flex: 1 },
+    scrollView: { flex: 1 },
+    contentContainer: { paddingHorizontal: 16, paddingTop: 44, paddingBottom: 80 },
+
+    /* Header */
+    header: {
       flexDirection: "row",
-      backgroundColor: colors.cardBackground,
-      padding: 14,
-      borderRadius: 14,
-      elevation: 6,
-      marginBottom: 18,
       alignItems: "center",
-      borderLeftWidth: 4,
-      borderLeftColor: colors.primaryAccent,
+      gap: 10,
+      marginBottom: 16,
     },
-    avatarCircle: {
-      width: 96,
-      height: 96,
-      borderRadius: 60,
-      backgroundColor: colors.primaryAccent,
+    headerIconWrap: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
       justifyContent: "center",
       alignItems: "center",
-      position: "relative",
     },
-    avatarImage: { width: "100%", height: "100%", borderRadius: 60 },
-    qrBadge: {
-      position: "absolute",
-      bottom: -5,
-      right: -5,
-      backgroundColor: "#000",
-      padding: 5,
-      borderRadius: 30,
-      borderWidth: 3,
-      borderColor: colors.cardBackground,
+    headerTitle: {
+      fontSize: 20,
+      fontWeight: "800",
+      letterSpacing: -0.3,
     },
-    detailsArea: { marginLeft: 16, flex: 1 },
-    nameText: { fontSize: 20, fontWeight: "800", color: colors.primaryText },
-    programText: { fontSize: 14, color: colors.secondaryText, marginTop: 3 },
-    idText: { fontSize: 13, color: colors.disabledText, marginTop: 4 },
-    editBtn: {
-      marginTop: 10,
+    headerSubtitle: {
+      fontSize: 11.5,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    idCardPillBtn: {
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: colors.primaryAccent,
-      paddingVertical: 8,
-      paddingHorizontal: 14,
-      width: 120,
-      borderRadius: 8,
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 10,
+      borderWidth: 1,
     },
-    editBtnText: { color: "#fff", marginLeft: 8, fontWeight: "700" },
-    sectionHeader: { fontSize: 18, fontWeight: "700", color: colors.primaryText, marginBottom: 8 },
-    card: { backgroundColor: colors.cardBackground, padding: 14, borderRadius: 12, elevation: 3, marginBottom: 18 },
-    rowTouch: { flexDirection: "row", alignItems: "center", paddingVertical: 10 },
-    rowLabel: { marginLeft: 12, fontSize: 16 },
-    logoutBtn: { backgroundColor: "#E74C3C", paddingVertical: 14, borderRadius: 12, flexDirection: "row", alignItems: "center", justifyContent: "center" },
-    logoutBtnText: { color: "#fff", marginLeft: 10, fontWeight: "700" },
-    fullImageOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.9)" },
-    fullImage: { width: "92%", height: "80%", resizeMode: "contain", borderRadius: 10 },
-    qrFullScreen: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.9)" },
-    qrCard: { backgroundColor: "transparent", padding: 10, alignItems: "center" },
-    optionsOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.45)" },
-    optionsCard: { width: "86%", padding: 14, borderRadius: 12, elevation: 6 },
-    optionRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12 },
-    optionText: { marginLeft: 12, fontSize: 16, color: colors.primaryText },
-    cancelOption: { justifyContent: "center" },
-    bottomOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)" },
-    bottomSheet: { padding: 22, borderTopLeftRadius: 20, borderTopRightRadius: 20, alignItems: "center" },
-    popupTitle: { fontSize: 20, fontWeight: "800", marginTop: 12 },
-    popupMessage: { fontSize: 15, marginTop: 6, textAlign: "center" },
-    popupButtons: { flexDirection: "row", width: "100%", marginTop: 22, gap: 12 },
-    cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: "center" },
-    logoutConfirmBtn: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: "center" },
-    popupBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  });
+    idCardPillBtnText: {
+      fontSize: 11.5,
+      fontWeight: "700",
+    },
 
-const editModalStyles = (colors) =>
-  StyleSheet.create({
-    container: { flex: 1, justifyContent: "center" },
-    backdrop: { position: "absolute", backgroundColor: "rgba(0,0,0,0.45)", top: 0, bottom: 0, left: 0, right: 0 },
-    card: { marginHorizontal: 16, borderRadius: 12, padding: 16, elevation: 10, width: "94%", alignSelf: "center" },
-    title: { fontSize: 18, fontWeight: "800", textAlign: "center", marginBottom: 10 },
-    buttonsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 16 },
-    btn: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: "center", marginHorizontal: 6 },
-    btnText: { color: "#fff", fontWeight: "800" },
+    /* Digital ID Hero Card */
+    idHeroCard: {
+      borderRadius: 20,
+      borderWidth: 1,
+      padding: 16,
+      marginBottom: 14,
+      elevation: 3,
+      shadowColor: "#000",
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+    },
+    idHeroTop: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    idHeroUniversity: {
+      fontSize: 9.5,
+      fontWeight: "900",
+      letterSpacing: 0.5,
+    },
+    activeStatusPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: "#10B98114",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    greenDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: "#10B981",
+    },
+    activeStatusText: {
+      color: "#10B981",
+      fontSize: 8.5,
+      fontWeight: "900",
+    },
+    idHeroMiddle: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 14,
+    },
+    avatarWrap: {
+      position: "relative",
+    },
+    avatarCircle: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      borderWidth: 2,
+      overflow: "hidden",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    avatarImage: {
+      width: "100%",
+      height: "100%",
+    },
+    avatarPlaceholder: {
+      width: "100%",
+      height: "100%",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    avatarInitials: {
+      color: "#FFFFFF",
+      fontSize: 22,
+      fontWeight: "900",
+    },
+    cameraBadge: {
+      position: "absolute",
+      bottom: 0,
+      right: 0,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1.5,
+      borderColor: "#FFFFFF",
+    },
+    idHeroDetails: {
+      flex: 1,
+      marginLeft: 14,
+    },
+    idHeroName: {
+      fontSize: 16,
+      fontWeight: "900",
+      letterSpacing: -0.2,
+    },
+    idHeroProgram: {
+      fontSize: 12,
+      fontWeight: "700",
+      marginTop: 2,
+    },
+    idHeroMetaRow: {
+      flexDirection: "row",
+      gap: 6,
+      marginTop: 6,
+    },
+    idHeroMetaBadge: {
+      fontSize: 10,
+      fontWeight: "700",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    idHeroFooter: {
+      flexDirection: "row",
+      gap: 8,
+      borderTopWidth: 1,
+      paddingTop: 12,
+    },
+    idActionBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      paddingVertical: 9,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    idActionBtnText: {
+      fontSize: 12,
+      fontWeight: "700",
+    },
+
+    /* Advisor Section */
+    infoSectionCard: {
+      borderRadius: 18,
+      borderWidth: 1,
+      padding: 14,
+      marginBottom: 12,
+    },
+    infoSectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 10,
+    },
+    infoSectionTitle: {
+      fontSize: 13.5,
+      fontWeight: "800",
+    },
+    advisorRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      padding: 12,
+      borderRadius: 14,
+      borderWidth: 1,
+    },
+    advisorIconCircle: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    advisorName: {
+      fontSize: 13.5,
+      fontWeight: "800",
+    },
+    advisorEmail: {
+      fontSize: 11.5,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+    advisorDept: {
+      fontSize: 10.5,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    dataGrid: {
+      gap: 2,
+    },
+    securityActionRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+    },
+    securityActionText: {
+      fontSize: 13,
+      fontWeight: "700",
+    },
+    logoutBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      backgroundColor: "#EF444414",
+      paddingVertical: 14,
+      borderRadius: 14,
+      marginTop: 8,
+    },
+    logoutBtnText: {
+      color: "#EF4444",
+      fontSize: 13.5,
+      fontWeight: "800",
+    },
+
+    /* Digital Smart ID Modal */
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.75)",
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 18,
+    },
+    idCardModalBody: {
+      width: "100%",
+      borderRadius: 22,
+      borderWidth: 1,
+      padding: 18,
+      elevation: 12,
+    },
+    idCardModalHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 14,
+    },
+    idCardModalHeaderTitle: {
+      fontSize: 16,
+      fontWeight: "800",
+    },
+    idCardPhysicalFrame: {
+      borderRadius: 16,
+      overflow: "hidden",
+      backgroundColor: isDarkMode ? "#1E293B" : "#F8FAFC",
+      borderWidth: 1.5,
+      borderColor: colors.primaryAccent,
+    },
+    idCardBadgeHeader: {
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      alignItems: "center",
+    },
+    idCardInstituteText: {
+      color: "#FFFFFF",
+      fontSize: 11,
+      fontWeight: "900",
+      letterSpacing: 0.5,
+    },
+    idCardInstituteSub: {
+      color: "rgba(255,255,255,0.8)",
+      fontSize: 8.5,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+    idCardInnerBody: {
+      padding: 14,
+      alignItems: "center",
+    },
+    idCardInnerTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      width: "100%",
+      marginBottom: 14,
+    },
+    idCardPhotoBox: {
+      width: 60,
+      height: 72,
+      borderRadius: 8,
+      backgroundColor: "#E2E8F0",
+      justifyContent: "center",
+      alignItems: "center",
+      overflow: "hidden",
+    },
+    idCardPhotoImage: {
+      width: "100%",
+      height: "100%",
+    },
+    idCardCandidateName: {
+      fontSize: 14.5,
+      fontWeight: "900",
+      color: isDarkMode ? "#F8FAFC" : "#0F172A",
+    },
+    idCardCandidateDept: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: colors.primaryAccent,
+      marginTop: 2,
+    },
+    idCardCandidateRoll: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: isDarkMode ? "#94A3B8" : "#475569",
+      marginTop: 2,
+    },
+    idCardCandidateReg: {
+      fontSize: 10.5,
+      fontWeight: "500",
+      color: isDarkMode ? "#94A3B8" : "#475569",
+    },
+    idCardQrWrapper: {
+      alignItems: "center",
+      marginVertical: 10,
+    },
+    qrFrameWhite: {
+      padding: 8,
+      borderRadius: 12,
+      backgroundColor: "#FFFFFF",
+      borderWidth: 1.5,
+      borderColor: colors.primaryAccent,
+    },
+    qrScanInstruction: {
+      fontSize: 9.5,
+      fontWeight: "600",
+      color: isDarkMode ? "#94A3B8" : "#64748B",
+      marginTop: 6,
+    },
+    idCardMetaFooter: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      width: "100%",
+      borderTopWidth: 1,
+      borderTopColor: "rgba(150,150,150,0.15)",
+      paddingTop: 8,
+      marginTop: 4,
+    },
+    idCardValidity: {
+      fontSize: 10,
+      fontWeight: "700",
+      color: isDarkMode ? "#94A3B8" : "#475569",
+    },
+    idCardBlood: {
+      fontSize: 10,
+      fontWeight: "800",
+      color: "#EF4444",
+    },
+    idModalActionRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginTop: 14,
+    },
+    shareIdBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 12,
+      borderRadius: 12,
+    },
+    shareIdBtnText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    closeIdBtn: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    closeIdBtnText: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+
+    /* Full Avatar Overlay */
+    fullImageOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.9)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    fullImage: {
+      width: "90%",
+      height: "70%",
+      borderRadius: 16,
+    },
+
+    /* Photo Options */
+    optionsOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.65)",
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 20,
+    },
+    optionsCard: {
+      width: "100%",
+      borderRadius: 20,
+      borderWidth: 1,
+      padding: 18,
+    },
+    optionsTitle: {
+      fontSize: 15,
+      fontWeight: "800",
+      marginBottom: 12,
+    },
+    optionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: "rgba(150,150,150,0.1)",
+    },
+    optionText: {
+      fontSize: 13.5,
+      fontWeight: "700",
+    },
+    cancelOptionBtn: {
+      alignItems: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      marginTop: 10,
+    },
+    cancelOptionText: {
+      fontSize: 13,
+      fontWeight: "700",
+    },
+
+    /* Logout Dialog */
+    logoutCard: {
+      width: "100%",
+      borderRadius: 22,
+      borderWidth: 1,
+      padding: 22,
+      alignItems: "center",
+    },
+    logoutTitle: {
+      fontSize: 17,
+      fontWeight: "800",
+      marginTop: 10,
+    },
+    logoutSub: {
+      fontSize: 12,
+      textAlign: "center",
+      marginTop: 6,
+      lineHeight: 16,
+    },
+    logoutActionRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 18,
+      width: "100%",
+    },
+    cancelLogoutBtn: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    cancelLogoutText: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    confirmLogoutBtn: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      backgroundColor: "#EF4444",
+    },
+    confirmLogoutText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "800",
+    },
   });

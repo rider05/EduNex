@@ -1,1407 +1,1107 @@
-// AdmissionFormScreen.js
-import React, { useRef, useEffect, useState, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  ScrollView,
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  Animated,
-  Dimensions,
-  Platform,
-  Alert,
-  KeyboardAvoidingView,
-  Image,
-  ActivityIndicator,
-  StatusBar,
+  ScrollView,
+  TouchableOpacity,
   RefreshControl,
+  TextInput,
+  Image,
+  Modal,
+  StatusBar,
+  ActivityIndicator,
+  Share,
+  Alert,
 } from "react-native";
-import DropDownPicker from "react-native-dropdown-picker";
-import { Checkbox } from "expo-checkbox";
-import * as ImagePicker from "expo-image-picker";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import DateTimePicker from "@react-native-community/datetimepicker";
-import { useTheme } from "../../context/ThemeContext";
-import { api } from "../../services/api"; // REST backend (replaces Firestore)
+import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Toast from "react-native-toast-message";
-import { useNavigation } from "@react-navigation/native";
+import { useTheme } from "../../context/ThemeContext";
+import { api } from "../../services/api";
+import { getStudentData } from "../../services/dataService";
+import { showToast } from "../../utils/toastService";
 
-const screenHeight = Dimensions.get("window").height;
-const STORAGE_KEY = "@admission_form_progress_v1";
+// ---------------- Standard Documents Dataset ----------------
+const INITIAL_DOCUMENTS = [];
 
-const formatDateToDisplay = (date) => {
-  if (!(date instanceof Date) || isNaN(date)) return "";
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
-};
+const CATEGORIES = ["All", "Academic", "Identity", "Affidavits"];
 
-const getStyles = (colors) =>
-  StyleSheet.create({
-    outerContainer: {
-      flex: 1,
-      backgroundColor: colors.primaryBackground,
-      paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight || 24) + 10 : 100,
-    },
-    scrollContent: {
-      paddingBottom: 30,
-      minHeight: screenHeight * 0.9,
-      paddingHorizontal: 15,
-      paddingTop: 20,
-    },
-    progressContainer: {
-      flexDirection: "row",
-      justifyContent: "center",
-      alignItems: "center",
-      marginBottom: 20,
-      paddingHorizontal: 10,
-    },
-    progressDot: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-      justifyContent: "center",
-      alignItems: "center",
-      borderWidth: 2,
-    },
-    progressDotActive: {
-      backgroundColor: (/** colors param used at runtime */) => null,
-    },
-    progressDotCompleted: {
-      backgroundColor: (/** colors param used at runtime */) => null,
-    },
-    progressDotInactive: {
-      backgroundColor: (/** colors param used at runtime */) => null,
-    },
-    progressDotText: {
-      fontSize: 16,
-      fontWeight: "700",
-    },
-    progressDotTextActive: {
-      color: "#FFFFFF",
-    },
-    progressDotTextInactive: {
-      color: "#999999",
-    },
-    progressLine: {
-      height: 2,
-      width: 42,
-      marginHorizontal: 5,
-    },
-    formCard: {
-      marginBottom: 60,
-      marginTop: 4,
-      padding: 20,
-      backgroundColor: (/** colors param used at runtime */) => null,
-      borderRadius: 15,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.08,
-      shadowRadius: 10,
-      elevation: 8,
-      zIndex: 10,
-    },
-    formTitle: {
-      fontSize: 26,
-      fontWeight: "bold",
-      textAlign: "center",
-      marginBottom: 10,
-    },
-    stepSubtitle: {
-      fontSize: 20,
-      fontWeight: "700",
-      marginBottom: 12,
-      paddingBottom: 5,
-      borderBottomWidth: 1,
-    },
-    label: {
-      fontSize: 16,
-      marginBottom: 8,
-      fontWeight: "600",
-    },
-    input: {
-      borderWidth: 1,
-      borderRadius: 8,
-      paddingHorizontal: 15,
-      paddingVertical: 12,
-      fontSize: 16,
-      marginBottom: 15,
-    },
-    textArea: {
-      minHeight: 80,
-      textAlignVertical: "top",
-    },
-    dateInputContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      borderWidth: 1,
-      borderRadius: 8,
-      marginBottom: 15,
-    },
-    dateInput: {
-      flex: 1,
-      paddingHorizontal: 15,
-      paddingVertical: 12,
-      fontSize: 16,
-    },
-    calendarIconWrapper: {
-      padding: 12,
-    },
-    dropdownPicker: {
-      borderRadius: 8,
-      minHeight: 50,
-      marginBottom: 15,
-    },
-    dropdownMenu: {
-      borderRadius: 8,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.1,
-      shadowRadius: 5,
-      elevation: 5,
-    },
-    dropdownMenuMaxHeight: {
-      maxHeight: 250,
-    },
-    dropdownText: {
-      fontSize: 16,
-    },
-    checkboxContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginBottom: 12,
-    },
-    checkboxLabel: {
-      fontSize: 15,
-      marginLeft: 8,
-      flexShrink: 1,
-    },
-    navButtonContainer: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginTop: 18,
-      alignItems: "center",
-    },
-    backButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingVertical: 10,
-      paddingHorizontal: 15,
-      borderRadius: 10,
-      borderWidth: 1,
-      minWidth: 120,
-      justifyContent: "center",
-    },
-    backButtonText: {
-      fontSize: 16,
-      fontWeight: "bold",
-      marginLeft: 8,
-    },
-    nextButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingVertical: 10,
-      paddingHorizontal: 15,
-      borderRadius: 10,
-      minWidth: 120,
-      justifyContent: "center",
-    },
-    nextButtonText: {
-      fontSize: 16,
-      fontWeight: "bold",
-      marginRight: 8,
-    },
-    submitButton: {
-      paddingVertical: 14,
-      borderRadius: 10,
-      alignItems: "center",
-      minWidth: 160,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.4,
-      shadowRadius: 5,
-      elevation: 6,
-      flexDirection: "row",
-      justifyContent: "center",
-    },
-    submitButtonText: {
-      fontSize: 16,
-      fontWeight: "bold",
-      marginLeft: 8,
-    },
-    submitButtonDisabled: {
-      opacity: 0.6,
-    },
-    successBox: {
-      padding: 25,
-      borderRadius: 15,
-      borderWidth: 1,
-      alignItems: "center",
-      marginTop: 30,
-    },
-    successText: {
-      fontSize: 22,
-      fontWeight: "700",
-      textAlign: "center",
-      marginBottom: 10,
-    },
-    successSubtext: {
-      fontSize: 16,
-      textAlign: "center",
-    },
-    successTickCircle: {
-      width: 140,
-      height: 140,
-      borderRadius: 70,
-      justifyContent: "center",
-      alignItems: "center",
-      marginBottom: 18,
-      // backgroundColor will be assigned dynamically
-    },
-    applyNewTextBtn: {
-      marginTop: 18,
-    },
-    applyNewText: {
-      textDecorationLine: "underline",
-      fontWeight: "700",
-    },
-    chooseFileButton: {
-      paddingVertical: 12,
-      paddingHorizontal: 15,
-      borderRadius: 7,
-      marginRight: 10,
-      alignSelf: "stretch",
-      justifyContent: "center",
-    },
-    chooseFileButtonText: {
-      fontSize: 16,
-      fontWeight: "bold",
-    },
-    fileNameText: {
-      flex: 1,
-      fontSize: 14,
-      marginTop: 15,
-      textAlign: "center",
-    },
-    imagePreview: {
-      width: 120,
-      height: 120,
-      borderRadius: 10,
-      marginTop: 10,
-      alignSelf: "center",
-    },
-    loadingOverlay: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: "rgba(0, 0, 0, 0.7)",
-      justifyContent: "center",
-      alignItems: "center",
-      zIndex: 9999,
-    },
-    loadingText: {
-      color: "#FFFFFF",
-      fontSize: 16,
-      marginTop: 10,
-    },
-  });
+export default function DocumentVerificationScreen() {
+  const { colors, isDarkMode } = useTheme();
+  const styles = getStyles(colors, isDarkMode);
 
-export default function AdmissionFormScreen() {
-  const { colors } = useTheme();
-  const stylesBase = getStyles(colors);
-
-  // Because some style props are dynamic functions in getStyles above, we need to compose runtime styles here:
-  const styles = StyleSheet.create({
-    ...Object.keys(stylesBase).reduce((acc, key) => {
-      const val = stylesBase[key];
-      // if the style value is a function (we used placeholder pattern), call it
-      if (typeof val === "function") {
-        if (key === "progressDotActive") acc[key] = { ...stylesBase.progressDot, backgroundColor: colors.primary };
-        else if (key === "progressDotCompleted") acc[key] = { ...stylesBase.progressDot, backgroundColor: colors.success || "#28a745", borderColor: colors.success || "#28a745" };
-        else if (key === "progressDotInactive") acc[key] = { ...stylesBase.progressDot, backgroundColor: colors.inputBackground, borderColor: colors.divider };
-        else if (key === "formCard") acc[key] = { padding: 20, backgroundColor: colors.cardBackground, borderRadius: 15 };
-        else acc[key] = {};
-      } else {
-        acc[key] = val;
-      }
-      return acc;
-    }, {}),
-    // override/add runtime small styles:
-    progressLabel: {
-      fontSize: 10,
-      marginTop: 5,
-      textAlign: "center",
-      color: colors.secondaryText,
-    },
-    progressLabelActive: {
-      color: colors.primary,
-      fontWeight: "700",
-    },
-    progressLineActive: {
-      backgroundColor: colors.primary,
-    },
-    progressLineCompleted: {
-      backgroundColor: colors.success || "#28a745",
-    },
-    progressLineInactive: {
-      backgroundColor: colors.divider,
-    },
-    progressDotTextActive: {
-      color: "#FFFFFF",
-    },
-    progressDotTextInactive: {
-      color: colors.disabledText,
-    },
-  });
-
-  const navigation = useNavigation();
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const [currentStep, setCurrentStep] = useState(1);
-  const totalSteps = 4;
-  const [completedSteps, setCompletedSteps] = useState([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [documents, setDocuments] = useState(INITIAL_DOCUMENTS);
+  const [studentName, setStudentName] = useState("");
+  const [studentRollNo, setStudentRollNo] = useState("");
 
-  const onRefresh = useCallback(() => {
+  // Filters & Search
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Modals
+  const [selectedDocForDetail, setSelectedDocForDetail] = useState(null);
+  const [uploadModalVisible, setUploadModalVisible] = useState(false);
+  const [docToUpload, setDocToUpload] = useState(null);
+  const [tempUploadedImage, setTempUploadedImage] = useState(null);
+  const [isSubmittingDoc, setIsSubmittingDoc] = useState(false);
+
+  // Load from local storage / API
+  const loadDocuments = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem("student_verified_documents_v2");
+      if (raw) {
+        setDocuments(JSON.parse(raw));
+      }
+      const student = await getStudentData().catch(() => null);
+      if (student) {
+        setStudentName(student.name || "");
+        setStudentRollNo(student.rollNo || "");
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    loadDocuments();
+  }, [loadDocuments]);
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 800);
-  }, []);
+    await loadDocuments();
+    setRefreshing(false);
+  }, [loadDocuments]);
 
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [dob, setDob] = useState("");
-  const [dobDate, setDobDate] = useState(new Date());
+  // Calculations
+  const stats = useMemo(() => {
+    const total = documents.length;
+    const verified = documents.filter((d) => d.status === "verified").length;
+    const pending = documents.filter((d) => d.status === "pending").length;
+    const actionRequired = documents.filter((d) => d.status === "action_required" || d.status === "not_submitted").length;
+    const percentage = total > 0 ? Math.round((verified / total) * 100) : 0;
+    return { total, verified, pending, actionRequired, percentage };
+  }, [documents]);
 
-  const [isGenderOpen, setIsGenderOpen] = useState(false);
-  const [isBloodGroupOpen, setIsBloodGroupOpen] = useState(false);
-  const [isCourseOpen, setIsCourseOpen] = useState(false);
-  const [isCategoryOpen, setIsCategoryOpen] = useState(false);
-  const [isReligionOpen, setIsReligionOpen] = useState(false);
-  const [isNationalityOpen, setIsNationalityOpen] = useState(false);
-
-  // Personal Information
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [gender, setGender] = useState(null);
-  const [bloodGroup, setBloodGroup] = useState(null);
-  const [nationality, setNationality] = useState(null);
-  const [religion, setReligion] = useState(null);
-  const [category, setCategory] = useState(null);
-  const [aadharNumber, setAadharNumber] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [pincode, setPincode] = useState("");
-
-  // Academic Information
-  const [courseApplying, setCourseApplying] = useState(null);
-  const [tenthSchool, setTenthSchool] = useState("");
-  const [tenthBoard, setTenthBoard] = useState("");
-  const [tenthPercentage, setTenthPercentage] = useState("");
-  const [tenthYearOfPassing, setTenthYearOfPassing] = useState("");
-  const [twelfthSchool, setTwelfthSchool] = useState("");
-  const [twelfthBoard, setTwelfthBoard] = useState("");
-  const [twelfthPercentage, setTwelfthPercentage] = useState("");
-  const [twelfthYearOfPassing, setTwelfthYearOfPassing] = useState("");
-
-  // Parent/Guardian Information
-  const [fatherName, setFatherName] = useState("");
-  const [fatherOccupation, setFatherOccupation] = useState("");
-  const [fatherPhone, setFatherPhone] = useState("");
-  const [motherName, setMotherName] = useState("");
-  const [motherOccupation, setMotherOccupation] = useState("");
-  const [motherPhone, setMotherPhone] = useState("");
-  const [guardianName, setGuardianName] = useState("");
-  const [guardianRelation, setGuardianRelation] = useState("");
-  const [guardianPhone, setGuardianPhone] = useState("");
-  const [parentEmail, setParentEmail] = useState("");
-  const [annualIncome, setAnnualIncome] = useState("");
-
-  // Documents & Consent
-  const [photoUri, setPhotoUri] = useState(null);
-  const [photoFileName, setPhotoFileName] = useState("No file chosen");
-  const [consentTerms, setConsentTerms] = useState(false);
-  const [consentAccuracy, setConsentAccuracy] = useState(false);
-  const [formSubmitted, setFormSubmitted] = useState(false);
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
-  }, [fadeAnim]);
-
-  // Load saved progress
-  useEffect(() => {
-    const loadProgress = async () => {
-      try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const saved = JSON.parse(raw);
-          setFirstName(saved.firstName ?? "");
-          setLastName(saved.lastName ?? "");
-          setDob(saved.dob ?? "");
-          setDobDate(saved.dobDate ? new Date(saved.dobDate) : new Date());
-          setGender(saved.gender ?? null);
-          setBloodGroup(saved.bloodGroup ?? null);
-          setNationality(saved.nationality ?? null);
-          setReligion(saved.religion ?? null);
-          setCategory(saved.category ?? null);
-          setAadharNumber(saved.aadharNumber ?? "");
-          setEmail(saved.email ?? "");
-          setPhone(saved.phone ?? "");
-          setAddress(saved.address ?? "");
-          setCity(saved.city ?? "");
-          setState(saved.state ?? "");
-          setPincode(saved.pincode ?? "");
-
-          setCourseApplying(saved.courseApplying ?? null);
-          setTenthSchool(saved.tenthSchool ?? "");
-          setTenthBoard(saved.tenthBoard ?? "");
-          setTenthPercentage(saved.tenthPercentage ?? "");
-          setTenthYearOfPassing(saved.tenthYearOfPassing ?? "");
-          setTwelfthSchool(saved.twelfthSchool ?? "");
-          setTwelfthBoard(saved.twelfthBoard ?? "");
-          setTwelfthPercentage(saved.twelfthPercentage ?? "");
-          setTwelfthYearOfPassing(saved.twelfthYearOfPassing ?? "");
-
-          setFatherName(saved.fatherName ?? "");
-          setFatherOccupation(saved.fatherOccupation ?? "");
-          setFatherPhone(saved.fatherPhone ?? "");
-          setMotherName(saved.motherName ?? "");
-          setMotherOccupation(saved.motherOccupation ?? "");
-          setMotherPhone(saved.motherPhone ?? "");
-          setGuardianName(saved.guardianName ?? "");
-          setGuardianRelation(saved.guardianRelation ?? "");
-          setGuardianPhone(saved.guardianPhone ?? "");
-          setParentEmail(saved.parentEmail ?? "");
-          setAnnualIncome(saved.annualIncome ?? "");
-
-          setPhotoUri(saved.photoUri ?? null);
-          setPhotoFileName(saved.photoFileName ?? "No file chosen");
-          setConsentTerms(saved.consentTerms ?? false);
-          setConsentAccuracy(saved.consentAccuracy ?? false);
-
-          setCompletedSteps(saved.completedSteps ?? []);
-          setCurrentStep(saved.currentStep ?? 1);
-        }
-      } catch (e) {
-        console.warn("Failed to load saved progress", e);
+  // Filtered List
+  const filteredDocs = useMemo(() => {
+    return documents.filter((doc) => {
+      if (selectedCategory !== "All" && doc.category !== selectedCategory) {
+        return false;
       }
-    };
-    loadProgress();
-  }, []);
-
-  // Save progress to AsyncStorage
-  useEffect(() => {
-    const saveProgress = async () => {
-      try {
-        const payload = {
-          firstName,
-          lastName,
-          dob,
-          dobDate: dobDate ? dobDate.toISOString() : null,
-          gender,
-          bloodGroup,
-          nationality,
-          religion,
-          category,
-          aadharNumber,
-          email,
-          phone,
-          address,
-          city,
-          state,
-          pincode,
-
-          courseApplying,
-          tenthSchool,
-          tenthBoard,
-          tenthPercentage,
-          tenthYearOfPassing,
-          twelfthSchool,
-          twelfthBoard,
-          twelfthPercentage,
-          twelfthYearOfPassing,
-
-          fatherName,
-          fatherOccupation,
-          fatherPhone,
-          motherName,
-          motherOccupation,
-          motherPhone,
-          guardianName,
-          guardianRelation,
-          guardianPhone,
-          parentEmail,
-          annualIncome,
-
-          photoUri,
-          photoFileName,
-          consentTerms,
-          consentAccuracy,
-
-          completedSteps,
-          currentStep,
-        };
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-      } catch (_e) {
-        // silent fail
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchTitle = doc.title.toLowerCase().includes(q);
+        const matchCat = doc.category.toLowerCase().includes(q);
+        const matchSerial = doc.serialNo?.toLowerCase().includes(q);
+        if (!matchTitle && !matchCat && !matchSerial) return false;
       }
-    };
-    saveProgress();
-  }, [
-    firstName,
-    lastName,
-    dob,
-    dobDate,
-    gender,
-    bloodGroup,
-    nationality,
-    religion,
-    category,
-    aadharNumber,
-    email,
-    phone,
-    address,
-    city,
-    state,
-    pincode,
-    courseApplying,
-    tenthSchool,
-    tenthBoard,
-    tenthPercentage,
-    tenthYearOfPassing,
-    twelfthSchool,
-    twelfthBoard,
-    twelfthPercentage,
-    twelfthYearOfPassing,
-    fatherName,
-    fatherOccupation,
-    fatherPhone,
-    motherName,
-    motherOccupation,
-    motherPhone,
-    guardianName,
-    guardianRelation,
-    guardianPhone,
-    parentEmail,
-    annualIncome,
-    photoUri,
-    photoFileName,
-    consentTerms,
-    consentAccuracy,
-    completedSteps,
-    currentStep,
-  ]);
+      return true;
+    });
+  }, [documents, selectedCategory, searchQuery]);
 
-  const genderItems = [
-    { label: "Male", value: "Male" },
-    { label: "Female", value: "Female" },
-    { label: "Other", value: "Other" },
-  ];
-  const bloodGroupItems = [
-    { label: "A+", value: "A+" },
-    { label: "A-", value: "A-" },
-    { label: "B+", value: "B+" },
-    { label: "B-", value: "B-" },
-    { label: "AB+", value: "AB+" },
-    { label: "AB-", value: "AB-" },
-    { label: "O+", value: "O+" },
-    { label: "O-", value: "O-" },
-  ];
-  const courseItems = [
-    { label: "B.E Civil Engineering", value: "BE_CE" },
-    { label: "B.E Computer Science Engineering", value: "BE_CSE" },
-    { label: "B.E Mechanical Engineering", value: "BE_MECH" },
-    { label: "B.E Electrical & Electronics Engineering", value: "BE_EEE" },
-    { label: "B.E Electronics & Communication Engineering", value: "BE_ECE" },
-  ];
-  const categoryItems = [
-    { label: "General", value: "General" },
-    { label: "OBC", value: "OBC" },
-    { label: "SC", value: "SC" },
-    { label: "ST", value: "ST" },
-    { label: "EWS", value: "EWS" },
-  ];
-  const religionItems = [
-    { label: "Hindu", value: "Hindu" },
-    { label: "Muslim", value: "Muslim" },
-    { label: "Christian", value: "Christian" },
-    { label: "Sikh", value: "Sikh" },
-    { label: "Buddhist", value: "Buddhist" },
-    { label: "Other", value: "Other" },
-  ];
-  const nationalityItems = [
-    { label: "Indian", value: "Indian" },
-    { label: "Other", value: "Other" },
-  ];
-
-  const onChangeDate = (event, selectedDate) => {
-    const currentDate = selectedDate || dobDate;
-    setShowDatePicker(Platform.OS === "ios");
-    setDobDate(currentDate);
-    setDob(formatDateToDisplay(currentDate));
-  };
-  const showDatePickerModal = () => setShowDatePicker(true);
-
-  const onToggleDropdown = (setter) => {
-    if (setter !== setIsGenderOpen) setIsGenderOpen(false);
-    if (setter !== setIsBloodGroupOpen) setIsBloodGroupOpen(false);
-    if (setter !== setIsCourseOpen) setIsCourseOpen(false);
-    if (setter !== setIsCategoryOpen) setIsCategoryOpen(false);
-    if (setter !== setIsReligionOpen) setIsReligionOpen(false);
-    if (setter !== setIsNationalityOpen) setIsNationalityOpen(false);
-    setter((prev) => !prev);
-  };
-
-  const handleChooseFile = async () => {
+  // Pick Image from Library / Camera
+  const handlePickDocument = async (useCamera = false) => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.7,
+      let result;
+      if (useCamera) {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Permission Required", "Camera permission is required to scan document.");
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          quality: 0.8,
+          allowsEditing: true,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Permission Required", "Media library permission is required to select document.");
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 0.8,
+          allowsEditing: true,
+        });
+      }
+
+      if (!result.canceled && result.assets && result.assets[0]?.uri) {
+        setTempUploadedImage(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.log("Image picker error:", err);
+      showToast("Could not capture image", "error");
+    }
+  };
+
+  // Submit Uploaded Document
+  const handleConfirmUpload = async () => {
+    if (!tempUploadedImage || !docToUpload) {
+      Alert.alert("Document Required", "Please scan or select a document file to proceed.");
+      return;
+    }
+
+    setIsSubmittingDoc(true);
+    try {
+      const updatedList = documents.map((doc) => {
+        if (doc.id === docToUpload.id) {
+          return {
+            ...doc,
+            status: "pending",
+            fileUri: tempUploadedImage,
+            fileSize: "1.6 MB · Submitted Today",
+            notes: "Uploaded by student. Pending Registrar verification.",
+          };
+        }
+        return doc;
       });
-      if (!result.canceled) {
-        setPhotoUri(result.assets[0].uri);
-        setPhotoFileName(result.assets[0].uri.split("/").pop());
-        Toast.show({ type: "success", text1: "File selected", text2: result.assets[0].uri.split("/").pop() });
-      }
-    } catch (_err) {
-      Alert.alert("Error", "Failed to pick image");
-    }
-  };
 
-  const validateStep = () => {
-    switch (currentStep) {
-      case 1:
-        if (!firstName || !lastName || !dob || !gender || !email || !phone || !address || !city || !state || !pincode) {
-          Alert.alert("Validation Error", "Please fill all required fields in Personal Information.");
-          return false;
-        }
-        if (phone.length < 10) {
-          Alert.alert("Validation Error", "Please enter a valid 10-digit phone number.");
-          return false;
-        }
-        if (pincode.length !== 6) {
-          Alert.alert("Validation Error", "Please enter a valid 6-digit pincode.");
-          return false;
-        }
-        return true;
-      case 2:
-        if (!courseApplying || !tenthSchool || !tenthBoard || !tenthPercentage || !tenthYearOfPassing || !twelfthSchool || !twelfthBoard || !twelfthPercentage || !twelfthYearOfPassing) {
-          Alert.alert("Validation Error", "Please fill all required fields in Academic Information.");
-          return false;
-        }
-        return true;
-      case 3:
-        if (!fatherName || !fatherOccupation || !fatherPhone || !motherName || !motherOccupation || !motherPhone || !parentEmail) {
-          Alert.alert("Validation Error", "Please fill all required Parent/Guardian details.");
-          return false;
-        }
-        if (fatherPhone.length < 10 || motherPhone.length < 10) {
-          Alert.alert("Validation Error", "Please enter valid parent phone numbers.");
-          return false;
-        }
-        return true;
-      case 4:
-        if (!consentTerms || !consentAccuracy) {
-          Alert.alert("Consent Required", "You must agree to all terms and conditions.");
-          return false;
-        }
-        return true;
-      default:
-        return true;
-    }
-  };
-
-  const markStepCompleted = (stepNum) => {
-    setCompletedSteps((prev) => (prev.includes(stepNum) ? prev : [...prev, stepNum]));
-  };
-
-  const handleNext = () => {
-    if (validateStep()) {
-      markStepCompleted(currentStep);
-      Toast.show({ type: "success", text1: `Step ${currentStep} completed` });
-      setCurrentStep((prev) => Math.min(prev + 1, totalSteps));
-    }
-  };
-  const handleBack = () => setCurrentStep((prev) => Math.max(prev - 1, 1));
-
-  // Reset everything & clear storage
-  const resetAll = async () => {
-    try {
-      await AsyncStorage.removeItem(STORAGE_KEY);
-      await AsyncStorage.removeItem("@admissions_local");
-    } catch (_e) {
-      // ignore
-    }
-
-    // Reset all local state
-    setCurrentStep(1);
-    setCompletedSteps([]);
-    setIsSubmitting(false);
-
-    setDob("");
-    setDobDate(new Date());
-    setIsGenderOpen(false);
-    setIsBloodGroupOpen(false);
-    setIsCourseOpen(false);
-    setIsCategoryOpen(false);
-    setIsReligionOpen(false);
-    setIsNationalityOpen(false);
-
-    setFirstName("");
-    setLastName("");
-    setGender(null);
-    setBloodGroup(null);
-    setNationality(null);
-    setReligion(null);
-    setCategory(null);
-    setAadharNumber("");
-    setEmail("");
-    setPhone("");
-    setAddress("");
-    setCity("");
-    setState("");
-    setPincode("");
-
-    setCourseApplying(null);
-    setTenthSchool("");
-    setTenthBoard("");
-    setTenthPercentage("");
-    setTenthYearOfPassing("");
-    setTwelfthSchool("");
-    setTwelfthBoard("");
-    setTwelfthPercentage("");
-    setTwelfthYearOfPassing("");
-
-    setFatherName("");
-    setFatherOccupation("");
-    setFatherPhone("");
-    setMotherName("");
-    setMotherOccupation("");
-    setMotherPhone("");
-    setGuardianName("");
-    setGuardianRelation("");
-    setGuardianPhone("");
-    setParentEmail("");
-    setAnnualIncome("");
-
-    setPhotoUri(null);
-    setPhotoFileName("No file chosen");
-    setConsentTerms(false);
-    setConsentAccuracy(false);
-    setFormSubmitted(false);
-
-    Toast.show({ type: "success", text1: "Reset complete", text2: "You can apply a new form now." });
-  };
-
-  // Submission (no firebase image upload)
-  const handleSubmit = async () => {
-    if (!validateStep()) return;
-    setIsSubmitting(true);
-
-    try {
-      const admissionData = {
-        personalInfo: {
-          firstName,
-          lastName,
-          dateOfBirth: dob,
-          gender,
-          bloodGroup,
-          nationality,
-          religion,
-          category,
-          aadharNumber,
-          email,
-          phone,
-          address,
-          city,
-          state,
-          pincode,
-        },
-        academicInfo: {
-          courseApplying,
-          tenth: {
-            school: tenthSchool,
-            board: tenthBoard,
-            percentage: tenthPercentage,
-            yearOfPassing: tenthYearOfPassing,
-          },
-          twelfth: {
-            school: twelfthSchool,
-            board: twelfthBoard,
-            percentage: twelfthPercentage,
-            yearOfPassing: twelfthYearOfPassing,
-          },
-        },
-        parentInfo: {
-          father: { name: fatherName, occupation: fatherOccupation, phone: fatherPhone },
-          mother: { name: motherName, occupation: motherOccupation, phone: motherPhone },
-          guardian: { name: guardianName, relation: guardianRelation, phone: guardianPhone },
-          parentEmail,
-          annualIncome,
-        },
-        documents: { photoUri, photoFileName },
-        submittedAt: new Date().toISOString(),
-        status: "Pending",
-      };
+      setDocuments(updatedList);
+      await AsyncStorage.setItem("student_verified_documents_v2", JSON.stringify(updatedList));
 
       try {
-        await api.post("/admissions", admissionData);
-      } catch (apiErr) {
-        console.warn("Admission POST failed, saving locally:", apiErr?.message || apiErr);
-        const savedApplicationsRaw = await AsyncStorage.getItem("@admissions_local");
-        const savedApplications = savedApplicationsRaw ? JSON.parse(savedApplicationsRaw) : [];
-        await AsyncStorage.setItem("@admissions_local", JSON.stringify([...savedApplications, admissionData]));
-      }
+        await api.post("/documents/verify", {
+          docId: docToUpload.id,
+          title: docToUpload.title,
+          studentName: studentName || "",
+          rollNo: studentRollNo || "",
+          status: "pending",
+          uploadedAt: new Date().toISOString(),
+        });
+      } catch {}
 
-      setCompletedSteps([1, 2, 3, 4]);
-      setFormSubmitted(true);
-      setIsSubmitting(false);
-      await AsyncStorage.removeItem(STORAGE_KEY);
-
-      Toast.show({ type: "success", text1: "Application submitted", text2: "Your application has been received." });
-
-      // Try navigate to Dashboard (non-blocking)
-      try {
-        navigation.navigate("Dashboard");
-      } catch (_e) {
-        // ignore if route doesn't exist
-      }
-    } catch (error) {
-      setIsSubmitting(false);
-      console.error("Submission error:", error);
-      Toast.show({ type: "error", text1: "Submission failed", text2: "Please try again." });
-      Alert.alert("Error", "Failed to submit application. Please try again.");
+      showToast("📄 Document submitted for Registrar verification!", "success");
+      setUploadModalVisible(false);
+      setTempUploadedImage(null);
+      setDocToUpload(null);
+    } catch (err) {
+      console.log("Upload confirm error:", err);
+      Alert.alert("Error", "Could not submit document.");
+    } finally {
+      setIsSubmittingDoc(false);
     }
   };
 
-  const renderProgressIndicator = () => {
-    const steps = [
-      { num: 1, label: "Personal" },
-      { num: 2, label: "Academic" },
-      { num: 3, label: "Parent" },
-      { num: 4, label: "Documents" },
-    ];
-
-    return (
-      <View>
-        <View style={styles.progressContainer}>
-          {steps.map((step, index) => {
-            const isActive = currentStep === step.num;
-            const isCompleted = completedSteps.includes(step.num);
-            const dotStyle = isCompleted
-              ? { backgroundColor: colors.success, borderColor: colors.success }
-              : isActive
-              ? { backgroundColor: colors.primary, borderColor: colors.primary }
-              : { backgroundColor: colors.inputBackground, borderColor: colors.divider };
-
-            return (
-              <React.Fragment key={step.num}>
-                <View style={{ alignItems: "center" }}>
-                  <View style={[styles.progressDot, dotStyle]}>
-                    {isCompleted && !isActive ? (
-                      <Icon name="check" size={20} color="#FFFFFF" />
-                    ) : (
-                      <Text style={[styles.progressDotText, isActive || isCompleted ? { color: "#FFFFFF" } : { color: colors.disabledText }]}>
-                        {step.num}
-                      </Text>
-                    )}
-                  </View>
-                  <Text style={[styles.progressLabel, isActive && styles.progressLabelActive]}>{step.label}</Text>
-                </View>
-                {index < steps.length - 1 && (
-                  <View
-                    style={[
-                      styles.progressLine,
-                      isCompleted ? { backgroundColor: colors.success } : currentStep > step.num ? { backgroundColor: colors.primary } : { backgroundColor: colors.divider },
-                    ]}
-                  />
-                )}
-              </React.Fragment>
-            );
-          })}
-        </View>
-      </View>
-    );
+  // Share / Export Document Certificate
+  const handleShareDoc = async (doc) => {
+    try {
+      await Share.share({
+        title: `Verified Document - ${doc.title}`,
+        message: `🛡️ EDUNEX VERIFIED ACADEMIC CREDENTIAL\nDocument: ${doc.title}\nSerial No: ${doc.serialNo || "PENDING"}\nHolder: ${studentName} (${studentRollNo})\nCategory: ${doc.category}\nStatus: ${doc.status.toUpperCase()}\nVerified By: ${doc.verifiedBy || "Registrar Office"}`,
+      });
+      showToast("Document credential shared!", "success");
+    } catch (err) {
+      console.log("Share error:", err);
+    }
   };
-
-  const renderStep1 = () => (
-    <View>
-      <Text style={[styles.stepSubtitle, { color: colors.primaryText }]}>Personal Information</Text>
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>First Name *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={firstName} onChangeText={setFirstName} placeholder="Enter First Name" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Last Name *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={lastName} onChangeText={setLastName} placeholder="Enter Last Name" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Date of Birth (DD/MM/YYYY) *</Text>
-      <View style={[styles.dateInputContainer, { backgroundColor: colors.inputBackground, borderColor: colors.divider }]}>
-        <TextInput
-          style={[styles.dateInput, { color: colors.primaryText }]}
-          value={dob}
-          onChangeText={(input) => {
-            let numericValue = input.replace(/[^0-9]/g, "");
-            if (numericValue.length > 8) numericValue = numericValue.substring(0, 8);
-            let formattedValue = "";
-            for (let i = 0; i < numericValue.length; i++) {
-              if (i === 2 || i === 4) formattedValue += "/";
-              formattedValue += numericValue[i];
-            }
-            setDob(formattedValue);
-          }}
-          placeholder="DD/MM/YYYY"
-          placeholderTextColor={colors.disabledText}
-          keyboardType="numeric"
-          maxLength={10}
-        />
-        <TouchableOpacity style={styles.calendarIconWrapper} onPress={showDatePickerModal}>
-          <Icon name="calendar" size={24} color={colors.primary} />
-        </TouchableOpacity>
-      </View>
-      {showDatePicker && <DateTimePicker value={dobDate} mode="date" display={Platform.OS === "ios" ? "spinner" : "default"} onChange={onChangeDate} maximumDate={new Date()} />}
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Gender *</Text>
-      <DropDownPicker
-        open={isGenderOpen}
-        value={gender}
-        items={genderItems}
-        setOpen={() => onToggleDropdown(setIsGenderOpen)}
-        setValue={setGender}
-        placeholder="Select Gender"
-        style={[styles.dropdownPicker, { backgroundColor: colors.inputBackground, borderColor: colors.divider }]}
-        dropDownContainerStyle={[styles.dropdownMenu, styles.dropdownMenuMaxHeight, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
-        textStyle={[styles.dropdownText, { color: colors.primaryText }]}
-        zIndex={6000}
-        listMode="SCROLLVIEW"
-        placeholderStyle={{ color: colors.disabledText }}
-      />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Blood Group</Text>
-      <DropDownPicker
-        open={isBloodGroupOpen}
-        value={bloodGroup}
-        items={bloodGroupItems}
-        setOpen={() => onToggleDropdown(setIsBloodGroupOpen)}
-        setValue={setBloodGroup}
-        placeholder="Select Blood Group"
-        style={[styles.dropdownPicker, { backgroundColor: colors.inputBackground, borderColor: colors.divider }]}
-        dropDownContainerStyle={[styles.dropdownMenu, styles.dropdownMenuMaxHeight, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
-        textStyle={[styles.dropdownText, { color: colors.primaryText }]}
-        zIndex={5000}
-        listMode="SCROLLVIEW"
-        placeholderStyle={{ color: colors.disabledText }}
-      />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Nationality *</Text>
-      <DropDownPicker
-        open={isNationalityOpen}
-        value={nationality}
-        items={nationalityItems}
-        setOpen={() => onToggleDropdown(setIsNationalityOpen)}
-        setValue={setNationality}
-        placeholder="Select Nationality"
-        style={[styles.dropdownPicker, { backgroundColor: colors.inputBackground, borderColor: colors.divider }]}
-        dropDownContainerStyle={[styles.dropdownMenu, styles.dropdownMenuMaxHeight, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
-        textStyle={[styles.dropdownText, { color: colors.primaryText }]}
-        zIndex={4000}
-        listMode="SCROLLVIEW"
-        placeholderStyle={{ color: colors.disabledText }}
-      />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Religion</Text>
-      <DropDownPicker
-        open={isReligionOpen}
-        value={religion}
-        items={religionItems}
-        setOpen={() => onToggleDropdown(setIsReligionOpen)}
-        setValue={setReligion}
-        placeholder="Select Religion"
-        style={[styles.dropdownPicker, { backgroundColor: colors.inputBackground, borderColor: colors.divider }]}
-        dropDownContainerStyle={[styles.dropdownMenu, styles.dropdownMenuMaxHeight, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
-        textStyle={[styles.dropdownText, { color: colors.primaryText }]}
-        zIndex={3000}
-        listMode="SCROLLVIEW"
-        placeholderStyle={{ color: colors.disabledText }}
-      />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Category</Text>
-      <DropDownPicker
-        open={isCategoryOpen}
-        value={category}
-        items={categoryItems}
-        setOpen={() => onToggleDropdown(setIsCategoryOpen)}
-        setValue={setCategory}
-        placeholder="Select Category"
-        style={[styles.dropdownPicker, { backgroundColor: colors.inputBackground, borderColor: colors.divider }]}
-        dropDownContainerStyle={[styles.dropdownMenu, styles.dropdownMenuMaxHeight, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
-        textStyle={[styles.dropdownText, { color: colors.primaryText }]}
-        zIndex={2000}
-        listMode="SCROLLVIEW"
-        placeholderStyle={{ color: colors.disabledText }}
-      />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Aadhar Number</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]}
-        value={aadharNumber}
-        onChangeText={(text) => {
-          const numOnly = text.replace(/[^0-9]/g, "");
-          if (numOnly.length <= 12) setAadharNumber(numOnly);
-        }}
-        placeholder="Enter 12-digit Aadhar Number"
-        placeholderTextColor={colors.disabledText}
-        keyboardType="numeric"
-        maxLength={12}
-      />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Email *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={email} onChangeText={setEmail} placeholder="Enter Email Address" placeholderTextColor={colors.disabledText} keyboardType="email-address" autoCapitalize="none" />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Phone Number *</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]}
-        value={phone}
-        onChangeText={(text) => {
-          const numOnly = text.replace(/[^0-9]/g, "");
-          if (numOnly.length <= 10) setPhone(numOnly);
-        }}
-        placeholder="Enter 10-digit Phone Number"
-        placeholderTextColor={colors.disabledText}
-        keyboardType="phone-pad"
-        maxLength={10}
-      />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Address *</Text>
-      <TextInput style={[styles.input, styles.textArea, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={address} onChangeText={setAddress} placeholder="Enter Full Address" placeholderTextColor={colors.disabledText} multiline numberOfLines={3} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>City *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={city} onChangeText={setCity} placeholder="Enter City" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>State *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={state} onChangeText={setState} placeholder="Enter State" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Pincode *</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]}
-        value={pincode}
-        onChangeText={(text) => {
-          const numOnly = text.replace(/[^0-9]/g, "");
-          if (numOnly.length <= 6) setPincode(numOnly);
-        }}
-        placeholder="Enter 6-digit Pincode"
-        placeholderTextColor={colors.disabledText}
-        keyboardType="numeric"
-        maxLength={6}
-      />
-    </View>
-  );
-
-  const renderStep2 = () => (
-    <View>
-      <Text style={[styles.stepSubtitle, { color: colors.primaryText }]}>Academic Information</Text>
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Course Applying For *</Text>
-      <DropDownPicker
-        open={isCourseOpen}
-        value={courseApplying}
-        items={courseItems}
-        setOpen={() => onToggleDropdown(setIsCourseOpen)}
-        setValue={setCourseApplying}
-        placeholder="Select Course"
-        style={[styles.dropdownPicker, { backgroundColor: colors.inputBackground, borderColor: colors.divider }]}
-        dropDownContainerStyle={[styles.dropdownMenu, styles.dropdownMenuMaxHeight, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
-        textStyle={[styles.dropdownText, { color: colors.primaryText }]}
-        zIndex={4000}
-        listMode="SCROLLVIEW"
-        placeholderStyle={{ color: colors.disabledText }}
-      />
-
-      <Text style={[styles.stepSubtitle, { marginTop: 20, fontSize: 18, color: colors.primaryText }]}>10th Standard Details</Text>
-      <Text style={[styles.label, { color: colors.primaryText }]}>School Name *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={tenthSchool} onChangeText={setTenthSchool} placeholder="Enter School Name" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Board *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={tenthBoard} onChangeText={setTenthBoard} placeholder="e.g., CBSE, State Board" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Percentage/CGPA *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={tenthPercentage} onChangeText={setTenthPercentage} placeholder="Enter Percentage or CGPA" placeholderTextColor={colors.disabledText} keyboardType="decimal-pad" />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Year of Passing *</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]}
-        value={tenthYearOfPassing}
-        onChangeText={(text) => {
-          const numOnly = text.replace(/[^0-9]/g, "");
-          if (numOnly.length <= 4) setTenthYearOfPassing(numOnly);
-        }}
-        placeholder="e.g., 2022"
-        placeholderTextColor={colors.disabledText}
-        keyboardType="numeric"
-        maxLength={4}
-      />
-
-      <Text style={[styles.stepSubtitle, { marginTop: 20, fontSize: 18, color: colors.primaryText }]}>12th Standard Details</Text>
-      <Text style={[styles.label, { color: colors.primaryText }]}>School Name *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={twelfthSchool} onChangeText={setTwelfthSchool} placeholder="Enter School Name" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Board *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={twelfthBoard} onChangeText={setTwelfthBoard} placeholder="e.g., CBSE, State Board" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Percentage/CGPA *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={twelfthPercentage} onChangeText={setTwelfthPercentage} placeholder="Enter Percentage or CGPA" placeholderTextColor={colors.disabledText} keyboardType="decimal-pad" />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Year of Passing *</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]}
-        value={twelfthYearOfPassing}
-        onChangeText={(text) => {
-          const numOnly = text.replace(/[^0-9]/g, "");
-          if (numOnly.length <= 4) setTwelfthYearOfPassing(numOnly);
-        }}
-        placeholder="e.g., 2024"
-        placeholderTextColor={colors.disabledText}
-        keyboardType="numeric"
-        maxLength={4}
-      />
-    </View>
-  );
-
-  const renderStep3 = () => (
-    <View>
-      <Text style={[styles.stepSubtitle, { color: colors.primaryText }]}>Parent/Guardian Information</Text>
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>{"Father's Name *"}</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={fatherName} onChangeText={setFatherName} placeholder="Enter Father's Full Name" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Occupation *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={fatherOccupation} onChangeText={setFatherOccupation} placeholder="Enter Occupation" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Phone Number *</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]}
-        value={fatherPhone}
-        onChangeText={(text) => {
-          const numOnly = text.replace(/[^0-9]/g, "");
-          if (numOnly.length <= 10) setFatherPhone(numOnly);
-        }}
-        placeholder="Enter 10-digit Phone Number"
-        placeholderTextColor={colors.disabledText}
-        keyboardType="phone-pad"
-        maxLength={10}
-      />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>{"Mother's Name *"}</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={motherName} onChangeText={setMotherName} placeholder="Enter Mother's Full Name" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Occupation *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={motherOccupation} onChangeText={setMotherOccupation} placeholder="Enter Occupation" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Phone Number *</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]}
-        value={motherPhone}
-        onChangeText={(text) => {
-          const numOnly = text.replace(/[^0-9]/g, "");
-          if (numOnly.length <= 10) setMotherPhone(numOnly);
-        }}
-        placeholder="Enter 10-digit Phone Number"
-        placeholderTextColor={colors.disabledText}
-        keyboardType="phone-pad"
-        maxLength={10}
-      />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>{"Guardian's Name"}</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={guardianName} onChangeText={setGuardianName} placeholder="Enter Guardian's Name" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Relation</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={guardianRelation} onChangeText={setGuardianRelation} placeholder="e.g., Uncle, Aunt" placeholderTextColor={colors.disabledText} />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Phone Number</Text>
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]}
-        value={guardianPhone}
-        onChangeText={(text) => {
-          const numOnly = text.replace(/[^0-9]/g, "");
-          if (numOnly.length <= 10) setGuardianPhone(numOnly);
-        }}
-        placeholder="Enter 10-digit Phone Number"
-        placeholderTextColor={colors.disabledText}
-        keyboardType="phone-pad"
-        maxLength={10}
-      />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Parent Email *</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={parentEmail} onChangeText={setParentEmail} placeholder="Enter Parent Email Address" placeholderTextColor={colors.disabledText} keyboardType="email-address" autoCapitalize="none" />
-
-      <Text style={[styles.label, { color: colors.primaryText }]}>Annual Family Income</Text>
-      <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.divider, color: colors.primaryText }]} value={annualIncome} onChangeText={setAnnualIncome} placeholder="Enter Annual Income (Optional)" placeholderTextColor={colors.disabledText} keyboardType="numeric" />
-    </View>
-  );
-
-  const renderStep4 = () => (
-    <View>
-      <Text style={[styles.stepSubtitle, { color: colors.primaryText }]}>Upload Photo</Text>
-      <View style={{ flexDirection: "row", marginBottom: 10 }}>
-        <TouchableOpacity
-          style={[styles.chooseFileButton, { backgroundColor: colors.fileButtonBg || colors.inputBackground, borderColor: colors.divider }]}
-          onPress={handleChooseFile}
-        >
-          <Text style={[styles.chooseFileButtonText, { color: colors.primaryText }]}>Choose File</Text>
-        </TouchableOpacity>
-      </View>
-
-      {photoUri && <Image source={{ uri: photoUri }} style={styles.imagePreview} />}
-      <Text style={[styles.fileNameText, { color: colors.secondaryText }]}>{photoFileName}</Text>
-
-      <Text style={[styles.stepSubtitle, { marginTop: 20, color: colors.primaryText }]}>Declaration & Consent</Text>
-
-      <View style={styles.checkboxContainer}>
-        <Checkbox value={consentTerms} onValueChange={setConsentTerms} color={consentTerms ? colors.primary : colors.disabledText} />
-        <Text style={[styles.checkboxLabel, { color: colors.primaryText }]}>
-          I agree to the terms and conditions of the institution and understand that providing false information may lead to disqualification. *
-        </Text>
-      </View>
-
-      <View style={styles.checkboxContainer}>
-        <Checkbox value={consentAccuracy} onValueChange={setConsentAccuracy} color={consentAccuracy ? colors.primary : colors.disabledText} />
-        <Text style={[styles.checkboxLabel, { color: colors.primaryText }]}>
-          I certify that all information provided in this application is accurate and complete to the best of my knowledge. *
-        </Text>
-      </View>
-    </View>
-  );
-
-  if (formSubmitted) {
-    return (
-      <View style={[styles.outerContainer, { backgroundColor: colors.primaryBackground }]}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <Animated.View style={[{ opacity: fadeAnim }]}>
-            <View style={[styles.formCard, { backgroundColor: colors.cardBackground }]}>
-              <View style={[styles.successBox, { backgroundColor: colors.successBg || "#E9F7EF", borderColor: colors.success || "#28a745" }]}>
-                <View style={[styles.successTickCircle, { backgroundColor: colors.success || "#28a745" }]}>
-                  <Icon name="check" size={64} color="#FFFFFF" />
-                </View>
-                <Text style={[styles.successText, { color: colors.success || "#28a745" }]}>Application Submitted Successfully!</Text>
-                <Text style={[styles.successSubtext, { color: colors.primaryText }]}>
-                  Your admission application has been received. You will receive a confirmation email shortly.
-                </Text>
-                <Text style={[styles.successSubtext, { marginTop: 12, fontWeight: "700", color: colors.primaryText }]}>
-                  Application ID will be sent to your email.
-                </Text>
-
-                <TouchableOpacity style={styles.applyNewTextBtn} onPress={resetAll}>
-                  <Text style={[styles.applyNewText, { color: colors.primary }]}>Apply New Form</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Animated.View>
-        </ScrollView>
-        <Toast />
-      </View>
-    );
-  }
 
   return (
-    <KeyboardAvoidingView style={[styles.outerContainer, { backgroundColor: colors.primaryBackground }]} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <View style={[styles.container, { backgroundColor: colors.primaryBackground }]}>
+      <StatusBar translucent backgroundColor="transparent" barStyle={isDarkMode ? "light-content" : "dark-content"} />
+
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
+            colors={[colors.primaryAccent]}
+            tintColor={colors.primaryAccent}
             progressBackgroundColor={colors.cardBackground}
           />
         }
       >
-        <Animated.View style={{ opacity: fadeAnim }}>
-          <Text style={[styles.formTitle, { color: colors.primary }]}>{/* Title */}College Admission Form</Text>
+        {/* ========================================================================= */}
+        {/* 1. HEADER HUB                                                             */}
+        {/* ========================================================================= */}
+        <View style={styles.header}>
+          <View style={[styles.headerIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
+            <Icon name="shield-check" size={24} color={colors.primaryAccent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.headerTitle, { color: colors.primaryText }]}>Document Vault</Text>
+            <Text style={[styles.headerSubtitle, { color: colors.secondaryText }]}>
+              Academic Credentials, Certificates & Verification Hub
+            </Text>
+          </View>
+          <View style={[styles.kycSafeBadge, { backgroundColor: "#10B98118", borderColor: "#10B98144" }]}>
+            <Icon name="check-decagram" size={14} color="#10B981" />
+            <Text style={styles.kycSafeBadgeText}>KYC VERIFIED</Text>
+          </View>
+        </View>
 
-          {renderProgressIndicator()}
+        {/* ========================================================================= */}
+        {/* 2. VERIFICATION STATUS HERO CARD                                          */}
+        {/* ========================================================================= */}
+        <View style={[styles.heroCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+          <View style={styles.heroTopRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.heroSub, { color: colors.secondaryText }]}>INSTITUTIONAL CLEARANCE</Text>
+              <Text style={[styles.heroTitle, { color: colors.primaryText }]}>
+                {stats.percentage}% Credentials Verified
+              </Text>
+            </View>
 
-          <View style={[styles.formCard, { backgroundColor: colors.cardBackground }]}>
-            {currentStep === 1 && renderStep1()}
-            {currentStep === 2 && renderStep2()}
-            {currentStep === 3 && renderStep3()}
-            {currentStep === 4 && renderStep4()}
+            <View style={styles.heroGaugeBadge}>
+              <Text style={[styles.heroGaugeScore, { color: colors.primaryAccent }]}>
+                {stats.verified}/{stats.total}
+              </Text>
+              <Text style={[styles.heroGaugeSub, { color: colors.secondaryText }]}>Approved</Text>
+            </View>
+          </View>
 
-            <View style={styles.navButtonContainer}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                {currentStep > 1 && (
-                  <TouchableOpacity
+          {/* Progress Bar */}
+          <View style={styles.progressBarWrapper}>
+            <View style={[styles.progressBarTrack, { backgroundColor: colors.primaryBackground }]}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { width: `${stats.percentage}%`, backgroundColor: colors.primaryAccent },
+                ]}
+              />
+            </View>
+          </View>
+
+          {/* Stats Metrics Pill Strip */}
+          <View style={[styles.metricsRow, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+            <View style={styles.metricItem}>
+              <Text style={[styles.metricCount, { color: "#10B981" }]}>{stats.verified}</Text>
+              <Text style={[styles.metricLabel, { color: colors.secondaryText }]}>Verified</Text>
+            </View>
+            <View style={[styles.metricDivider, { backgroundColor: colors.divider }]} />
+            <View style={styles.metricItem}>
+              <Text style={[styles.metricCount, { color: "#F59E0B" }]}>{stats.pending}</Text>
+              <Text style={[styles.metricLabel, { color: colors.secondaryText }]}>In Review</Text>
+            </View>
+            <View style={[styles.metricDivider, { backgroundColor: colors.divider }]} />
+            <View style={styles.metricItem}>
+              <Text style={[styles.metricCount, { color: stats.actionRequired > 0 ? "#EF4444" : colors.secondaryText }]}>
+                {stats.actionRequired}
+              </Text>
+              <Text style={[styles.metricLabel, { color: colors.secondaryText }]}>Action Req.</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ========================================================================= */}
+        {/* 3. CATEGORY SELECTOR & SEARCH                                             */}
+        {/* ========================================================================= */}
+        <View style={styles.categoryStrip}>
+          {CATEGORIES.map((cat) => {
+            const isSel = selectedCategory === cat;
+            return (
+              <TouchableOpacity
+                key={cat}
+                style={[
+                  styles.categoryPill,
+                  isSel
+                    ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
+                    : { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+                ]}
+                onPress={() => setSelectedCategory(cat)}
+              >
+                <Text style={[styles.categoryPillText, { color: isSel ? "#FFFFFF" : colors.primaryText }]}>
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Search Bar */}
+        <View style={[styles.searchBox, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+          <Icon name="magnify" size={18} color={colors.secondaryText} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.primaryText }]}
+            placeholder="Search documents by certificate name or serial no..."
+            placeholderTextColor={colors.disabledText}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <Icon name="close-circle" size={16} color={colors.secondaryText} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* ========================================================================= */}
+        {/* 4. DOCUMENTS LIST                                                         */}
+        {/* ========================================================================= */}
+        <View style={{ gap: 10, marginTop: 4 }}>
+          {filteredDocs.map((item) => {
+            const isVerified = item.status === "verified";
+            const isPending = item.status === "pending";
+            const isAction = item.status === "action_required" || item.status === "not_submitted";
+
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.docCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+                onPress={() => setSelectedDocForDetail(item)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.docCardTop}>
+                  <View
                     style={[
-                      styles.backButton,
-                      { borderColor: colors.primary, backgroundColor: colors.cardBackground },
+                      styles.docIconCircle,
+                      isVerified
+                        ? { backgroundColor: "#10B98118" }
+                        : isPending
+                        ? { backgroundColor: "#F59E0B18" }
+                        : { backgroundColor: "#EF444418" },
                     ]}
-                    onPress={handleBack}
                   >
-                    <Icon name="arrow-left" size={18} color={colors.primary} />
-                    <Text style={[styles.backButtonText, { color: colors.primary }]}>Back</Text>
-                  </TouchableOpacity>
-                )}
+                    <Icon
+                      name={
+                        isVerified
+                          ? "file-certificate"
+                          : isPending
+                          ? "file-clock-outline"
+                          : "file-alert-outline"
+                      }
+                      size={22}
+                      color={isVerified ? "#10B981" : isPending ? "#F59E0B" : "#EF4444"}
+                    />
+                  </View>
+
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <View style={styles.docTitleRow}>
+                      <Text style={[styles.docTitle, { color: colors.primaryText }]} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      {item.required && (
+                        <View style={styles.mandatoryPill}>
+                          <Text style={styles.mandatoryPillText}>MANDATORY</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <Text style={[styles.docMetaText, { color: colors.secondaryText }]}>
+                      {item.docType} · {item.serialNo || "Pending Serial"}
+                    </Text>
+
+                    {item.fileSize && (
+                      <Text style={[styles.docSizeText, { color: colors.disabledText }]}>
+                        📎 {item.fileSize}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* Bottom Bar: Status Badge & Actions */}
+                <View style={[styles.docCardBottom, { borderTopColor: colors.divider }]}>
+                  <View
+                    style={[
+                      styles.docStatusBadge,
+                      isVerified
+                        ? { backgroundColor: "#10B98114" }
+                        : isPending
+                        ? { backgroundColor: "#F59E0B14" }
+                        : { backgroundColor: "#EF444414" },
+                    ]}
+                  >
+                    <Icon
+                      name={isVerified ? "check-circle" : isPending ? "clock-outline" : "alert-circle"}
+                      size={12}
+                      color={isVerified ? "#10B981" : isPending ? "#D97706" : "#EF4444"}
+                    />
+                    <Text
+                      style={[
+                        styles.docStatusText,
+                        { color: isVerified ? "#10B981" : isPending ? "#D97706" : "#EF4444" },
+                      ]}
+                    >
+                      {isVerified
+                        ? `VERIFIED ON ${item.verifiedAt?.toUpperCase() || "RECORD"}`
+                        : isPending
+                        ? "UNDER REGISTRAR REVIEW"
+                        : "SUBMISSION REQUIRED"}
+                    </Text>
+                  </View>
+
+                  {isAction ? (
+                    <TouchableOpacity
+                      style={[styles.uploadActionBtn, { backgroundColor: colors.primaryAccent }]}
+                      onPress={() => {
+                        setDocToUpload(item);
+                        setTempUploadedImage(null);
+                        setUploadModalVisible(true);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <Icon name="cloud-upload" size={14} color="#FFFFFF" />
+                      <Text style={styles.uploadActionBtnText}>Upload</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.viewDocActionBtn, { borderColor: colors.divider }]}
+                      onPress={() => setSelectedDocForDetail(item)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.viewDocActionBtnText, { color: colors.primaryAccent }]}>Inspect</Text>
+                      <Icon name="chevron-right" size={14} color={colors.primaryAccent} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+
+      {/* ========================================================================= */}
+      {/* 5. DOCUMENT DETAIL INSPECTION MODAL                                       */}
+      {/* ========================================================================= */}
+      {selectedDocForDetail && (
+        <Modal
+          visible={!!selectedDocForDetail}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSelectedDocForDetail(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              {/* Header */}
+              <View style={styles.modalHeaderRow}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                  <View style={[styles.docIconCircle, { backgroundColor: colors.primaryAccent + "18" }]}>
+                    <Icon name="file-certificate" size={22} color={colors.primaryAccent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.modalDocTitle, { color: colors.primaryText }]} numberOfLines={1}>
+                      {selectedDocForDetail.title}
+                    </Text>
+                    <Text style={[styles.modalDocSub, { color: colors.secondaryText }]}>
+                      {selectedDocForDetail.serialNo}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity onPress={() => setSelectedDocForDetail(null)}>
+                  <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
+                </TouchableOpacity>
               </View>
 
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                {currentStep < totalSteps ? (
-                  <TouchableOpacity
-                    style={[
-                      styles.nextButton,
-                      { backgroundColor: colors.primary, borderColor: colors.primary },
-                    ]}
-                    onPress={handleNext}
-                  >
-                    <Text style={[styles.nextButtonText, { color: colors.cardBackground }]}>Next</Text>
-                    <Icon name="arrow-right" size={18} color={colors.cardBackground} />
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    style={[
-                      styles.submitButton,
-                      { backgroundColor: colors.primary, borderColor: colors.primary },
-                      !(consentTerms && consentAccuracy) ? styles.submitButtonDisabled : null,
-                    ]}
-                    onPress={handleSubmit}
-                    disabled={isSubmitting || !(consentTerms && consentAccuracy)}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <ActivityIndicator size="small" color={colors.cardBackground} />
-                        <Text style={[styles.submitButtonText, { color: colors.cardBackground, marginLeft: 10 }]}>Submitting...</Text>
-                      </>
-                    ) : (
-                      <>
-                        <Icon name="send" size={18} color={colors.cardBackground} />
-                        <Text style={[styles.submitButtonText, { color: colors.cardBackground }]}>Submit Application</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                )}
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }}>
+                {/* Official Verification Seal */}
+                <View style={[styles.sealBox, { backgroundColor: "#10B98114", borderColor: "#10B98133" }]}>
+                  <Icon name="seal" size={24} color="#10B981" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.sealTitle, { color: "#10B981" }]}>
+                      INSTITUTIONALLY VERIFIED CREDENTIAL
+                    </Text>
+                    <Text style={[styles.sealSub, { color: colors.secondaryText }]}>
+                      Digitally authenticated by {selectedDocForDetail.verifiedBy || "Office of the Registrar"}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Audit Grid */}
+                <View style={[styles.auditGrid, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                  <View style={styles.auditRow}>
+                    <Text style={[styles.auditLabel, { color: colors.secondaryText }]}>Candidate Name</Text>
+                    <Text style={[styles.auditVal, { color: colors.primaryText }]}>{studentName || "—"}</Text>
+                  </View>
+                  <View style={styles.auditRow}>
+                    <Text style={[styles.auditLabel, { color: colors.secondaryText }]}>Roll Number</Text>
+                    <Text style={[styles.auditVal, { color: colors.primaryText }]}>{studentRollNo || "—"}</Text>
+                  </View>
+                  <View style={styles.auditRow}>
+                    <Text style={[styles.auditLabel, { color: colors.secondaryText }]}>Department</Text>
+                    <Text style={[styles.auditVal, { color: colors.primaryText }]}>—</Text>
+                  </View>
+                  <View style={styles.auditRow}>
+                    <Text style={[styles.auditLabel, { color: colors.secondaryText }]}>Verification Date</Text>
+                    <Text style={[styles.auditVal, { color: colors.primaryText }]}>
+                      {selectedDocForDetail.verifiedAt || "Under Review"}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Verification Remarks */}
+                <View style={{ marginTop: 10, paddingHorizontal: 4 }}>
+                  <Text style={[styles.remarksLabel, { color: colors.secondaryText }]}>Registrar Notes & Remarks</Text>
+                  <Text style={[styles.remarksText, { color: colors.primaryText }]}>
+                    {selectedDocForDetail.notes}
+                  </Text>
+                </View>
+              </ScrollView>
+
+              {/* Action Buttons */}
+              <View style={styles.modalActionRow}>
+                <TouchableOpacity
+                  style={[styles.shareCertBtn, { backgroundColor: colors.primaryAccent }]}
+                  onPress={() => handleShareDoc(selectedDocForDetail)}
+                  activeOpacity={0.85}
+                >
+                  <Icon name="share-variant" size={16} color="#FFFFFF" />
+                  <Text style={styles.shareCertBtnText}>Share Credential</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.closeModalBtn, { borderColor: colors.divider }]}
+                  onPress={() => setSelectedDocForDetail(null)}
+                >
+                  <Text style={[styles.closeModalBtnText, { color: colors.primaryText }]}>Close</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
-        </Animated.View>
-      </ScrollView>
-
-      {isSubmitting && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#FFFFFF" />
-          <Text style={styles.loadingText}>Submitting Application...</Text>
-        </View>
+        </Modal>
       )}
 
-      <Toast />
-    </KeyboardAvoidingView>
+      {/* ========================================================================= */}
+      {/* 6. DOCUMENT UPLOAD / SCAN MODAL                                           */}
+      {/* ========================================================================= */}
+      {uploadModalVisible && (
+        <Modal
+          visible={uploadModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setUploadModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              {/* Header */}
+              <View style={styles.modalHeaderRow}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                  <View style={[styles.docIconCircle, { backgroundColor: colors.primaryAccent + "18" }]}>
+                    <Icon name="cloud-upload" size={22} color={colors.primaryAccent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.modalDocTitle, { color: colors.primaryText }]}>Upload Document</Text>
+                    <Text style={[styles.modalDocSub, { color: colors.secondaryText }]} numberOfLines={1}>
+                      {docToUpload?.title}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity onPress={() => setUploadModalVisible(false)}>
+                  <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Preview or Scanner Box */}
+              {tempUploadedImage ? (
+                <View style={styles.previewContainer}>
+                  <Image source={{ uri: tempUploadedImage }} style={styles.previewImage} resizeMode="contain" />
+                  <TouchableOpacity
+                    style={styles.retakeBtn}
+                    onPress={() => setTempUploadedImage(null)}
+                  >
+                    <Icon name="camera-retake-outline" size={16} color="#FFFFFF" />
+                    <Text style={styles.retakeBtnText}>Retake / Choose Other</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={[styles.uploadBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                  <Icon name="file-upload-outline" size={42} color={colors.primaryAccent} />
+                  <Text style={[styles.uploadBoxTitle, { color: colors.primaryText }]}>Scan or Select Document</Text>
+                  <Text style={[styles.uploadBoxSub, { color: colors.secondaryText }]}>
+                    Supported formats: PDF, JPG, PNG (Max file size: 5 MB)
+                  </Text>
+
+                  <View style={styles.uploadButtonsRow}>
+                    <TouchableOpacity
+                      style={[styles.pickerTriggerBtn, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+                      onPress={() => handlePickDocument(true)}
+                    >
+                      <Icon name="camera" size={18} color={colors.primaryAccent} />
+                      <Text style={[styles.pickerTriggerText, { color: colors.primaryText }]}>Scan with Camera</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.pickerTriggerBtn, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+                      onPress={() => handlePickDocument(false)}
+                    >
+                      <Icon name="image-multiple" size={18} color={colors.primaryAccent} />
+                      <Text style={[styles.pickerTriggerText, { color: colors.primaryText }]}>Choose from Gallery</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {/* Submit Document Button */}
+              <TouchableOpacity
+                style={[
+                  styles.submitUploadBtn,
+                  {
+                    backgroundColor: tempUploadedImage ? colors.primaryAccent : colors.divider,
+                  },
+                ]}
+                onPress={handleConfirmUpload}
+                disabled={!tempUploadedImage || isSubmittingDoc}
+                activeOpacity={0.85}
+              >
+                {isSubmittingDoc ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Icon name="check-circle-outline" size={18} color={tempUploadedImage ? "#FFFFFF" : colors.disabledText} />
+                    <Text
+                      style={[
+                        styles.submitUploadBtnText,
+                        { color: tempUploadedImage ? "#FFFFFF" : colors.disabledText },
+                      ]}
+                    >
+                      Submit for Registrar Clearance
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
+    </View>
   );
 }
+
+// ---------------- Styles ----------------
+const getStyles = (colors, isDarkMode) =>
+  StyleSheet.create({
+    container: { flex: 1 },
+    scrollView: { flex: 1 },
+    contentContainer: { paddingHorizontal: 16, paddingTop: 44, paddingBottom: 80 },
+
+    /* Header */
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 16,
+    },
+    headerIconWrap: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    headerTitle: {
+      fontSize: 20,
+      fontWeight: "800",
+      letterSpacing: -0.3,
+    },
+    headerSubtitle: {
+      fontSize: 11.5,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    kycSafeBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    kycSafeBadgeText: {
+      color: "#10B981",
+      fontSize: 9.5,
+      fontWeight: "900",
+    },
+
+    /* Hero Card */
+    heroCard: {
+      borderRadius: 20,
+      borderWidth: 1,
+      padding: 18,
+      marginBottom: 16,
+      elevation: 3,
+      shadowColor: "#000",
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+    },
+    heroTopRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    heroSub: {
+      fontSize: 11,
+      fontWeight: "700",
+      letterSpacing: 0.5,
+    },
+    heroTitle: {
+      fontSize: 20,
+      fontWeight: "900",
+      letterSpacing: -0.3,
+      marginTop: 2,
+    },
+    heroGaugeBadge: {
+      alignItems: "center",
+      backgroundColor: colors.primaryAccent + "14",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 12,
+    },
+    heroGaugeScore: {
+      fontSize: 16,
+      fontWeight: "900",
+    },
+    heroGaugeSub: {
+      fontSize: 10,
+      fontWeight: "600",
+    },
+    progressBarWrapper: {
+      marginVertical: 12,
+    },
+    progressBarTrack: {
+      height: 8,
+      borderRadius: 4,
+      overflow: "hidden",
+    },
+    progressBarFill: {
+      height: "100%",
+      borderRadius: 4,
+    },
+    metricsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-around",
+      borderRadius: 12,
+      borderWidth: 1,
+      paddingVertical: 8,
+    },
+    metricItem: {
+      alignItems: "center",
+    },
+    metricCount: {
+      fontSize: 16,
+      fontWeight: "900",
+    },
+    metricLabel: {
+      fontSize: 10.5,
+      fontWeight: "600",
+      marginTop: 1,
+    },
+    metricDivider: {
+      width: 1,
+      height: 24,
+    },
+
+    /* Categories */
+    categoryStrip: {
+      flexDirection: "row",
+      gap: 6,
+      marginBottom: 10,
+    },
+    categoryPill: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: 7,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    categoryPillText: {
+      fontSize: 11.5,
+      fontWeight: "700",
+    },
+
+    /* Search Box */
+    searchBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 12,
+      borderWidth: 1,
+      marginBottom: 12,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 12.5,
+      fontWeight: "500",
+      padding: 0,
+    },
+
+    /* Doc Cards */
+    docCard: {
+      borderRadius: 16,
+      borderWidth: 1,
+      padding: 14,
+      elevation: 2,
+    },
+    docCardTop: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+    },
+    docIconCircle: {
+      width: 44,
+      height: 44,
+      borderRadius: 14,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    docTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    docTitle: {
+      fontSize: 13.5,
+      fontWeight: "800",
+      flex: 1,
+    },
+    mandatoryPill: {
+      backgroundColor: "#EF444414",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      marginLeft: 6,
+    },
+    mandatoryPillText: {
+      color: "#EF4444",
+      fontSize: 8.5,
+      fontWeight: "900",
+    },
+    docMetaText: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    docSizeText: {
+      fontSize: 10.5,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    docCardBottom: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      borderTopWidth: 1,
+      marginTop: 12,
+      paddingTop: 10,
+    },
+    docStatusBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+    },
+    docStatusText: {
+      fontSize: 9.5,
+      fontWeight: "900",
+    },
+    uploadActionBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 8,
+    },
+    uploadActionBtnText: {
+      color: "#FFFFFF",
+      fontSize: 11.5,
+      fontWeight: "800",
+    },
+    viewDocActionBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 2,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+      borderWidth: 1,
+    },
+    viewDocActionBtnText: {
+      fontSize: 11.5,
+      fontWeight: "700",
+    },
+
+    /* Modals */
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.75)",
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 18,
+    },
+    modalCard: {
+      width: "100%",
+      borderRadius: 22,
+      borderWidth: 1,
+      padding: 18,
+      elevation: 12,
+    },
+    modalHeaderRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 14,
+    },
+    modalDocTitle: {
+      fontSize: 15,
+      fontWeight: "800",
+    },
+    modalDocSub: {
+      fontSize: 11.5,
+      fontWeight: "500",
+    },
+    sealBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      padding: 12,
+      borderRadius: 14,
+      borderWidth: 1,
+      marginBottom: 12,
+    },
+    sealTitle: {
+      fontSize: 11.5,
+      fontWeight: "900",
+      letterSpacing: 0.5,
+    },
+    sealSub: {
+      fontSize: 10.5,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    auditGrid: {
+      borderRadius: 14,
+      borderWidth: 1,
+      padding: 12,
+      gap: 6,
+      marginBottom: 10,
+    },
+    auditRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    auditLabel: {
+      fontSize: 11.5,
+      fontWeight: "600",
+    },
+    auditVal: {
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    remarksLabel: {
+      fontSize: 11,
+      fontWeight: "700",
+    },
+    remarksText: {
+      fontSize: 12,
+      fontWeight: "500",
+      lineHeight: 16,
+      marginTop: 2,
+    },
+    modalActionRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginTop: 16,
+    },
+    shareCertBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 12,
+      borderRadius: 12,
+    },
+    shareCertBtnText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    closeModalBtn: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    closeModalBtnText: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+
+    /* Upload Box */
+    uploadBox: {
+      alignItems: "center",
+      padding: 20,
+      borderRadius: 16,
+      borderWidth: 1.5,
+      borderStyle: "dashed",
+      marginBottom: 14,
+    },
+    uploadBoxTitle: {
+      fontSize: 14,
+      fontWeight: "800",
+      marginTop: 8,
+    },
+    uploadBoxSub: {
+      fontSize: 11,
+      textAlign: "center",
+      marginTop: 4,
+      marginBottom: 14,
+    },
+    uploadButtonsRow: {
+      width: "100%",
+      gap: 8,
+    },
+    pickerTriggerBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    pickerTriggerText: {
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    previewContainer: {
+      alignItems: "center",
+      marginBottom: 14,
+    },
+    previewImage: {
+      width: "100%",
+      height: 180,
+      borderRadius: 12,
+    },
+    retakeBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: "#334155",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 8,
+      marginTop: 8,
+    },
+    retakeBtnText: {
+      color: "#FFFFFF",
+      fontSize: 11,
+      fontWeight: "700",
+    },
+    submitUploadBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 13,
+      borderRadius: 12,
+    },
+    submitUploadBtnText: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+  });

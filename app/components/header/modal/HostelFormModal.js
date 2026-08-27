@@ -19,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import QRCode from "react-native-qrcode-svg";
 import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
+import { resolveIdentity } from "../../../services/identityService";
 import { showToast } from "../../../utils/toastService";
 
 // ---------------- Helpers ----------------
@@ -74,16 +75,16 @@ export default function HostelFormModal({ visible, onClose }) {
   const [mode, setMode] = useState("form");
 
   // Form Fields
-  const [studentName, setStudentName] = useState("Karthik Raja M");
-  const [rollNo, setRollNo] = useState("25ACSE001");
-  const [hostelBlock, setHostelBlock] = useState("Block A (Emerald)");
-  const [roomNumber, setRoomNumber] = useState("Room 304-B");
-  const [dept] = useState("AI & DS");
-  const [year] = useState("III Year");
+  const [studentName, setStudentName] = useState("");
+  const [rollNo, setRollNo] = useState("");
+  const [hostelBlock, setHostelBlock] = useState("");
+  const [roomNumber, setRoomNumber] = useState("");
+  const [dept, setDept] = useState("");
+  const [year, setYear] = useState("");
   const [leaveType, setLeaveType] = useState("Weekend Home Visit");
-  const [destinationCity, setDestinationCity] = useState("Chennai");
+  const [destinationCity, setDestinationCity] = useState("");
   const [reason, setReason] = useState("");
-  const [parentContact, setParentContact] = useState("+91 98765 43210");
+  const [parentContact, setParentContact] = useState("");
 
   const [fromDate, setFromDate] = useState(new Date());
   const [toDate, setToDate] = useState(new Date());
@@ -115,6 +116,19 @@ export default function HostelFormModal({ visible, onClose }) {
 
   useEffect(() => {
     if (visible) {
+      (async () => {
+        try {
+          const identity = await resolveIdentity();
+          if (identity?.name) setStudentName(identity.name);
+          if (identity?.rollNo || identity?.username) setRollNo(identity.rollNo || identity.username);
+          if (identity?.hostelBlock) setHostelBlock(identity.hostelBlock);
+          if (identity?.roomNumber) setRoomNumber(identity.roomNumber);
+          if (identity?.phone || identity?.parentContact) setParentContact(identity.phone || identity.parentContact);
+        } catch (e) {
+          console.log("HostelFormModal identity load error:", e);
+        }
+      })();
+
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 300,

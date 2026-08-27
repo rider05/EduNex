@@ -38,8 +38,8 @@ export default function AppNavigatorStudent() {
               case "Academics":
                 iconName = "school";
                 break;
-              case "Admission":
-                iconName = "file-document-edit";
+              case "Documents":
+                iconName = "file-certificate-outline";
                 break;
               case "Fees":
                 iconName = "cash";
@@ -57,7 +57,7 @@ export default function AppNavigatorStudent() {
       >
         <Tab.Screen name="Dashboard" component={DashboardScreen} />
         <Tab.Screen name="Academics" component={AcademicsScreen} />
-        <Tab.Screen name="Admission" component={AdmissionFormScreen} />
+        <Tab.Screen name="Documents" component={AdmissionFormScreen} />
         <Tab.Screen name="Fees" component={FeesScreen} />
         <Tab.Screen name="Profile" component={ProfileScreen} />
       </Tab.Navigator>

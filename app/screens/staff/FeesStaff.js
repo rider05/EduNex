@@ -11,12 +11,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonBox, SkeletonListItem } from "../../components/common/SkeletonLoader";
-
-const SAMPLE_PAYMENTS = [
-  { id: "1", student: "Aditi Sharma", roll: "CS2025012", amount: 15000, status: "Paid", date: "20 Oct 2025" },
-  { id: "2", student: "Ravi Kumar", roll: "CS2025034", amount: 10000, status: "Pending", date: "29 Oct 2025" },
-  { id: "3", student: "Meena Raj", roll: "CS2025056", amount: 12000, status: "Paid", date: "18 Oct 2025" },
-];
+import { api } from "../../services/api";
 
 export default function FeesStaff() {
   const { colors } = useTheme();
@@ -24,20 +19,52 @@ export default function FeesStaff() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [payments, setPayments] = useState([]);
+  const [totalCollected, setTotalCollected] = useState("—");
+  const [pendingDues, setPendingDues] = useState("—");
+
+  const loadData = useCallback(async () => {
+    try {
+      const res = await api.get("/students");
+      const data = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      const feeRecords = [];
+      let collected = 0;
+      let pending = 0;
+      data.forEach((s, idx) => {
+        if (s.fee || s.feeStatus || s.fees) {
+          const amount = Number(s.fee?.amount || s.feeAmount || 0);
+          const status = s.fee?.status || s.feeStatus || "Pending";
+          feeRecords.push({
+            id: String(s.id ?? idx),
+            student: s.name || s.studentName || "Student",
+            roll: s.roll || s.rollNo || "—",
+            amount,
+            status,
+            date: s.fee?.date || s.feeDate || "—",
+          });
+          if (status === "Paid") collected += amount;
+          else pending += amount;
+        }
+      });
+      setPayments(feeRecords.length > 0 ? feeRecords : []);
+      setTotalCollected(feeRecords.length > 0 ? `₹ ${collected.toLocaleString("en-IN")}` : "—");
+      setPendingDues(feeRecords.length > 0 ? `₹ ${pending.toLocaleString("en-IN")}` : "—");
+    } catch (err) {
+      console.log("Error loading fee data:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 450);
-    return () => clearTimeout(timer);
-  }, []);
+    loadData();
+  }, [loadData]);
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 800);
-  }, []);
+    await loadData();
+    setRefreshing(false);
+  }, [loadData]);
 
   const handleVerifyPayment = (student) => {
     Alert.alert("Verify Payment", `Confirm payment verification for ${student}?`);
@@ -79,7 +106,7 @@ export default function FeesStaff() {
             <View style={styles.summaryRow}>
               <View>
                 <Text style={styles.summaryLabel}>Total Collected</Text>
-                <Text style={styles.summaryValue}>₹ 4,70,000</Text>
+                <Text style={styles.summaryValue}>{totalCollected}</Text>
               </View>
               <Icon name="cash-multiple" size={30} color={colors.successText} />
             </View>
@@ -87,7 +114,7 @@ export default function FeesStaff() {
             <View style={[styles.summaryRow, { marginTop: 10 }]}>
               <View>
                 <Text style={styles.summaryLabel}>Pending Dues</Text>
-                <Text style={styles.summaryValuePending}>₹ 85,000</Text>
+                <Text style={styles.summaryValuePending}>{pendingDues}</Text>
               </View>
               <Icon name="alert-circle-outline" size={30} color={colors.warningText} />
             </View>
@@ -100,7 +127,7 @@ export default function FeesStaff() {
 
           {/* Payment Table */}
           <Text style={styles.sectionTitle}>Recent Fee Records</Text>
-      {SAMPLE_PAYMENTS.map((item) => (
+      {payments.map((item) => (
         <View
           key={item.id}
           style={[

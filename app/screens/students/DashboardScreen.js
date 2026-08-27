@@ -14,7 +14,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 
 // Data & Services
-import { getStudentData, getGradeLevels, getParentNotices } from "../../services/dataService";
+import { getStudentData, getGradeLevels, getParentNotices, getInstitutions } from "../../services/dataService";
 import { SkeletonScreenLoader } from "../../components/common/SkeletonLoader";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
@@ -33,6 +33,7 @@ export default function DashboardScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [studentData, setStudentData] = useState({});
+  const [institution, setInstitution] = useState(null);
   const [notices, setNotices] = useState([]);
   const [visibleModal, setVisibleModal] = useState(null);
 
@@ -48,42 +49,33 @@ export default function DashboardScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const [data, gradeLevels, noticesRes] = await Promise.all([
+      const [data, gradeLevels, noticesRes, instRes] = await Promise.all([
         getStudentData().catch(() => null),
         getGradeLevels().catch(() => []),
         getParentNotices().catch(() => []),
+        getInstitutions().catch(() => []),
       ]);
+
+      const inst = Array.isArray(instRes) && instRes.length > 0 ? instRes[0] : null;
+      if (inst) setInstitution(inst);
 
       if (data) {
         setStudentData({
           name: data.name || "Student User",
-          rollNo: data.rollNo || data.roll || "25ACSE001",
-          department: data.department || "Artificial Intelligence & Data Science",
-          semester: data.semester || "Semester V",
-          grade: data.grade || "A+",
-          cgpa: data.cgpa != null ? String(data.cgpa) : "3.76",
-          dueFees: data.fees?.due != null ? `₹ ${Number(data.fees.due).toLocaleString("en-IN")}` : "₹ 0",
-          attendance: data.attendance || { percentage: "92.4%", status: "Good Standing" },
-          nextExam: data.nextExam || { subject: "Data Structures & Algorithms", date: "Oct 14, 2025" },
-          library: data.library || { books: 2, dueIn: "4 Days" },
-          subjects: Array.isArray(data.subjects) && data.subjects.length > 0
-            ? data.subjects
-            : [
-                { name: "Data Preprocessing & Vis.", marks: 92, grade: "A+" },
-                { name: "Data Structures & Algos", marks: 88, grade: "A" },
-                { name: "Computer Networks", marks: 95, grade: "O" },
-                { name: "Database Systems (DBMS)", marks: 89, grade: "A" },
-                { name: "Design & Analysis of Algos", marks: 91, grade: "A+" },
-              ],
-          gradeLevels: Array.isArray(gradeLevels) && gradeLevels.length > 0
-            ? gradeLevels
-            : [
-                { grade: "O", range: "91-100", meaning: "Outstanding" },
-                { grade: "A+", range: "81-90", meaning: "Excellent" },
-                { grade: "A", range: "71-80", meaning: "Very Good" },
-                { grade: "B+", range: "61-70", meaning: "Good" },
-                { grade: "B", range: "50-60", meaning: "Above Average" },
-              ],
+          rollNo: data.rollNo || data.roll || "",
+          department: data.department || "",
+          semester: data.semester || "",
+          grade: data.grade || "",
+          cgpa: data.cgpa != null ? String(data.cgpa) : "",
+          dueFees: data.fees?.due != null ? `₹ ${Number(data.fees.due).toLocaleString("en-IN")}` : "",
+          attendance: data.attendance || {},
+          nextExam: data.nextExam || {},
+          library: data.library || {},
+          schedule: data.schedule || [],
+          subjects: data.subjects || [],
+          gradeLevels: gradeLevels || [],
+          bloodGroup: data.bloodGroup || "—",
+          batch: data.batch || "",
         });
       }
 
@@ -142,8 +134,8 @@ export default function DashboardScreen() {
   // Attendance string formatter
   const attendanceVal =
     typeof studentData.attendance === "object"
-      ? studentData.attendance?.percentage || "92.4%"
-      : studentData.attendance || "92.4%";
+      ? studentData.attendance?.percentage || ""
+      : studentData.attendance || "";
 
   return (
     <View style={[styles.container, { backgroundColor: colors.primaryBackground }]}>
@@ -279,20 +271,24 @@ export default function DashboardScreen() {
               <View style={styles.liveClassTop}>
                 <View style={[styles.liveBadge, { backgroundColor: "#10B98120" }]}>
                   <View style={[styles.liveDot, { backgroundColor: "#10B981" }]} />
-                  <Text style={[styles.liveBadgeText, { color: "#10B981" }]}>UPCOMING · 09:50 AM</Text>
+                  <Text style={[styles.liveBadgeText, { color: "#10B981" }]}>
+                    UPCOMING · {studentData.schedule?.[0]?.time || "—"}
+                  </Text>
                 </View>
                 <View style={[styles.roomPill, { backgroundColor: colors.primaryAccent + "18" }]}>
-                  <Text style={[styles.roomPillText, { color: colors.primaryAccent }]}>Room AI-202</Text>
+                  <Text style={[styles.roomPillText, { color: colors.primaryAccent }]}>
+                    {studentData.schedule?.[0]?.room ? `Room ${studentData.schedule[0].room}` : "—"}
+                  </Text>
                 </View>
               </View>
 
               <Text style={[styles.liveSubjectTitle, { color: colors.primaryText }]}>
-                Data Structures & Algorithms
+                {studentData.schedule?.[0]?.subject || studentData.subjects?.[0]?.name || "No upcoming class"}
               </Text>
               <View style={styles.liveFacultyRow}>
                 <Icon name="account-tie-outline" size={16} color={colors.secondaryText} />
                 <Text style={[styles.liveFacultyText, { color: colors.secondaryText }]}>
-                  Ms. Chandra Mohan · Dept of AI & DS
+                  {studentData.schedule?.[0]?.faculty || studentData.subjects?.[0]?.faculty || "—"}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -390,11 +386,7 @@ export default function DashboardScreen() {
             </View>
 
             <View style={styles.deadlinesList}>
-              {[
-                { title: "Computer Networks Lab Report #4", due: "Due in 2 days", status: "pending", color: "#EF4444" },
-                { title: "AI Ethics Case Study & Presentation", due: "Due this Friday", status: "in_progress", color: "#F59E0B" },
-                { title: "DBMS SQL Normalization Assignment", due: "Submitted on Oct 10", status: "submitted", color: "#10B981" },
-              ].map((item, idx) => (
+              {[].map((item, idx) => (
                 <View
                   key={idx}
                   style={[
@@ -417,6 +409,13 @@ export default function DashboardScreen() {
                   </View>
                 </View>
               ))}
+              {[].length === 0 && (
+                <View style={[styles.emptyNoticeBox, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+                  <Icon name="clipboard-check-outline" size={36} color={colors.secondaryText} />
+                  <Text style={[styles.emptyNoticeTitle, { color: colors.primaryText }]}>No deadlines</Text>
+                  <Text style={[styles.emptyNoticeSub, { color: colors.secondaryText }]}>No upcoming assignments or deadlines.</Text>
+                </View>
+              )}
             </View>
 
             {/* ========================================================================= */}
@@ -538,7 +537,7 @@ export default function DashboardScreen() {
           <View style={[styles.idCardBox, { backgroundColor: colors.cardBackground }]}>
             {/* ID Card Top Band */}
             <View style={[styles.idCardBand, { backgroundColor: colors.primaryAccent }]}>
-              <Text style={styles.idCardInstitution}>EDUNEX AUTONOMOUS CAMPUS</Text>
+              <Text style={styles.idCardInstitution}>{(institution?.shortName || institution?.name || "EDUNEX").toUpperCase()}</Text>
               <Text style={styles.idCardType}>STUDENT DIGITAL SMART PASS</Text>
             </View>
 
@@ -562,11 +561,11 @@ export default function DashboardScreen() {
                 </View>
                 <View style={styles.idDetailCell}>
                   <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Blood Group</Text>
-                  <Text style={[styles.idCellValue, { color: colors.primaryText }]}>O +ve</Text>
+                   <Text style={[styles.idCellValue, { color: colors.primaryText }]}>{studentData.bloodGroup || "—"}</Text>
                 </View>
                 <View style={styles.idDetailCell}>
                   <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Validity</Text>
-                  <Text style={[styles.idCellValue, { color: "#10B981" }]}>2024 - 2028</Text>
+                   <Text style={[styles.idCellValue, { color: "#10B981" }]}>{studentData.batch || "—"}</Text>
                 </View>
               </View>
 

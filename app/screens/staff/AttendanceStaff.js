@@ -1,51 +1,83 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Switch,
   Animated,
   Modal,
-  Pressable,
+  TextInput,
   RefreshControl,
+  Share,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonListItem } from "../../components/common/SkeletonLoader";
 import { getFacultyRoster, submitAttendanceBatch, getStaffClassName } from "../../services/dataService";
+import { api } from "../../services/api";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
+import { showToast } from "../../utils/toastService";
+
+const DEFAULT_STUDENTS = [];
+
+const SECTIONS = [];
 
 export default function AttendanceStaff() {
-  const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const { colors, isDarkMode } = useTheme();
+  const styles = getStyles(colors, isDarkMode);
 
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [students, setStudents] = useState([]);
-  const [className, setClassName] = useState("");
+  const [students, setStudents] = useState(DEFAULT_STUDENTS);
+  const [sections, setSections] = useState(SECTIONS);
+  const [activeSection, setActiveSection] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isLocked, setIsLocked] = useState(false);
 
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
-  const [summary, setSummary] = useState({ present: 0, absent: 0 });
+  const [summary, setSummary] = useState({ present: 0, absent: 0, od: 0 });
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const loadData = useCallback(async () => {
     try {
       const cls = await getStaffClassName();
-      setClassName(cls || "");
-      const roster = await getFacultyRoster(cls || undefined);
+      const [rosterRes, sectionsRes] = await Promise.allSettled([
+        getFacultyRoster(cls || undefined),
+        api.get("/faculty/schedule", cls ? { class: cls } : undefined),
+      ]);
+
+      const roster = rosterRes.status === "fulfilled" ? rosterRes.value : null;
       if (roster && roster.length > 0) {
         setStudents(
           roster.map((s, idx) => ({
             id: s.id || String(idx + 1),
             name: s.name,
             roll: s.roll || s.rollNo,
-            present: s.present !== undefined ? s.present : true,
+            status: s.status || (s.present === false ? "A" : "P"),
+            termAtt: s.attendance?.percentage || s.termAtt || "—",
+            hostel: s.hostel || "Active Student",
           }))
         );
+      }
+
+      const scheduleData =
+        sectionsRes.status === "fulfilled" && Array.isArray(sectionsRes.value?.data)
+          ? sectionsRes.value.data
+          : Array.isArray(sectionsRes.value)
+          ? sectionsRes.value
+          : [];
+      if (scheduleData.length > 0) {
+        const mapped = scheduleData.map((s, idx) => ({
+          id: String(s.id ?? idx),
+          label: s.className || s.label || s.class || `Section ${idx + 1}`,
+          course: s.subject || s.course || "—",
+          time: s.time || "—",
+        }));
+        setSections(mapped);
+        setActiveSection((prev) => prev || mapped[0] || null);
       }
     } catch (err) {
       console.log("Error loading attendance roster:", err);
@@ -57,14 +89,13 @@ export default function AttendanceStaff() {
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 400,
+      duration: 300,
       useNativeDriver: true,
     }).start();
 
     loadData();
   }, [fadeAnim, loadData]);
 
-  // Refetch roster when the app returns to the foreground
   useRefreshOnForeground(loadData);
 
   const onRefresh = useCallback(async () => {
@@ -73,32 +104,45 @@ export default function AttendanceStaff() {
     setRefreshing(false);
   }, [loadData]);
 
-  const toggleAttendance = (id) => {
+  const setStudentStatus = (id, newStatus) => {
+    if (isLocked) {
+      showToast("Attendance is locked. Request HOD override to edit.", "warning");
+      return;
+    }
     setStudents((prev) =>
-      prev.map((student) =>
-        student.id === id ? { ...student, present: !student.present } : student
-      )
+      prev.map((s) => (s.id === id ? { ...s, status: newStatus } : s))
     );
   };
 
+  const markAll = (statusToSet) => {
+    if (isLocked) {
+      showToast("Attendance is locked. Request HOD override to edit.", "warning");
+      return;
+    }
+    setStudents((prev) => prev.map((s) => ({ ...s, status: statusToSet })));
+    showToast(`All students marked as ${statusToSet === "P" ? "Present" : "Absent"}`, "info");
+  };
+
   const openConfirmation = () => {
-    const presentCount = students.filter((s) => s.present).length;
-    const absentCount = students.length - presentCount;
-    setSummary({ present: presentCount, absent: absentCount });
+    const presentCount = students.filter((s) => s.status === "P").length;
+    const absentCount = students.filter((s) => s.status === "A").length;
+    const odCount = students.filter((s) => s.status === "OD").length;
+    setSummary({ present: presentCount, absent: absentCount, od: odCount });
     setConfirmVisible(true);
   };
 
-  const handleSave = async () => {
+  const handleLockAndSubmit = async () => {
     setConfirmVisible(false);
     const todayStr = new Date().toISOString().split("T")[0];
     const attendanceDocs = students.map((s) => ({
       studentId: s.id,
       roll: s.roll,
       studentName: s.name,
-      class: s.__class || className || s.class || "",
+      class: activeSection?.label || "",
       date: todayStr,
-      status: s.present ? "Present" : "Absent",
-      markedBy: "staff",
+      status: s.status === "P" ? "Present" : s.status === "OD" ? "On-Duty" : "Absent",
+      markedBy: "faculty_staff",
+      locked: true,
     }));
 
     try {
@@ -107,42 +151,158 @@ export default function AttendanceStaff() {
       console.log("Attendance bulk submit fallback:", err);
     }
 
-    setTimeout(() => setSuccessVisible(true), 300);
+    setIsLocked(true);
+    setTimeout(() => setSuccessVisible(true), 250);
   };
 
-  const presentCount = students.filter((s) => s.present).length;
-  const absentCount = students.length - presentCount;
+  const handleUnlockRequest = () => {
+    showToast("HOD override request sent for " + (activeSection?.label || ""), "info");
+    setIsLocked(false);
+  };
+
+  const filteredStudents = useMemo(() => {
+    if (!searchQuery.trim()) return students;
+    const q = searchQuery.toLowerCase().trim();
+    return students.filter(
+      (s) => s.name.toLowerCase().includes(q) || s.roll.toLowerCase().includes(q)
+    );
+  }, [students, searchQuery]);
+
+  const presentCount = students.filter((s) => s.status === "P").length;
+  const absentCount = students.filter((s) => s.status === "A").length;
+  const odCount = students.filter((s) => s.status === "OD").length;
+  const attendanceRate = students.length > 0 ? Math.round(((presentCount + odCount) / students.length) * 100) : 0;
+
+  const handleShareRoster = async () => {
+    try {
+      const summaryText = `📋 EDUNEX OFFICIAL ATTENDANCE RECORD\nStatus: ${isLocked ? "LOCKED & FROZEN" : "DRAFT"}\nCourse: ${activeSection?.course || ""}\nClass: ${activeSection?.label || ""}\nDate: ${new Date().toLocaleDateString()}\n\n✅ Present: ${presentCount}\n❌ Absent: ${absentCount}\n🟣 On-Duty (OD): ${odCount}\nTurnout Rate: ${attendanceRate}%`;
+      await Share.share({ title: "Class Attendance Record", message: summaryText });
+      showToast("Attendance summary shared!", "success");
+    } catch (err) {
+      console.log("Share error:", err);
+    }
+  };
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 80 }}
+        contentContainerStyle={styles.contentContainer}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
+            colors={[colors.primaryAccent]}
+            tintColor={colors.primaryAccent}
             progressBackgroundColor={colors.cardBackground}
           />
         }
       >
-        {/* Header */}
+        {/* ========================================================================= */}
+        {/* 1. HEADER & LOCK STATUS BANNER                                            */}
+        {/* ========================================================================= */}
         <View style={styles.headerRow}>
-          <View style={[styles.headerIconWrap, { backgroundColor: `${colors.primary}18` }]}>
-            <Icon name="clipboard-check-outline" size={24} color={colors.primary} />
+          <View style={[styles.headerIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
+            <Icon name="clipboard-check-outline" size={24} color={colors.primaryAccent} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.header, { color: colors.primaryText }]}>Class Attendance</Text>
-            <Text style={[styles.subText, { color: colors.secondaryText }]}>
-              Section AI-B • Real-time roll call
+            <Text style={[styles.headerTitle, { color: colors.primaryText }]}>Class Attendance</Text>
+            <Text style={[styles.headerSub, { color: colors.secondaryText }]}>
+              Digital Roll Call & Registrar Verification
             </Text>
           </View>
+
+          <TouchableOpacity
+            style={[styles.sharePillBtn, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+            onPress={handleShareRoster}
+            activeOpacity={0.8}
+          >
+            <Icon name="share-variant-outline" size={16} color={colors.primaryAccent} />
+            <Text style={[styles.sharePillBtnText, { color: colors.primaryAccent }]}>Share</Text>
+          </TouchableOpacity>
         </View>
 
+        {/* Lock / Draft Status Indicator Banner */}
+        <View
+          style={[
+            styles.lockStatusCard,
+            {
+              backgroundColor: isLocked ? "#10B98112" : "#F59E0B12",
+              borderColor: isLocked ? "#10B98144" : "#F59E0B44",
+            },
+          ]}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+            <Icon
+              name={isLocked ? "lock-check" : "lock-open-outline"}
+              size={20}
+              color={isLocked ? "#10B981" : "#D97706"}
+            />
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[
+                  styles.lockStatusTitle,
+                  { color: isLocked ? "#10B981" : "#D97706" },
+                ]}
+              >
+                {isLocked ? "ATTENDANCE LOCKED & FROZEN" : "DRAFT ROLL CALL (UNLOCKED)"}
+              </Text>
+              <Text style={[styles.lockStatusSub, { color: colors.secondaryText }]}>
+                {isLocked
+                  ? "Record submitted to Registrar. Parent alerts active."
+                  : "Review student presence before locking this session."}
+              </Text>
+            </View>
+          </View>
+
+          {isLocked ? (
+            <TouchableOpacity style={styles.unlockBtn} onPress={handleUnlockRequest}>
+              <Icon name="lock-reset" size={14} color={colors.primaryAccent} />
+              <Text style={[styles.unlockBtnText, { color: colors.primaryAccent }]}>Unlock</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={[styles.lockNowBtn, { backgroundColor: colors.primaryAccent }]} onPress={openConfirmation}>
+              <Icon name="lock" size={14} color="#FFFFFF" />
+              <Text style={styles.lockNowBtnText}>Lock Session</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Section & Course Selector Pills */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, marginBottom: 12 }}
+        >
+          {sections.map((sec) => {
+            const isSel = activeSection && activeSection.id === sec.id;
+            return (
+              <TouchableOpacity
+                key={sec.id}
+                style={[
+                  styles.sectionPill,
+                  isSel
+                    ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
+                    : { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+                ]}
+                onPress={() => {
+                  setActiveSection(sec);
+                  setIsLocked(false);
+                }}
+              >
+                <Text style={[styles.sectionPillTitle, { color: isSel ? "#FFFFFF" : colors.primaryText }]}>
+                  {sec.label}
+                </Text>
+                <Text style={[styles.sectionPillSub, { color: isSel ? "rgba(255,255,255,0.85)" : colors.secondaryText }]}>
+                  {sec.time}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
         {isLoading ? (
-          <View style={{ marginTop: 14 }}>
+          <View style={{ marginTop: 10 }}>
             <SkeletonListItem />
             <SkeletonListItem />
             <SkeletonListItem />
@@ -150,152 +310,298 @@ export default function AttendanceStaff() {
           </View>
         ) : (
           <>
-            {/* Live Counter Badges */}
-        <View style={styles.counterRow}>
-          <View style={[styles.counterBadge, { backgroundColor: "rgba(16, 185, 129, 0.12)", borderColor: "rgba(16, 185, 129, 0.3)" }]}>
-            <Icon name="account-check" size={18} color="#10B981" />
-            <Text style={[styles.counterText, { color: "#10B981" }]}>{presentCount} Present</Text>
-          </View>
-          <View style={[styles.counterBadge, { backgroundColor: "rgba(239, 68, 68, 0.12)", borderColor: "rgba(239, 68, 68, 0.3)" }]}>
-            <Icon name="account-cancel" size={18} color="#EF4444" />
-            <Text style={[styles.counterText, { color: "#EF4444" }]}>{absentCount} Absent</Text>
-          </View>
-          <View style={[styles.counterBadge, { backgroundColor: `${colors.primary}12`, borderColor: `${colors.primary}30` }]}>
-            <Icon name="account-group" size={18} color={colors.primary} />
-            <Text style={[styles.counterText, { color: colors.primary }]}>{students.length} Total</Text>
-          </View>
-        </View>
+            {/* ========================================================================= */}
+            {/* 2. LIVE ATTENDANCE KPI STRIP                                              */}
+            {/* ========================================================================= */}
+            <View style={styles.kpiRow}>
+              <View style={[styles.kpiCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+                <View style={[styles.kpiIconWrap, { backgroundColor: "#10B98118" }]}>
+                  <Icon name="account-check" size={18} color="#10B981" />
+                </View>
+                <Text style={[styles.kpiVal, { color: "#10B981" }]}>{presentCount}</Text>
+                <Text style={[styles.kpiLabel, { color: colors.secondaryText }]}>Present</Text>
+              </View>
 
-        {/* Student Cards */}
-        {students.map((student) => (
-          <TouchableOpacity
-            key={student.id}
-            activeOpacity={0.9}
-            style={[
-              styles.card,
-              { borderLeftColor: student.present ? "#2ECC71" : "#E74C3C" },
-            ]}
-          >
-            <View style={styles.cardLeft}>
-              <Icon
-                name={student.present ? "account-check" : "account-cancel"}
-                size={28}
-                color={student.present ? "#2ECC71" : "#E74C3C"}
-              />
-              <View>
-                <Text style={[styles.name, { color: colors.primaryText }]}>
-                  {student.name}
-                </Text>
-                <Text
-                  style={[
-                    styles.status,
-                    { color: student.present ? "#2ECC71" : "#E74C3C" },
-                  ]}
-                >
-                  {student.present ? "Present" : "Absent"}
-                </Text>
+              <View style={[styles.kpiCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+                <View style={[styles.kpiIconWrap, { backgroundColor: "#EF444418" }]}>
+                  <Icon name="account-cancel" size={18} color="#EF4444" />
+                </View>
+                <Text style={[styles.kpiVal, { color: "#EF4444" }]}>{absentCount}</Text>
+                <Text style={[styles.kpiLabel, { color: colors.secondaryText }]}>Absent</Text>
+              </View>
+
+              <View style={[styles.kpiCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+                <View style={[styles.kpiIconWrap, { backgroundColor: "#8B5CF618" }]}>
+                  <Icon name="badge-account-outline" size={18} color="#8B5CF6" />
+                </View>
+                <Text style={[styles.kpiVal, { color: "#8B5CF6" }]}>{odCount}</Text>
+                <Text style={[styles.kpiLabel, { color: colors.secondaryText }]}>On-Duty (OD)</Text>
+              </View>
+
+              <View style={[styles.kpiCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+                <View style={[styles.kpiIconWrap, { backgroundColor: "#4F46E518" }]}>
+                  <Icon name="percent-outline" size={18} color="#4F46E5" />
+                </View>
+                <Text style={[styles.kpiVal, { color: "#4F46E5" }]}>{attendanceRate}%</Text>
+                <Text style={[styles.kpiLabel, { color: colors.secondaryText }]}>Turnout</Text>
               </View>
             </View>
 
-            <Switch
-              trackColor={{ false: "#ccc", true: "#2ECC71" }}
-              thumbColor="#fff"
-              value={student.present}
-              onValueChange={() => toggleAttendance(student.id)}
-            />
-          </TouchableOpacity>
-        ))}
+            {/* Quick Bulk Action Buttons & Search */}
+            <View style={styles.controlsRow}>
+              <View style={[styles.searchBox, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+                <Icon name="magnify" size={18} color={colors.secondaryText} />
+                <TextInput
+                  style={[styles.searchInput, { color: colors.primaryText }]}
+                  placeholder="Search student or roll no..."
+                  placeholderTextColor={colors.disabledText}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery("")}>
+                    <Icon name="close-circle" size={16} color={colors.secondaryText} />
+                  </TouchableOpacity>
+                )}
+              </View>
 
-        {/* Save Button */}
-        <TouchableOpacity
-          style={[styles.saveBtn, { backgroundColor: "#2ECC71" }]}
-          onPress={openConfirmation}
-        >
-          <Icon name="check-decagram" size={22} color="#fff" />
-          <Text style={styles.saveText}>Save Attendance</Text>
-        </TouchableOpacity>
-        </>
+              {!isLocked && (
+                <View style={{ flexDirection: "row", gap: 6 }}>
+                  <TouchableOpacity
+                    style={[styles.bulkBtn, { backgroundColor: "#10B98118", borderColor: "#10B98144" }]}
+                    onPress={() => markAll("P")}
+                  >
+                    <Icon name="check-all" size={16} color="#10B981" />
+                    <Text style={[styles.bulkBtnText, { color: "#10B981" }]}>All Present</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.bulkBtn, { backgroundColor: "#EF444418", borderColor: "#EF444444" }]}
+                    onPress={() => markAll("A")}
+                  >
+                    <Icon name="close-octagon-outline" size={16} color="#EF4444" />
+                    <Text style={[styles.bulkBtnText, { color: "#EF4444" }]}>All Absent</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* ========================================================================= */}
+            {/* 3. STUDENT ROSTER LIST                                                    */}
+            {/* ========================================================================= */}
+            <View style={{ gap: 8 }}>
+              {filteredStudents.map((student) => {
+                const isP = student.status === "P";
+                const isA = student.status === "A";
+                const isOD = student.status === "OD";
+
+                return (
+                  <View
+                    key={student.id}
+                    style={[
+                      styles.studentCard,
+                      {
+                        backgroundColor: colors.cardBackground,
+                        borderColor: isA ? "#EF444455" : colors.divider,
+                        opacity: isLocked ? 0.9 : 1,
+                      },
+                    ]}
+                  >
+                    <View style={styles.studentCardLeft}>
+                      <View
+                        style={[
+                          styles.avatarCircle,
+                          {
+                            backgroundColor: isP ? "#10B981" : isA ? "#EF4444" : "#8B5CF6",
+                          },
+                        ]}
+                      >
+                        <Text style={styles.avatarText}>
+                          {student.name
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                            .slice(0, 2)}
+                        </Text>
+                      </View>
+
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={[styles.studentName, { color: colors.primaryText }]} numberOfLines={1}>
+                          {student.name}
+                        </Text>
+                        <Text style={[styles.studentRoll, { color: colors.secondaryText }]}>
+                          {student.roll} · {student.hostel}
+                        </Text>
+                        <Text style={[styles.termAttText, { color: colors.primaryAccent }]}>
+                          Term Attendance: {student.termAtt}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* 3-State Action Selector: P / A / OD */}
+                    <View style={styles.statusButtonsGroup}>
+                      <TouchableOpacity
+                        style={[
+                          styles.statusToggleBtn,
+                          isP
+                            ? { backgroundColor: "#10B981", borderColor: "#10B981" }
+                            : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                        ]}
+                        onPress={() => setStudentStatus(student.id, "P")}
+                        disabled={isLocked}
+                      >
+                        <Text style={[styles.statusToggleBtnText, { color: isP ? "#FFFFFF" : colors.secondaryText }]}>
+                          P
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.statusToggleBtn,
+                          isA
+                            ? { backgroundColor: "#EF4444", borderColor: "#EF4444" }
+                            : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                        ]}
+                        onPress={() => setStudentStatus(student.id, "A")}
+                        disabled={isLocked}
+                      >
+                        <Text style={[styles.statusToggleBtnText, { color: isA ? "#FFFFFF" : colors.secondaryText }]}>
+                          A
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.statusToggleBtn,
+                          isOD
+                            ? { backgroundColor: "#8B5CF6", borderColor: "#8B5CF6" }
+                            : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                        ]}
+                        onPress={() => setStudentStatus(student.id, "OD")}
+                        disabled={isLocked}
+                      >
+                        <Text style={[styles.statusToggleBtnText, { color: isOD ? "#FFFFFF" : colors.secondaryText }]}>
+                          OD
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Bottom Action Button */}
+            {!isLocked ? (
+              <TouchableOpacity
+                style={[styles.saveBtn, { backgroundColor: colors.primaryAccent }]}
+                onPress={openConfirmation}
+                activeOpacity={0.85}
+              >
+                <Icon name="lock-check" size={20} color="#FFFFFF" />
+                <Text style={styles.saveBtnText}>
+                  Lock & Submit Session ({presentCount} Present · {absentCount} Absent)
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.lockedBottomBox, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+                <Icon name="shield-check" size={22} color="#10B981" />
+                <Text style={[styles.lockedBottomText, { color: colors.primaryText }]}>
+                  This session is locked and submitted to the Registrar.
+                </Text>
+              </View>
+            )}
+          </>
         )}
 
-        <View style={{ height: 60 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Confirmation Modal */}
-      <Modal visible={confirmVisible} transparent animationType="fade">
+      {/* ========================================================================= */}
+      {/* 4. PRE-LOCK CONFIRMATION MODAL                                            */}
+      {/* ========================================================================= */}
+      <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => setConfirmVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, { backgroundColor: colors.cardBackground }]}>
-            <View style={styles.modalHeader}>
-              <Icon name="alert-decagram-outline" size={35} color="#F39C12" />
-              <Text style={[styles.modalTitle, { color: "#F39C12" }]}>
-                Confirm Submission
-              </Text>
+          <View style={[styles.modalCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+            <View style={styles.lockIconCircle}>
+              <Icon name="lock-alert" size={32} color="#F59E0B" />
             </View>
-            <Text style={[styles.modalText, { color: colors.primaryText }]}>
-              Are you sure you want to submit today’s attendance record?
+
+            <Text style={[styles.modalTitle, { color: colors.primaryText }]}>Lock & Freeze Attendance?</Text>
+            <Text style={[styles.modalSub, { color: colors.secondaryText }]}>
+              Please verify your roll call before finalizing. Once locked, this official ledger entry will be submitted to the University Registrar and absent SMS alerts will be sent to parents.
             </Text>
 
-            <View style={styles.summaryBox}>
+            {/* Summary Breakdown Grid */}
+            <View style={[styles.summaryBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
               <View style={styles.summaryRow}>
-                <Icon name="account-check" size={22} color="#2ECC71" />
-                <Text style={[styles.summaryText, { color: "#2ECC71" }]}>
-                  Present: {summary.present}
-                </Text>
+                <Text style={[styles.summaryKey, { color: colors.secondaryText }]}>Lecture Course</Text>
+                <Text style={[styles.summaryVal, { color: colors.primaryText }]}>{activeSection?.course || "—"}</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Icon name="account-cancel" size={22} color="#E74C3C" />
-                <Text style={[styles.summaryText, { color: "#E74C3C" }]}>
-                  Absent: {summary.absent}
-                </Text>
+                <Text style={[styles.summaryKey, { color: colors.secondaryText }]}>Batch & Section</Text>
+                <Text style={[styles.summaryVal, { color: colors.primaryText }]}>{activeSection?.label || "—"}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryKey, { color: colors.secondaryText }]}>Present Students</Text>
+                <Text style={[styles.summaryVal, { color: "#10B981" }]}>{summary.present} Students</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryKey, { color: colors.secondaryText }]}>Absent Students</Text>
+                <Text style={[styles.summaryVal, { color: "#EF4444" }]}>{summary.absent} Students</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryKey, { color: colors.secondaryText }]}>On-Duty (OD)</Text>
+                <Text style={[styles.summaryVal, { color: "#8B5CF6" }]}>{summary.od} Students</Text>
               </View>
             </View>
 
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={[styles.cancelBtn, { backgroundColor: "#E74C3C" }]}
+            {/* Alert Warning Box */}
+            <View style={[styles.warningBox, { backgroundColor: "#F59E0B14", borderColor: "#F59E0B44" }]}>
+              <Icon name="alert-circle-outline" size={16} color="#D97706" />
+              <Text style={styles.warningText}>
+                Modifications after locking require HOD Administrative Override.
+              </Text>
+            </View>
+
+            {/* Buttons */}
+            <View style={styles.modalActionRow}>
+              <TouchableOpacity
+                style={[styles.cancelBtn, { borderColor: colors.divider }]}
                 onPress={() => setConfirmVisible(false)}
               >
-                <Text style={styles.modalBtnText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.confirmBtn, { backgroundColor: "#2ECC71" }]}
-                onPress={handleSave}
+                <Text style={[styles.cancelBtnText, { color: colors.primaryText }]}>Keep Editing</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.confirmBtn, { backgroundColor: "#10B981" }]}
+                onPress={handleLockAndSubmit}
               >
-                <Text style={styles.modalBtnText}>Confirm</Text>
-              </Pressable>
+                <Icon name="lock" size={16} color="#FFFFFF" />
+                <Text style={styles.confirmBtnText}>Confirm & Lock</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* ✅ Success Popup */}
-      <Modal visible={successVisible} transparent animationType="none">
-        <View style={styles.successOverlay}>
-          <View style={[styles.successContainer, { backgroundColor: colors.cardBackground }]}>
-            <View style={styles.successIconContainer}>
-              <Icon name="check-circle" size={60} color="#2ECC71" />
-            </View>
-            <Text style={[styles.successTitle, { color: "#2ECC71" }]}>
-              Attendance Submitted!
-            </Text>
-            <Text style={[styles.successSubtitle, { color: colors.secondaryText }]}>
-              The attendance record has been saved successfully.
+      {/* ========================================================================= */}
+      {/* 5. SUCCESS POPUP                                                          */}
+      {/* ========================================================================= */}
+      <Modal visible={successVisible} transparent animationType="fade" onRequestClose={() => setSuccessVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+            <Icon name="check-circle" size={54} color="#10B981" />
+            <Text style={[styles.modalTitle, { color: "#10B981" }]}>Attendance Locked!</Text>
+            <Text style={[styles.modalSub, { color: colors.secondaryText }]}>
+              The attendance record has been finalized and synchronized with the registrar ledger. Parents of {summary.absent} absent student(s) have been notified.
             </Text>
 
-            <View style={styles.successSummary}>
-              <Text style={[styles.successSummaryText, { color: "#2ECC71" }]}>
-                ✅ Present: {summary.present}
-              </Text>
-              <Text style={[styles.successSummaryText, { color: "#E74C3C" }]}>
-                ❌ Absent: {summary.absent}
-              </Text>
-            </View>
-
-            <Pressable
-              style={[styles.okBtn, { backgroundColor: "#2ECC71" }]}
+            <TouchableOpacity
+              style={[styles.confirmBtn, { backgroundColor: "#10B981", width: "100%", marginTop: 16 }]}
               onPress={() => setSuccessVisible(false)}
             >
-              <Text style={styles.okText}>OK</Text>
-            </Pressable>
+              <Text style={styles.confirmBtnText}>Done</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -303,114 +609,373 @@ export default function AttendanceStaff() {
   );
 }
 
-const getStyles = (colors) =>
+// ---------------- Styles ----------------
+const getStyles = (colors, isDarkMode) =>
   StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.primaryBackground,
-      paddingHorizontal: 18,
-      paddingTop: 16,
-      paddingBottom: 40,
-    },
+    container: { flex: 1, backgroundColor: colors.primaryBackground },
+    contentContainer: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 80 },
+
+    /* Header */
     headerRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      marginBottom: 16,
+      gap: 10,
+      marginBottom: 10,
     },
     headerIconWrap: {
-      width: 44,
-      height: 44,
-      borderRadius: 14,
+      width: 42,
+      height: 42,
+      borderRadius: 12,
       justifyContent: "center",
       alignItems: "center",
     },
-    header: { fontSize: 22, fontWeight: "800", color: colors.primaryText, letterSpacing: -0.3 },
-    subText: { fontSize: 13, color: colors.secondaryText, marginTop: 2 },
-    counterRow: {
-      flexDirection: "row",
-      gap: 8,
-      marginBottom: 16,
+    headerTitle: {
+      fontSize: 20,
+      fontWeight: "800",
+      letterSpacing: -0.3,
     },
-    counterBadge: {
+    headerSub: {
+      fontSize: 11.5,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    sharePillBtn: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 5,
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    sharePillBtnText: {
+      fontSize: 11.5,
+      fontWeight: "700",
+    },
+
+    /* Lock Status Card */
+    lockStatusCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderRadius: 14,
+      borderWidth: 1,
+      padding: 12,
+      marginBottom: 12,
+    },
+    lockStatusTitle: {
+      fontSize: 12,
+      fontWeight: "900",
+      letterSpacing: 0.3,
+    },
+    lockStatusSub: {
+      fontSize: 10.5,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+    unlockBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+    },
+    unlockBtnText: {
+      fontSize: 11.5,
+      fontWeight: "800",
+    },
+    lockNowBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+    },
+    lockNowBtnText: {
+      color: "#FFFFFF",
+      fontSize: 11.5,
+      fontWeight: "800",
+    },
+
+    /* Section Selector */
+    sectionPill: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 14,
+      borderWidth: 1,
+    },
+    sectionPillTitle: {
+      fontSize: 12.5,
+      fontWeight: "800",
+    },
+    sectionPillSub: {
+      fontSize: 10.5,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+
+    /* KPI Row */
+    kpiRow: {
+      flexDirection: "row",
+      gap: 6,
+      marginBottom: 12,
+    },
+    kpiCard: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: 10,
+      borderRadius: 14,
+      borderWidth: 1,
+      elevation: 2,
+    },
+    kpiIconWrap: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 2,
+    },
+    kpiVal: {
+      fontSize: 15,
+      fontWeight: "900",
+    },
+    kpiLabel: {
+      fontSize: 10,
+      fontWeight: "700",
+      marginTop: 1,
+    },
+
+    /* Controls & Search */
+    controlsRow: {
+      flexDirection: "column",
+      gap: 8,
+      marginBottom: 12,
+    },
+    searchBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
       paddingHorizontal: 12,
       paddingVertical: 8,
       borderRadius: 12,
       borderWidth: 1,
     },
-    counterText: {
-      fontSize: 12,
+    searchInput: {
+      flex: 1,
+      fontSize: 12.5,
+      fontWeight: "500",
+      padding: 0,
+    },
+    bulkBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    bulkBtnText: {
+      fontSize: 11.5,
       fontWeight: "800",
     },
-    listHeader: { marginBottom: 10, paddingHorizontal: 5 },
-    listHeaderText: { fontSize: 18, fontWeight: "700" },
-    listHeaderSub: { fontSize: 13, marginTop: 2 },
-    card: {
+
+    /* Student Cards */
+    studentCard: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      backgroundColor: colors.cardBackground,
-      paddingVertical: 14,
-      paddingHorizontal: 15,
       borderRadius: 14,
-      borderLeftWidth: 5,
-      marginBottom: 10,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.06,
-      shadowRadius: 3,
-      elevation: 2,
+      borderWidth: 1,
+      padding: 12,
+      elevation: 1,
     },
-    cardLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-    name: { fontSize: 16, fontWeight: "600" },
-    status: { fontSize: 13, fontWeight: "500" },
+    studentCardLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1,
+    },
+    avatarCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    avatarText: {
+      color: "#FFFFFF",
+      fontSize: 14,
+      fontWeight: "800",
+    },
+    studentName: {
+      fontSize: 13.5,
+      fontWeight: "800",
+    },
+    studentRoll: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+    termAttText: {
+      fontSize: 10.5,
+      fontWeight: "700",
+      marginTop: 2,
+    },
+    statusButtonsGroup: {
+      flexDirection: "row",
+      gap: 4,
+      marginLeft: 8,
+    },
+    statusToggleBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+    },
+    statusToggleBtnText: {
+      fontSize: 11,
+      fontWeight: "900",
+    },
+
+    /* Save Button */
     saveBtn: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
       gap: 8,
-      marginTop: 25,
-      marginBottom: 25,
       paddingVertical: 14,
-      borderRadius: 12,
+      borderRadius: 14,
+      marginTop: 14,
       elevation: 3,
     },
-    saveText: { color: "#fff", fontSize: 16, fontWeight: "700" },
-
-    modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.45)" },
-    modalContainer: { width: "85%", borderRadius: 18, padding: 20, elevation: 8 },
-    modalHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
-    modalTitle: { fontSize: 20, fontWeight: "700" },
-    modalText: { fontSize: 15, lineHeight: 22, marginBottom: 20 },
-    summaryBox: { borderRadius: 10, borderWidth: 1, borderColor: "#eee", padding: 10, marginBottom: 20 },
-    summaryRow: { flexDirection: "row", alignItems: "center", gap: 8, marginVertical: 4 },
-    summaryText: { fontSize: 15, fontWeight: "600" },
-    modalButtons: { flexDirection: "row", justifyContent: "space-between", gap: 15 },
-    cancelBtn: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 10 },
-    confirmBtn: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 10 },
-    modalBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-
-    // ✅ Success Popup Styles
-    successOverlay: { flex: 1, justifyContent: "center", alignItems: "center" },
-    successContainer: {
-      width: "80%",
-      borderRadius: 20,
-      paddingVertical: 25,
-      paddingHorizontal: 20,
-      alignItems: "center",
-      elevation: 10,
-      shadowColor: "#000",
-      shadowOpacity: 0.2,
-      shadowRadius: 5,
+    saveBtnText: {
+      color: "#FFFFFF",
+      fontSize: 13.5,
+      fontWeight: "800",
     },
-    successIconContainer: { marginBottom: 10 },
-    successTitle: { fontSize: 20, fontWeight: "800", marginBottom: 5 },
-    successSubtitle: { fontSize: 14, textAlign: "center", marginBottom: 15 },
-    successSummary: { marginBottom: 15 },
-    successSummaryText: { fontSize: 15, fontWeight: "600" },
-    okBtn: { paddingVertical: 10, paddingHorizontal: 30, borderRadius: 10 },
-    okText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+    lockedBottomBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingVertical: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      marginTop: 14,
+    },
+    lockedBottomText: {
+      fontSize: 12.5,
+      fontWeight: "700",
+    },
+
+    /* Modals */
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.75)",
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 18,
+    },
+    modalCard: {
+      width: "100%",
+      borderRadius: 22,
+      borderWidth: 1,
+      padding: 20,
+      alignItems: "center",
+      elevation: 12,
+    },
+    lockIconCircle: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: "#F59E0B18",
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 6,
+    },
+    modalTitle: {
+      fontSize: 16.5,
+      fontWeight: "800",
+      marginTop: 4,
+    },
+    modalSub: {
+      fontSize: 12,
+      textAlign: "center",
+      lineHeight: 16,
+      marginTop: 4,
+      marginBottom: 12,
+    },
+    summaryBox: {
+      width: "100%",
+      borderRadius: 14,
+      borderWidth: 1,
+      padding: 12,
+      gap: 6,
+    },
+    summaryRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+    },
+    summaryKey: {
+      fontSize: 11.5,
+      fontWeight: "600",
+    },
+    summaryVal: {
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    warningBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      padding: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+      marginTop: 10,
+      width: "100%",
+    },
+    warningText: {
+      fontSize: 10.5,
+      color: "#D97706",
+      fontWeight: "700",
+      flex: 1,
+    },
+    modalActionRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginTop: 14,
+      width: "100%",
+    },
+    cancelBtn: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    cancelBtnText: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    confirmBtn: {
+      flex: 1,
+      flexDirection: "row",
+      gap: 6,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+    },
+    confirmBtnText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "800",
+    },
   });

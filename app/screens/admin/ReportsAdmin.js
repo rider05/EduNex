@@ -34,14 +34,7 @@ export default function ReportsAdmin() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   // Live Metric Overview
-  const [overviewKPIs, setOverviewKPIs] = useState({
-    academicPassRate: "94.8%",
-    feeRealization: "79.2%",
-    dailyAttendance: "94.2%",
-    facultyStudentRatio: "1 : 18",
-    avgGPA: "3.74",
-    placementRate: "88.6%",
-  });
+  const [overviewKPIs, setOverviewKPIs] = useState({});
 
   const termOptions = [
     "Odd Term (2025-26)",
@@ -58,17 +51,17 @@ export default function ReportsAdmin() {
       ]);
 
       const inst = Array.isArray(institutionsRes) && institutionsRes.length > 0 ? institutionsRes[0] : null;
-      const totalStudents = statsRes?.studentCount || 1250;
-      const totalStaff = statsRes?.staffCount || 78;
-      const ratio = totalStaff > 0 ? `1 : ${Math.round(totalStudents / totalStaff)}` : "1 : 18";
+      const totalStudents = statsRes?.studentCount || 0;
+      const totalStaff = statsRes?.staffCount || 0;
+      const ratio = totalStaff > 0 ? `1 : ${Math.round(totalStudents / totalStaff)}` : "";
 
       setOverviewKPIs({
-        academicPassRate: "95.2%",
-        feeRealization: inst?.monthlyFeeCollection ? "81.4%" : "79.2%",
-        dailyAttendance: "94.2%",
+        academicPassRate: statsRes?.passRate || statsRes?.academicPassRate || "—",
+        feeRealization: statsRes?.feeRealization || statsRes?.feeCollectionPct ? `${statsRes.feeCollectionPct}%` : "—",
+        dailyAttendance: statsRes?.dailyAttendance || statsRes?.overallAttendance || "—",
         facultyStudentRatio: ratio,
-        avgGPA: "3.76",
-        placementRate: "89.4%",
+        avgGPA: statsRes?.avgGPA || statsRes?.averageGPA || "—",
+        placementRate: statsRes?.placementRate || "—",
       });
     } catch (err) {
       console.log("ReportsAdmin load error:", err);
@@ -114,113 +107,12 @@ export default function ReportsAdmin() {
 
   // Detailed Reports Catalog
   const reportCards = [
-    {
-      id: "academic",
-      title: "Academic Performance & GPA",
-      category: "Academics",
-      desc: "Department GPA distributions, pass percentages, top rankers, and credit completions.",
-      icon: "school-outline",
-      color: "#3B82F6",
-      statPrimary: "3.76 Avg GPA",
-      statSecondary: "95.2% Pass Rate",
-      highlights: [
-        { label: "CSE Dept Avg", value: "3.84 GPA", bar: "96%", color: "#3B82F6" },
-        { label: "AI-DS Dept Avg", value: "3.80 GPA", bar: "95%", color: "#10B981" },
-        { label: "ECE Dept Avg", value: "3.68 GPA", bar: "92%", color: "#F59E0B" },
-        { label: "MECH Dept Avg", value: "3.58 GPA", bar: "89%", color: "#8B5CF6" },
-      ],
-      details: {
-        distinctionCount: "348 Students",
-        firstClassCount: "1,240 Students",
-        backlogsPercent: "4.8%",
-        topper: "Adarsh S. (CSE - 3.98 GPA)",
-      },
-    },
-    {
-      id: "fees",
-      title: "Fee Revenue & Financial Audit",
-      category: "Finance",
-      desc: "Term fee realization, tuition collections, overdue defaulter lists, and scholarship grants.",
-      icon: "cash-multiple",
-      color: "#10B981",
-      statPrimary: "₹42.8 L Realized",
-      statSecondary: "79.2% Collected",
-      highlights: [
-        { label: "Tuition Fees", value: "₹28.5 L", bar: "84%", color: "#10B981" },
-        { label: "Lab & Tech Dues", value: "₹8.2 L", bar: "76%", color: "#3B82F6" },
-        { label: "Transport Subsidy", value: "₹4.1 L", bar: "72%", color: "#F59E0B" },
-        { label: "Hostel Maintenance", value: "₹2.0 L", bar: "68%", color: "#8B5CF6" },
-      ],
-      details: {
-        totalTarget: "₹54.0 Lakhs",
-        collected: "₹42.8 Lakhs",
-        overdue: "₹11.2 Lakhs (142 Students)",
-        scholarships: "₹6.5 Lakhs Disbursed",
-      },
-    },
-    {
-      id: "placement",
-      title: "Placement & Career Analytics",
-      category: "Careers",
-      desc: "Campus recruitment rates, highest CTC packages, top tier recruiters, and internship conversions.",
-      icon: "briefcase-check-outline",
-      color: "#8B5CF6",
-      statPrimary: "412 Offers",
-      statSecondary: "89.4% Placed",
-      highlights: [
-        { label: "Tier 1 Product Companies", value: "86 Offers", bar: "92%", color: "#8B5CF6" },
-        { label: "Core Engineering", value: "148 Offers", bar: "88%", color: "#3B82F6" },
-        { label: "IT / Cloud Services", value: "178 Offers", bar: "90%", color: "#10B981" },
-      ],
-      details: {
-        highestPackage: "₹24.5 LPA (Google / Amazon)",
-        averagePackage: "₹7.8 LPA",
-        topRecruiters: "Microsoft, Infosys, Zoho, TCS, Qualcomm",
-        internships: "180 Final Year Students",
-      },
-    },
-    {
-      id: "staff",
-      title: "Faculty Workload & Publications",
-      category: "Faculty",
-      desc: "Teaching hours, student feedback scores, IEEE/Scopus journal papers, and research grants.",
-      icon: "account-tie",
-      color: "#F59E0B",
-      statPrimary: "128 Faculty",
-      statSecondary: "42 Papers Published",
-      highlights: [
-        { label: "Teaching Hours / Wk", value: "36 hrs avg", bar: "90%", color: "#F59E0B" },
-        { label: "Scopus Publications", value: "42 Papers", bar: "85%", color: "#3B82F6" },
-        { label: "Funded Grants", value: "₹18.5 Lakhs", bar: "78%", color: "#10B981" },
-      ],
-      details: {
-        activeProfessors: "128 Total Staff",
-        feedbackScore: "4.6 / 5.0 Rating",
-        fdpAttendance: "94% Attendance",
-        phdHolders: "48 Faculty Members",
-      },
-    },
-    {
-      id: "library",
-      title: "Digital Library & E-Resources",
-      category: "Resources",
-      desc: "Circulation volume, Springer/IEEE e-journal downloads, and book return efficiency.",
-      icon: "book-open-page-variant",
-      color: "#EC4899",
-      statPrimary: "1,700 Issues",
-      statSecondary: "96.4% On Time",
-      highlights: [
-        { label: "E-Books Downloaded", value: "1,280 Queries", bar: "94%", color: "#EC4899" },
-        { label: "Physical Books Issued", value: "420 Books", bar: "82%", color: "#8B5CF6" },
-        { label: "IEEE Journal Hits", value: "2,450 Hits", bar: "96%", color: "#3B82F6" },
-      ],
-      details: {
-        totalVolumes: "38,500 Books",
-        activeSubscriptions: "14 International Journals",
-        overdueReturns: "18 Books",
-        avgReadingTime: "4.2 hrs / Student / Week",
-      },
-    },
+    { id: "r1", title: "Academic Performance Analysis", subtitle: "CGPA distribution, pass rates, and grade analysis by department", icon: "chart-bar", color: "#3B82F6" },
+    { id: "r2", title: "Attendance Compliance Report", subtitle: "Daily, weekly, and monthly attendance trends across all departments", icon: "calendar-check", color: "#10B981" },
+    { id: "r3", title: "Fee Collection & Revenue", subtitle: "Fee realization, pending dues, and scholarship disbursement summary", icon: "currency-inr", color: "#F59E0B" },
+    { id: "r4", title: "Faculty Workload Analysis", subtitle: "Teaching hours, research output, and student-faculty ratio by department", icon: "account-tie", color: "#8B5CF6" },
+    { id: "r5", title: "Placement & Career Services", subtitle: "Campus recruitment statistics, offer letters, and company partnerships", icon: "briefcase-outline", color: "#EF4444" },
+    { id: "r6", title: "Infrastructure Utilization", subtitle: "Hostel, lab, library, and transport capacity usage analytics", icon: "domain", color: "#06B6D4" },
   ];
 
   const activeReportItem = reportCards.find((r) => r.id === activeModal);

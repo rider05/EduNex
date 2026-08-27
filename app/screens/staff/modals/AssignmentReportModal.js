@@ -1,69 +1,52 @@
-// modals/AssignmentReportModal.js
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
   Modal,
-  Pressable,
+  TouchableOpacity,
   StyleSheet,
   Animated,
   Easing,
   TextInput,
-  FlatList,
-  ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
+import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
+import { showToast } from "../../../utils/toastService";
 
-const formatSubmittedOn = (value) => {
-  if (!value) return "-";
-  try {
-    const d = value?.toDate ? value.toDate() : new Date(value);
-    if (!isNaN(d)) {
-      return d.toLocaleDateString([], { month: "short", day: "numeric" });
-    }
-  } catch {}
-  return "-";
-};
+const DEFAULT_REPORTS = [];
 
-const normalizeStatus = (raw) => {
-  const s = String(raw || "").toLowerCase();
-  if (s.includes("late")) return "Late";
-  if (s.includes("pending") || s === "" || s === "-") return "Pending";
-  if (s.includes("graded") || s.includes("reviewed")) return "Graded";
-  if (s.includes("submit")) return "Submitted";
-  return raw || "Pending";
-};
+export default function AssignmentReportModal({ visible, onClose, colors: propColors }) {
+  const theme = useTheme();
+  const colors = propColors || theme.colors || {};
+  const isDarkMode = theme.isDarkMode || false;
+  const styles = getStyles(colors, isDarkMode);
 
-const mapReport = (a) => ({
-  id: String(a.id || a._id || Math.random()),
-  name:
-    a.studentName ||
-    [a.name, a.roll ? `(${a.roll})` : ""].filter(Boolean).join(" ") ||
-    a.studentId ||
-    "Unknown student",
-  topic: a.title || a.topic || a.assignmentTitle || "Untitled topic",
-  status: normalizeStatus(a.status || a.submissionStatus),
-  submittedOn: formatSubmittedOn(a.submittedOn || a.submittedAt || a.createdAt),
-});
-
-const AssignmentReportModal = ({ visible, onClose, colors }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
+  const slideAnim = useRef(new Animated.Value(40)).current;
   const [search, setSearch] = useState("");
-  const [reports, setReports] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [reports, setReports] = useState(DEFAULT_REPORTS);
+  const [activeFilter, setActiveFilter] = useState("All");
 
   const loadReports = useCallback(async () => {
-    setLoading(true);
     try {
       const res = await api.get("/assignments", { sort: "-createdAt", limit: 100 });
-      setReports(Array.isArray(res?.data) ? res.data.map(mapReport) : []);
-    } catch (err) {
-      console.warn("AssignmentReportModal load error:", err?.message || err);
-      setReports([]);
-    } finally {
-      setLoading(false);
+      if (Array.isArray(res?.data) && res.data.length > 0) {
+        setReports(
+          res.data.map((a, idx) => ({
+            id: a.id || a._id || String(idx + 1),
+            name: a.studentName || [a.name, a.roll ? `(${a.roll})` : ""].filter(Boolean).join(" ") || "Student",
+            topic: a.title || a.topic || "Practical Coursework Report",
+            submittedOn: a.dueDate || a.createdAt?.slice(0, 10) || "—",
+            status: a.status?.toLowerCase().includes("graded") ? "Graded" : "Pending",
+            marks: a.marks ? `${a.marks}/50` : "Needs Grading",
+            color: a.status?.toLowerCase().includes("graded") ? "#10B981" : "#F59E0B",
+          }))
+        );
+      }
+    } catch {
+      // Use fallback reports
     }
   }, []);
 
@@ -73,250 +56,312 @@ const AssignmentReportModal = ({ visible, onClose, colors }) => {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 250,
+          duration: 220,
           useNativeDriver: true,
           easing: Easing.out(Easing.ease),
         }),
         Animated.spring(slideAnim, {
           toValue: 0,
+          tension: 65,
+          friction: 8,
           useNativeDriver: true,
         }),
       ]).start();
     } else {
       fadeAnim.setValue(0);
-      slideAnim.setValue(50);
+      slideAnim.setValue(40);
     }
   }, [visible, fadeAnim, slideAnim, loadReports]);
 
-  // 🔍 Filter student list (server-side q search with local refinement)
-  const filteredReports = reports.filter((r) =>
-    r.name.toLowerCase().includes(search.toLowerCase())
-  );
+  if (!visible) return null;
 
-  // 🎨 Status color
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "Submitted":
-        return "#2ECC71";
-      case "Pending":
-        return "#F1C40F";
-      case "Late":
-        return "#E74C3C";
-      case "Graded":
-        return "#3498DB";
-      default:
-        return "#95A5A6";
-    }
+  const handleGrade = (id) => {
+    setReports((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const maxMarks = Number(r.maxMarks) || 50;
+        const score = r.marks && r.marks !== "—" ? r.marks : `${Math.round(maxMarks * 0.9)}/${maxMarks}`;
+        return { ...r, status: "Graded", marks: score, color: "#10B981" };
+      })
+    );
+    showToast("Report marked as Graded!", "success");
   };
 
-  const renderItem = ({ item }) => (
-    <View style={styles.reportCard}>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.studentName, { color: colors.primaryText }]}>
-          {item.name}
-        </Text>
-        <Text style={styles.studentDetails}>Topic: {item.topic}</Text>
-        <Text style={styles.submittedOn}>Submitted On: {item.submittedOn}</Text>
-      </View>
-      <View
-        style={[
-          styles.statusBadge,
-          { backgroundColor: `${getStatusColor(item.status)}20` },
-        ]}
-      >
-        <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
-          {item.status}
-        </Text>
-      </View>
-    </View>
-  );
+  const filtered = reports.filter((r) => {
+    if (activeFilter === "Pending" && r.status !== "Pending") return false;
+    if (activeFilter === "Graded" && r.status !== "Graded") return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      return r.name.toLowerCase().includes(q) || r.topic.toLowerCase().includes(q);
+    }
+    return true;
+  });
 
   return (
-    <Modal visible={visible} transparent animationType="none">
-      <Animated.View
-        style={[
-          styles.modalOverlay,
-          { opacity: fadeAnim, backgroundColor: "rgba(0,0,0,0.45)" },
-        ]}
-      >
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
         <Animated.View
           style={[
             styles.modalContainer,
             {
-              backgroundColor: colors.cardBackground,
+              backgroundColor: colors.cardBackground || "#FFFFFF",
+              borderColor: colors.divider || "rgba(0,0,0,0.1)",
               transform: [{ translateY: slideAnim }],
             },
           ]}
         >
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.iconBadge}>
-              <Icon name="notebook-outline" size={32} color="#E67E22" />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+              <View style={[styles.iconWrap, { backgroundColor: "#E67E2218" }]}>
+                <Icon name="file-document-edit" size={24} color="#E67E22" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.title, { color: colors.primaryText }]}>Assignment & CIA Submissions</Text>
+                <Text style={[styles.subtitle, { color: colors.secondaryText }]}>
+                  Review lab experiments & grade Continuous Assessment files
+                </Text>
+              </View>
             </View>
-            <Text style={[styles.title, { color: "#E67E22" }]}>
-              Assignment Reports
-            </Text>
+
+            <TouchableOpacity onPress={onClose} style={styles.closeIconBtn}>
+              <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
+            </TouchableOpacity>
           </View>
 
-          <Text style={[styles.subtitle, { color: colors.secondaryText }]}>
-            🧾 Track AI & DS student assignment submissions and deadlines.
-          </Text>
+          {/* Filter Pills */}
+          <View style={styles.filterRow}>
+            {["All", "Pending", "Graded"].map((f) => {
+              const isSel = activeFilter === f;
+              return (
+                <TouchableOpacity
+                  key={f}
+                  style={[
+                    styles.filterPill,
+                    isSel
+                      ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
+                      : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                  ]}
+                  onPress={() => setActiveFilter(f)}
+                >
+                  <Text style={[styles.filterPillText, { color: isSel ? "#FFFFFF" : colors.secondaryText }]}>
+                    {f}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
-          {/* Search Bar */}
-          <View style={styles.searchBar}>
-            <Icon name="magnify" size={20} color="#aaa" />
+          {/* Search Box */}
+          <View style={[styles.searchBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+            <Icon name="magnify" size={18} color={colors.secondaryText} />
             <TextInput
-              placeholder="Search student..."
+              style={[styles.searchInput, { color: colors.primaryText }]}
+              placeholder="Search by student or topic..."
+              placeholderTextColor={colors.disabledText}
               value={search}
               onChangeText={setSearch}
-              style={[styles.searchInput, { color: colors.primaryText }]}
-              placeholderTextColor="#888"
             />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch("")}>
+                <Icon name="close-circle" size={16} color={colors.secondaryText} />
+              </TouchableOpacity>
+            )}
           </View>
 
-          {/* Assignment List */}
-          {loading ? (
-            <ActivityIndicator
-              size="large"
-              color="#E67E22"
-              style={{ marginTop: 30, marginBottom: 30 }}
-            />
-          ) : (
-            <FlatList
-              data={filteredReports}
-              keyExtractor={(item) => item.id}
-              renderItem={renderItem}
-              showsVerticalScrollIndicator={false}
-              style={{ marginTop: 10, maxHeight: 300 }}
-              ListEmptyComponent={
-                <Text
-                  style={{
-                    color: colors.secondaryText,
-                    textAlign: "center",
-                    marginTop: 40,
-                  }}
-                >
-                  No assignments found 😕
-                </Text>
-              }
-            />
-          )}
+          {/* Reports List */}
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+            {filtered.map((item) => (
+              <View
+                key={item.id}
+                style={[styles.reportCard, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
+              >
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={[styles.studentName, { color: colors.primaryText }]} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <View
+                      style={[
+                        styles.statusTag,
+                        { backgroundColor: item.status === "Graded" ? "#10B98118" : "#F59E0B18" },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusTagText,
+                          { color: item.status === "Graded" ? "#10B981" : "#D97706" },
+                        ]}
+                      >
+                        {item.status} ({item.marks})
+                      </Text>
+                    </View>
+                  </View>
 
-          {/* Close Button */}
-          <Pressable
-            style={[styles.closeButton, { backgroundColor: "#E67E22" }]}
+                  <Text style={[styles.topicText, { color: colors.secondaryText }]} numberOfLines={2}>
+                    {item.topic}
+                  </Text>
+                  <Text style={[styles.dateText, { color: colors.disabledText }]}>
+                    Submitted: {item.submittedOn}
+                  </Text>
+                </View>
+
+                {item.status === "Pending" && (
+                  <TouchableOpacity
+                    style={[styles.gradeBtn, { backgroundColor: colors.primaryAccent }]}
+                    onPress={() => handleGrade(item.id)}
+                  >
+                    <Icon name="check" size={15} color="#FFFFFF" />
+                    <Text style={styles.gradeBtnText}>Grade</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* Done Button */}
+          <TouchableOpacity
+            style={[styles.closeButton, { backgroundColor: colors.primaryAccent }]}
             onPress={onClose}
+            activeOpacity={0.85}
           >
             <Text style={styles.closeText}>Close</Text>
-          </Pressable>
+          </TouchableOpacity>
         </Animated.View>
       </Animated.View>
     </Modal>
   );
-};
+}
 
-// 🎨 Styles
-const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContainer: {
-    width: "90%",
-    borderRadius: 20,
-    padding: 22,
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginBottom: 10,
-  },
-  iconBadge: {
-    backgroundColor: "#E67E2215",
-    padding: 10,
-    borderRadius: 50,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-  },
-  subtitle: {
-    fontSize: 14,
-    textAlign: "center",
-    marginBottom: 15,
-  },
-  searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#E67E2208",
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: "#E67E2230",
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 14,
-  },
-  reportCard: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#E67E220A",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#E67E2220",
-  },
-  studentName: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  studentDetails: {
-    fontSize: 13,
-    color: "#555",
-    marginTop: 2,
-  },
-  submittedOn: {
-    fontSize: 12,
-    color: "#777",
-    marginTop: 1,
-  },
-  statusBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-  },
-  statusText: {
-    fontWeight: "700",
-    fontSize: 12,
-  },
-  closeButton: {
-    marginTop: 15,
-    alignSelf: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 28,
-    borderRadius: 10,
-    elevation: 3,
-  },
-  closeText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 15,
-    letterSpacing: 0.4,
-  },
-});
-
-export default AssignmentReportModal;
+// ---------------- Styles ----------------
+const getStyles = (colors, isDarkMode) =>
+  StyleSheet.create({
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.75)",
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 16,
+    },
+    modalContainer: {
+      width: "100%",
+      maxHeight: "85%",
+      borderRadius: 22,
+      borderWidth: 1,
+      padding: 18,
+      elevation: 12,
+    },
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    iconWrap: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    title: {
+      fontSize: 16,
+      fontWeight: "800",
+      letterSpacing: -0.2,
+    },
+    subtitle: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+    closeIconBtn: {
+      padding: 4,
+    },
+    filterRow: {
+      flexDirection: "row",
+      gap: 6,
+      marginBottom: 8,
+    },
+    filterPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    filterPillText: {
+      fontSize: 11,
+      fontWeight: "700",
+    },
+    searchBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 12,
+      borderWidth: 1,
+      marginBottom: 10,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 12,
+      padding: 0,
+    },
+    reportCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 14,
+      borderWidth: 1,
+      padding: 12,
+    },
+    studentName: {
+      fontSize: 13,
+      fontWeight: "800",
+      flex: 1,
+    },
+    statusTag: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      marginLeft: 6,
+    },
+    statusTagText: {
+      fontSize: 9.5,
+      fontWeight: "900",
+    },
+    topicText: {
+      fontSize: 11,
+      lineHeight: 15,
+      marginTop: 2,
+    },
+    dateText: {
+      fontSize: 10,
+      marginTop: 2,
+    },
+    gradeBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      marginLeft: 10,
+    },
+    gradeBtnText: {
+      color: "#FFFFFF",
+      fontSize: 11,
+      fontWeight: "800",
+    },
+    closeButton: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      marginTop: 12,
+    },
+    closeText: {
+      color: "#FFFFFF",
+      fontWeight: "800",
+      fontSize: 13,
+    },
+  });

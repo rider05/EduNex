@@ -14,96 +14,14 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import PaymentModal from "./modals/PaymentModal";
 import { SkeletonBox, SkeletonListItem } from "../../components/common/SkeletonLoader";
-import { getStudentFees } from "../../services/dataService";
+import { getStudentFees, getStudentData } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
 
 // ---------------- Fallback Fees Dataset ----------------
-const DEFAULT_INVOICES = [
-  {
-    id: "inv_1",
-    invoiceNo: "INV-2025-0841",
-    title: "Tuition & Academic Term Fee (Sem 5)",
-    category: "Academic",
-    amount: 10000,
-    dueDate: "30 Nov 2025",
-    status: "due",
-    description: "Core curriculum coursework, professor lectures, and continuous internal assessments (CIA).",
-    icon: "school-outline",
-    iconBg: "#4F46E5",
-  },
-  {
-    id: "inv_2",
-    invoiceNo: "INV-2025-0842",
-    title: "Hostel Residence & Mess Catering Fee",
-    category: "Hostel",
-    amount: 5000,
-    dueDate: "30 Nov 2025",
-    status: "due",
-    description: "Emerald Block Room 304-B accommodation, 4-meal daily catering, and high-speed Wi-Fi.",
-    icon: "home-city-outline",
-    iconBg: "#0D9488",
-  },
-  {
-    id: "inv_3",
-    invoiceNo: "INV-2025-0720",
-    title: "Advanced AI Lab & GPU Cluster Access",
-    category: "Laboratory",
-    amount: 7500,
-    dueDate: "15 Sep 2025",
-    paidDate: "12 Sep 2025",
-    status: "paid",
-    description: "NVIDIA H100 cloud cluster access and dedicated workstation in AI Lab 1.",
-    icon: "memory",
-    iconBg: "#10B981",
-  },
-  {
-    id: "inv_4",
-    invoiceNo: "INV-2025-0610",
-    title: "Central Library & IEEE Digital Subscription",
-    category: "Library",
-    amount: 2500,
-    dueDate: "10 Aug 2025",
-    paidDate: "08 Aug 2025",
-    status: "paid",
-    description: "Full IEEE Xplore, ACM Digital Library access, and physical reference catalog.",
-    icon: "book-open-page-variant",
-    iconBg: "#8B5CF6",
-  },
-];
+const DEFAULT_INVOICES = [];
 
-const DEFAULT_HISTORY = [
-  {
-    id: "txn_101",
-    receiptNo: "REC-2025-9481",
-    title: "Advanced AI Lab & GPU Access Fee",
-    amount: 7500,
-    date: "12 Sep 2025 · 11:24 AM",
-    method: "UPI (Google Pay)",
-    txnId: "TXN9482710381",
-    status: "success",
-  },
-  {
-    id: "txn_102",
-    receiptNo: "REC-2025-8319",
-    title: "Central Library Digital Subscription",
-    amount: 2500,
-    date: "08 Aug 2025 · 03:45 PM",
-    method: "HDFC Net Banking",
-    txnId: "TXN8319401928",
-    status: "success",
-  },
-  {
-    id: "txn_103",
-    receiptNo: "REC-2025-7104",
-    title: "Campus Security Caution Deposit",
-    amount: 5000,
-    date: "01 Aug 2025 · 10:15 AM",
-    method: "Visa Debit Card (**** 4819)",
-    txnId: "TXN7104819283",
-    status: "success",
-  },
-];
+const DEFAULT_HISTORY = [];
 
 export default function FeesScreen() {
   const { colors, isDarkMode } = useTheme();
@@ -125,15 +43,20 @@ export default function FeesScreen() {
   // Data
   const [dueDetails, setDueDetails] = useState(DEFAULT_INVOICES);
   const [historyData, setHistoryData] = useState(DEFAULT_HISTORY);
+  const [studentInfo, setStudentInfo] = useState(null);
 
   const loadData = useCallback(async () => {
     try {
-      const fees = await getStudentFees();
+      const [fees, student] = await Promise.all([
+        getStudentFees().catch(() => null),
+        getStudentData().catch(() => null),
+      ]);
+      if (student) setStudentInfo(student);
       if (fees) {
-        if (fees.dueInvoices && Array.isArray(fees.dueInvoices) && fees.dueInvoices.length > 0) {
+        if (Array.isArray(fees.dueInvoices)) {
           setDueDetails(fees.dueInvoices);
         }
-        if (fees.history && Array.isArray(fees.history) && fees.history.length > 0) {
+        if (Array.isArray(fees.history)) {
           setHistoryData(fees.history);
         }
       }
@@ -513,17 +436,17 @@ export default function FeesScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.scholarshipName, { color: colors.primaryText }]}>
-                        First Graduate Academic Merit Grant
+                        {studentInfo?.scholarship?.name || "Academic Merit Grant"}
                       </Text>
                       <Text style={[styles.scholarshipOrg, { color: colors.secondaryText }]}>
-                        Tamil Nadu State Higher Education Directorate
+                        {studentInfo?.scholarship?.organization || "Institutional Financial Aid"}
                       </Text>
                     </View>
                   </View>
 
                   <View style={[styles.scholarshipAmountBox, { backgroundColor: "#4F46E514", borderColor: "#4F46E533" }]}>
                     <Text style={[styles.scholarshipAmountLabel, { color: "#4F46E5" }]}>ANNUAL TUITION CONCESSION</Text>
-                    <Text style={[styles.scholarshipAmountVal, { color: "#4F46E5" }]}>₹ 20,000 / Year</Text>
+                    <Text style={[styles.scholarshipAmountVal, { color: "#4F46E5" }]}>—</Text>
                   </View>
 
                   <View style={styles.scholarshipSpecsGrid}>
@@ -533,15 +456,15 @@ export default function FeesScreen() {
                     </View>
                     <View style={styles.specItem}>
                       <Text style={[styles.specLabel, { color: colors.secondaryText }]}>Sanction Order</Text>
-                      <Text style={[styles.specVal, { color: colors.primaryText }]}>#DOTE-2024-8491</Text>
+                      <Text style={[styles.specVal, { color: colors.primaryText }]}>—</Text>
                     </View>
                     <View style={styles.specItem}>
                       <Text style={[styles.specLabel, { color: colors.secondaryText }]}>Minimum GPA Required</Text>
-                      <Text style={[styles.specVal, { color: colors.primaryText }]}>7.50 CGPA</Text>
+                       <Text style={[styles.specVal, { color: colors.primaryText }]}>{studentInfo?.scholarship?.minCgpa || "—"}</Text>
                     </View>
                     <View style={styles.specItem}>
                       <Text style={[styles.specLabel, { color: colors.secondaryText }]}>Current CGPA</Text>
-                      <Text style={[styles.specVal, { color: "#10B981" }]}>8.92 (Eligible)</Text>
+                       <Text style={[styles.specVal, { color: "#10B981" }]}>{studentInfo?.cgpa ? `${studentInfo.cgpa} (Eligible)` : "—"}</Text>
                     </View>
                   </View>
                 </View>
@@ -564,18 +487,18 @@ export default function FeesScreen() {
             {/* ========================================================================= */}
             {activeTab === "breakdown" && (
               <View style={[styles.matrixCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
-                <Text style={[styles.matrixTitle, { color: colors.primaryText }]}>B.Tech AI & DS · Semester 5 Fee Matrix</Text>
+                <Text style={[styles.matrixTitle, { color: colors.primaryText }]}>{studentInfo?.department || "B.Tech"} · {studentInfo?.semester || "Semester"} Fee Matrix</Text>
                 <Text style={[styles.matrixSub, { color: colors.secondaryText }]}>Approved by Academic Council for 2025-2026</Text>
 
                 <View style={styles.matrixTable}>
                   {[
-                    { head: "Tuition Fee (Theory + Lab)", sem: "₹ 45,000", status: "Billed" },
-                    { head: "Anna University Exam & Registration", sem: "₹ 3,200", status: "Billed" },
-                    { head: "High Performance Computing Lab", sem: "₹ 7,500", status: "Billed" },
-                    { head: "IEEE & ACM Digital Library Access", sem: "₹ 2,500", status: "Billed" },
-                    { head: "Student Welfare & Insurance Cover", sem: "₹ 1,800", status: "Billed" },
-                    { head: "Hostel Residence (Shared 3-Bed)", sem: "₹ 28,500", status: "Billed" },
-                    { head: "Less: Academic Scholarship Credit", sem: "-₹ 15,000", status: "Deducted" },
+                    { head: "Tuition Fee (Theory + Lab)", sem: "—", status: "Billed" },
+                    { head: "Anna University Exam & Registration", sem: "—", status: "Billed" },
+                    { head: "High Performance Computing Lab", sem: "—", status: "Billed" },
+                    { head: "IEEE & ACM Digital Library Access", sem: "—", status: "Billed" },
+                    { head: "Student Welfare & Insurance Cover", sem: "—", status: "Billed" },
+                    { head: "Hostel Residence (Shared 3-Bed)", sem: "—", status: "Billed" },
+                    { head: "Less: Academic Scholarship Credit", sem: "—", status: "Deducted" },
                   ].map((row, idx) => (
                     <View key={idx} style={[styles.matrixTableRow, { borderBottomColor: colors.divider }]}>
                       <Text style={[styles.matrixColItem, { color: colors.primaryText }]}>{row.head}</Text>
