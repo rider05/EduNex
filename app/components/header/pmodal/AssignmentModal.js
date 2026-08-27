@@ -55,6 +55,11 @@ export default function AssignmentModal({ visible, onClose }) {
 
   if (!visible) return null;
 
+  const firstExam = examSchedule[0] || null;
+  const scheduleTitle = firstExam
+    ? `${firstExam.course || "Exam Schedule"} — ${firstExam.type || "Assessment"}`
+    : "Exam & Assessment Schedule";
+
   const handleShareSchedule = async () => {
     try {
       const summary = examSchedule.map(
@@ -62,8 +67,8 @@ export default function AssignmentModal({ visible, onClose }) {
       ).join("\n\n");
 
       await Share.share({
-        title: "Semester 5 CIA-2 Exam Schedule",
-        message: `📋 EDUNEX SEMESTER 5 EXAM SCHEDULE\nWard: ${wardName || "—"} (${rollNo || "—"})\n\n${summary}`,
+        title: scheduleTitle,
+        message: `📋 ${scheduleTitle.toUpperCase()}\nWard: ${wardName || "—"} (${rollNo || "—"})\n\n${summary}`,
       });
       showToast("Exam schedule shared!", "success");
     } catch (err) {
@@ -84,7 +89,7 @@ export default function AssignmentModal({ visible, onClose }) {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.headerTitle, { color: colors.primaryText }]}>Exam & Assessment Calendar</Text>
                 <Text style={[styles.headerSubtitle, { color: colors.secondaryText }]}>
-                  Semester 5 CIA-2 Mid-Term Portions & Dates
+                  {scheduleTitle}
                 </Text>
               </View>
             </View>
