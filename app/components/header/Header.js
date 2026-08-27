@@ -39,7 +39,7 @@ export default function Header() {
           if (id.student.year) parts.push(`Year ${id.student.year}`);
           setUserLabel(parts.join(" · "));
         }
-      } catch (e) { /* silent */ }
+      } catch (_e) { /* silent */ }
     })();
   }, []);
 

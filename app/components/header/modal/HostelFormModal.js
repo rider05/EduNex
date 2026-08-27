@@ -123,9 +123,11 @@ export default function HostelFormModal({ visible, onClose }) {
           if (identity?.rollNo || identity?.username) setRollNo(identity.rollNo || identity.username);
           if (identity?.hostelBlock) setHostelBlock(identity.hostelBlock);
           if (identity?.roomNumber) setRoomNumber(identity.roomNumber);
+          if (identity?.dept || identity?.department) setDept(identity.dept || identity.department);
+          if (identity?.year) setYear(identity.year);
           if (identity?.phone || identity?.parentContact) setParentContact(identity.phone || identity.parentContact);
-        } catch (e) {
-          console.log("HostelFormModal identity load error:", e);
+        } catch (_e) {
+          console.log("HostelFormModal identity load error:", _e);
         }
       })();
 

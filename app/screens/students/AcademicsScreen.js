@@ -115,7 +115,7 @@ export default function AcademicsScreen() {
       }
       return true;
     });
-  }, [selectedType, searchQuery]);
+  }, [selectedType, searchQuery, semesterCourses]);
 
   const handleShareSyllabus = async (course) => {
     try {

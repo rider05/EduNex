@@ -70,7 +70,7 @@ export default function FeesParent() {
         if (parentData?.institution) {
           setInstitution(parentData.institution);
         }
-      } catch (e) {}
+      } catch (_e) {}
     } catch (err) {
       console.warn("FeesParent load error:", err?.message || err);
     } finally {

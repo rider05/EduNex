@@ -14,7 +14,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../../context/ThemeContext";  // ✅ added
 
-import api from "../../../services/api";
+import { api } from "../../../services/api";
 import { resolveIdentity } from "../../../services/identityService";
 
 function EditProfileModal({ visible, onClose, user }) {
@@ -31,7 +31,7 @@ function EditProfileModal({ visible, onClose, user }) {
       setPhone(user.phone || "");
       setAddress(user.address || "");
     }
-  }, [visible]);
+  }, [visible, user?.name, user?.phone, user?.address]);
 
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -153,7 +153,7 @@ function EditProfileModal({ visible, onClose, user }) {
                       await api.patch(`/${collection}/${identity.id}`, { name, phone, address });
                       Alert.alert("Saved", "Profile updated successfully!");
                       onClose();
-                    } catch (e) {
+                    } catch (_e) {
                       Alert.alert("Error", "Failed to save profile. Please try again.");
                     } finally {
                       setSaving(false);

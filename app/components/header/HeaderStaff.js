@@ -39,7 +39,7 @@ export default function HeaderStaff() {
           if (id.staff.designation) parts.push(id.staff.designation);
           setUserLabel(parts.join(" · "));
         }
-      } catch (e) { /* silent */ }
+      } catch (_e) { /* silent */ }
     })();
   }, []);
 

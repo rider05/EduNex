@@ -13,7 +13,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonKPIRow, SkeletonListItem } from "../../components/common/SkeletonLoader";
-import { getInstitutions, getAdminStats } from "../../services/dataService";
+import { getAdminStats } from "../../services/dataService";
 import { showToast } from "../../utils/toastService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
@@ -50,7 +50,6 @@ export default function ReportsAdmin() {
         getAdminStats().catch(() => null),
       ]);
 
-      const inst = Array.isArray(institutionsRes) && institutionsRes.length > 0 ? institutionsRes[0] : null;
       const totalStudents = statsRes?.studentCount || 0;
       const totalStaff = statsRes?.staffCount || 0;
       const ratio = totalStaff > 0 ? `1 : ${Math.round(totalStudents / totalStaff)}` : "";

@@ -34,7 +34,7 @@ export default function ScheduleModal({ visible, onClose, colors: propColors }) 
       try {
         const id = await resolveIdentity();
         if (id?.staff?.name) setFacultyName(id.staff.name);
-      } catch (e) { /* silent */ }
+      } catch (_e) { /* silent */ }
     })();
   }, []);
 
