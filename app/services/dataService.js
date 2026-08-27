@@ -397,41 +397,54 @@ export async function getAssignments(params = {}) {
 
 export async function getAttendanceRecords(params = {}) {
   const identity = await resolveIdentity();
-  const query = { sort: "-date", limit: 200, ...params };
+  const scope = identity.rollNo || identity.username || "";
+  const scopeId = identity.studentId || "";
+  const explicit = Boolean(params.rollNo || params.studentId || params.roll);
 
   let list = [];
   try {
-    const res = await api.get("/attendance", query);
+    const res = await api.get("/attendance", { sort: "-date", limit: 500, ...params });
     list = Array.isArray(res?.data) ? res.data : [];
-  } catch {}
+  } catch {
+    list = [];
+  }
 
-  if (list.length === 0) {
-    // Auto-seed today's attendance
-    const student = (await getStudentData()) || (await getDatabase()).primaryStudent;
-    const rollNo = student?.rollNo || identity.rollNo || identity.username;
-    const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-    const subjects = ["Data Structures & Algorithms", "Operating Systems", "Database Management Systems"];
-    const statuses = ["Present", "Present", "Absent"];
-    for (let i = 0; i < subjects.length; i++) {
-      try {
-        await api.post("/attendance", {
-          studentId: rollNo,
-          studentName: student?.name || "Student",
-          rollNo,
-          date: today,
-          period: String(i + 1),
-          subject: subjects[i],
-          status: statuses[i],
-          markedBy: "STF-CSEAP001",
-        });
-      } catch {}
+  // Scope to the current student across every identifier field staff may use
+  if (!explicit) {
+    const key = (scope || scopeId || "").toLowerCase();
+    if (key) {
+      list = list.filter((r) => {
+        if (!r || typeof r !== "object") return false;
+        const vals = [r.rollNo, r.roll, r.studentId, r.student, r.studentName, r.student_name]
+          .map((x) => String(x != null ? x : "").trim().toLowerCase())
+          .filter(Boolean);
+        return vals.includes(key);
+      });
     }
-    try {
-      const res2 = await api.get("/attendance", query);
-      list = Array.isArray(res2?.data) ? res2.data : [];
-    } catch {}
   }
   return list;
+}
+
+export async function getStudentAttendanceSummary() {
+  const identity = await resolveIdentity();
+  const scope = identity.rollNo || identity.username || "";
+
+  const records = (await getAttendanceRecords()) || [];
+
+  const total = records.length;
+  const attended = records.filter((r) => r && ["Present", "On-Duty", "OD"].includes(r.status)).length;
+  const pct = total > 0 ? Math.round((attended / total) * 1000) / 10 : 0;
+
+  let summary = null;
+  if (total > 0) {
+    summary = {
+      percentage: `${pct}%`,
+      status: pct >= 90 ? "Good Standing" : pct >= 75 ? "Satisfactory" : "Needs Improvement",
+      attendedClasses: attended,
+      totalClasses: total,
+    };
+  }
+  return { summary, records, rollNo: scope, total, attended, pct };
 }
 
 export async function getTimetable(params = {}) {
@@ -862,7 +875,7 @@ export async function getInstitutions() {
 }
 
 export async function getAdminStats() {
-  const [studentsCount, staffCount, deptsCount, instRes, attendRes, fees, exams, infra, transport, leavesRes] =
+  const [studentsCount, staffCount, deptsCount, instRes, attendRes, fees, exams, infrastructure, transport, leavesRes] =
     await Promise.allSettled([
       api.get("/students", { limit: 1 }),
       api.get("/staff", { limit: 1 }),

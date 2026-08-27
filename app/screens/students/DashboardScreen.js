@@ -14,7 +14,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 
 // Data & Services
-import { getStudentData, getGradeLevels, getParentNotices, getInstitutions, getAssignments } from "../../services/dataService";
+import { getStudentData, getGradeLevels, getParentNotices, getInstitutions, getAssignments, getStudentAttendanceSummary } from "../../services/dataService";
 import { SkeletonScreenLoader } from "../../components/common/SkeletonLoader";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
@@ -50,12 +50,13 @@ export default function DashboardScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const [data, gradeLevels, noticesRes, instRes, assignRes] = await Promise.all([
+      const [data, gradeLevels, noticesRes, instRes, assignRes, attSummary] = await Promise.all([
         getStudentData().catch(() => null),
         getGradeLevels().catch(() => []),
         getParentNotices().catch(() => []),
         getInstitutions().catch(() => []),
         getAssignments().catch(() => []),
+        getStudentAttendanceSummary().catch(() => ({ summary: null, records: [] })),
       ]);
 
       const inst = Array.isArray(instRes) && instRes.length > 0 ? instRes[0] : null;
@@ -70,7 +71,11 @@ export default function DashboardScreen() {
           grade: data.grade || "",
           cgpa: data.cgpa != null ? String(data.cgpa) : "",
           dueFees: data.fees?.due != null ? `₹ ${Number(data.fees.due).toLocaleString("en-IN")}` : "",
-          attendance: data.attendance || {},
+          attendance:
+            attSummary?.summary ||
+            (attSummary?.records && attSummary.records.length > 0
+              ? data.attendance || {}
+              : {}),
           nextExam: data.nextExam || {},
           library: data.library || {},
           schedule: data.schedule || [],
@@ -157,6 +162,34 @@ export default function DashboardScreen() {
     typeof studentData.attendance === "object"
       ? studentData.attendance?.percentage || ""
       : studentData.attendance || "";
+
+  // ── Live attendance analytics (computed, never hardcoded) ──────────────────
+  const attObj = typeof studentData.attendance === "object" ? studentData.attendance : {};
+  const attPctNum = Number(String(attObj.percentage || attObj || "").replace(/[^0-9.]/g, "")) || 0;
+  const attendedCount = Number(attObj.attendedClasses) || 0;
+  const totalCount = Number(attObj.totalClasses) || 0;
+  const minAttPct =
+    Number(String(institution?.minAttendancePercent || "75").replace(/[^0-9.]/g, "")) || 75;
+  const minAttFrac = minAttPct / 100;
+
+  let bufferLeaves = 0;
+  if (attendedCount > 0 && totalCount > 0) {
+    const skippable = Math.floor((attendedCount - minAttFrac * totalCount) / minAttFrac);
+    bufferLeaves = skippable > 0 ? skippable : 0;
+  }
+
+  const attZone =
+    attPctNum >= 85
+      ? "Excellent Standing"
+      : attPctNum >= minAttPct
+      ? "Safe Zone"
+      : attPctNum > 0
+      ? "At Risk"
+      : attObj.status || "";
+  const zoneColor = attPctNum > 0 && attPctNum < minAttPct ? "#EF4444" : "#10B981";
+  const hasBufferStats = attendedCount > 0 && totalCount > 0;
+  const belowThreshold = attPctNum > 0 && attPctNum < minAttPct;
+  const hasAttendanceData = attPctNum > 0 || hasBufferStats;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.primaryBackground }]}>
@@ -257,17 +290,59 @@ export default function DashboardScreen() {
                 <View style={[styles.kpiIconWrap, { backgroundColor: "#8B5CF618" }]}>
                   <Icon name="account-check-outline" size={20} color="#8B5CF6" />
                 </View>
-                <Text style={[styles.kpiValue, { color: "#8B5CF6" }]}>{attendanceVal}</Text>
+                <Text style={[styles.kpiValue, { color: "#8B5CF6" }]}>{hasAttendanceData ? attendanceVal : "—"}</Text>
                 <Text style={[styles.kpiLabel, { color: colors.primaryText }]}>Attendance</Text>
-                <Text style={[styles.kpiHint, { color: "#10B981", fontWeight: "700" }]}>Safe Zone</Text>
+                <Text style={[styles.kpiHint, { color: hasAttendanceData ? zoneColor : colors.secondaryText, fontWeight: "700" }]}>
+                  {hasAttendanceData ? attZone : "No attendance recorded"}
+                </Text>
               </TouchableOpacity>
             </View>
 
             {/* Attendance Buffer Banner */}
-            <View style={[styles.bufferBanner, { backgroundColor: "#10B98114", borderColor: "#10B98130" }]}>
-              <Icon name="shield-check" size={18} color="#10B981" />
+            <View
+              style={[
+                styles.bufferBanner,
+                !hasAttendanceData
+                  ? { backgroundColor: colors.primaryBackground, borderColor: colors.divider }
+                  : belowThreshold
+                  ? { backgroundColor: "#EF444414", borderColor: "#EF444430" }
+                  : { backgroundColor: "#10B98114", borderColor: "#10B98130" },
+              ]}
+            >
+              {hasAttendanceData ? (
+                belowThreshold ? (
+                  <Icon name="alert-circle" size={18} color="#EF4444" />
+                ) : (
+                  <Icon name="shield-check" size={18} color="#10B981" />
+                )
+              ) : (
+                <Icon name="calendar-blank-outline" size={18} color={colors.secondaryText} />
+              )}
               <Text style={[styles.bufferBannerText, { color: colors.primaryText }]}>
-                Attendance Buffer: You have <Text style={{ fontWeight: "800", color: "#10B981" }}>4 buffer leaves</Text> before reaching the 75% limit.
+                {!hasAttendanceData ? (
+                  <>
+                    No attendance data is recorded!! Records will appear here once classes are marked
+                    against a <Text style={{ fontWeight: "800" }}>{minAttPct}%</Text> requirement.
+                  </>
+                ) : attPctNum > 0 && !hasBufferStats ? (
+                  <>
+                    Attendance is{" "}
+                    <Text style={{ fontWeight: "800", color: zoneColor }}>{attendanceVal}</Text> · keep attending all
+                    classes to stay above the <Text style={{ fontWeight: "800" }}>{minAttPct}%</Text> requirement.
+                  </>
+                ) : hasBufferStats && belowThreshold ? (
+                  <>
+                    Attendance is below the{" "}
+                    <Text style={{ fontWeight: "800", color: "#EF4444" }}>{minAttPct}%</Text> requirement — attend every
+                    class to recover.
+                  </>
+                ) : (
+                  <>
+                    Attendance Buffer: You have{" "}
+                    <Text style={{ fontWeight: "800", color: "#10B981" }}>{bufferLeaves} buffer leaves</Text> before
+                    reaching the <Text style={{ fontWeight: "800" }}>{minAttPct}%</Text> limit.
+                  </>
+                )}
               </Text>
             </View>
 

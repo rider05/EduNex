@@ -136,6 +136,7 @@ export default function AttendanceStaff() {
     const todayStr = new Date().toISOString().split("T")[0];
     const attendanceDocs = students.map((s) => ({
       studentId: s.id,
+      rollNo: s.roll,
       roll: s.roll,
       studentName: s.name,
       class: activeSection?.label || "",

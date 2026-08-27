@@ -93,8 +93,12 @@ export default function AttendanceModal({ visible, onClose }) {
             {months.length === 0 ? (
               <View style={{ alignItems: "center", paddingVertical: 30 }}>
                 <Icon name="calendar-blank-outline" size={48} color={colors.secondaryText} />
-                <Text style={[styles.monthText, { color: colors.primaryText, marginTop: 12 }]}>No Attendance Data</Text>
-                <Text style={{ fontSize: 13, color: colors.secondaryText, marginTop: 4 }}>Monthly attendance records will appear here.</Text>
+                <Text style={[styles.monthText, { color: colors.primaryText, marginTop: 12 }]}>
+                  No attendance data is recorded!!
+                </Text>
+                <Text style={{ fontSize: 13, color: colors.secondaryText, marginTop: 4 }}>
+                  Attendance records will appear here once classes are marked.
+                </Text>
               </View>
             ) : (
               <>
