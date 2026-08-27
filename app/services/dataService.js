@@ -679,24 +679,65 @@ export async function getParentData() {
 
   await mergeIntoCache({ primaryParent: parent, primaryStudent: ward });
 
+  const circulars = await getParentNotices();
+  const timeline = Array.isArray(ward?.schedule)
+    ? ward.schedule.map((s, i) => ({ time: s.time || `Slot ${i + 1}`, subject: s.subject || s.name || "", room: s.room || "", faculty: s.faculty || s.teacher || "" }))
+    : [];
+  const permits = await getPermits();
+
   const overview = {
     parentName: parent?.name || "",
+    guardianId: parent?.parentId || parent?.id || parent?.guardianId || "",
     wardName: ward?.name || "",
     rollNo: ward?.rollNo || ward?.roll || "",
+    regNo: ward?.regNo || "",
     department: ward?.department || "",
+    deptShort: ward?.deptShort || "",
     year: ward?.year || "",
+    semester: ward?.semester || "",
     section: ward?.section || "",
+    batch: ward?.batch || "",
+    class: ward?.class || "",
     attendance: ward?.attendance?.percentage || ward?.attendance || "",
     grade: ward?.grade || "",
     cgpa: ward?.cgpa != null ? String(ward.cgpa) : "",
+    bloodGroup: ward?.bloodGroup || "",
+    hostel: typeof ward?.hostel === "boolean" ? (ward.hostel ? "Residential" : "Day Scholar") : ward?.hostel || "—",
     feesDue: ward?.fees?.due != null ? `₹ ${Number(ward.fees.due).toLocaleString("en-IN")}` : "",
     paidFees: ward?.fees?.paid != null ? `₹ ${Number(ward.fees.paid).toLocaleString("en-IN")}` : "",
     totalFees: ward?.fees?.total != null ? `₹ ${Number(ward.fees.total).toLocaleString("en-IN")}` : "",
+    advisor: ward?.advisor?.name || "",
+    advisorName: ward?.advisor?.name || "",
     advisorPhone: ward?.advisor?.phone || "",
     advisorEmail: ward?.advisor?.email || "",
+    advisorCabin: ward?.advisor?.cabin || "",
+    parentNameFull: parent?.name || "",
+    parentPhone: parent?.phone || parent?.mobile || "",
+    parentEmail: parent?.email || "",
+    parentOccupation: parent?.occupation || "",
   };
 
-  return { ...(parent || {}), ward: ward || {}, overview };
+  const wardInfo = {
+    ...(ward || {}),
+    name: ward?.name || "",
+    rollNo: ward?.rollNo || ward?.roll || "",
+    regNo: ward?.regNo || "",
+    class: ward?.class || ward?.section || "",
+    department: ward?.department || "",
+    year: ward?.year || "",
+    advisor: ward?.advisor?.name || "",
+    hostel: typeof ward?.hostel === "boolean" ? (ward.hostel ? "Residential" : "Day Scholar") : ward?.hostel || "—",
+    bloodGroup: ward?.bloodGroup || "",
+    profileImage: ward?.profileImage || null,
+    courses: Array.isArray(ward?.subjects) ? ward.subjects : Array.isArray(ward?.courses) ? ward.courses : [],
+    permits: permits.filter(
+      (p) => !ward?.rollNo || p.rollNo === ward.rollNo || p.studentId === ward.rollNo
+    ),
+    attendancePct: ward?.attendance?.percentage || ward?.attendance || "",
+    cgpa: ward?.cgpa != null ? String(ward.cgpa) : "",
+  };
+
+  return { ...(parent || {}), ward: wardInfo, overview, circulars, timeline, permits };
 }
 
 export async function getParentNotices() {
@@ -718,11 +759,38 @@ export async function getParentNotices() {
       isNew: false,
     },
   ]);
-  const clean = list.filter(
-    (n) => n && (Boolean(n.subject?.trim?.()) || Boolean(n.title?.trim?.()) || Boolean(n.message?.trim?.()) || Boolean(n.content?.trim?.()))
-  );
+  const clean = normalizeNotices(list);
   await mergeIntoCache({ notices: clean });
   return clean;
+}
+
+function normalizeNotices(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter(
+      (n) =>
+        n &&
+        (Boolean(n.subject?.trim?.()) ||
+          Boolean(n.title?.trim?.()) ||
+          Boolean(n.message?.trim?.()) ||
+          Boolean(n.content?.trim?.()) ||
+          Boolean(n.description?.trim?.()))
+    )
+    .map((n) => ({
+      ...n,
+      title: n.title || n.subject || n.description || "",
+      subject: n.subject || n.title || n.description || "",
+      content: n.content || n.message || n.description || "",
+      message: n.message || n.content || n.description || "",
+    }));
+}
+
+/** Alias so admin/staff notice feeds can import one consistent getter. */
+export async function getNoticesList(params = {}) {
+  const list = await ensureCollection("/notices", {});
+  if (params.senderRole) {
+    return normalizeNotices(list.filter((n) => n.senderRole === params.senderRole));
+  }
+  return normalizeNotices(list);
 }
 
 // ─────────────────────────────────────────────
@@ -794,17 +862,34 @@ export async function getInstitutions() {
 }
 
 export async function getAdminStats() {
-  const [studentsCount, staffCount, deptsCount, instRes] = await Promise.allSettled([
-    api.get("/students", { limit: 1 }),
-    api.get("/staff", { limit: 1 }),
-    api.get("/departments", { limit: 1 }),
-    api.get("/institutions", { sort: "-createdAt", limit: 1 }),
-  ]);
+  const [studentsCount, staffCount, deptsCount, instRes, attendRes, fees, exams, infra, transport, leavesRes] =
+    await Promise.allSettled([
+      api.get("/students", { limit: 1 }),
+      api.get("/staff", { limit: 1 }),
+      api.get("/departments", { limit: 1 }),
+      api.get("/institutions", { sort: "-createdAt", limit: 1 }),
+      api.get("/attendance", { limit: 200 }),
+      getFeesSummary(),
+      getExams(),
+      getInfrastructure(),
+      getTransport(),
+      getLeavesList({ status: "pending" }),
+    ]);
 
   const inst =
     instRes.status === "fulfilled" && Array.isArray(instRes.value?.data)
       ? instRes.value.data[0]
       : null;
+
+  const attendanceTotal = attendRes.status === "fulfilled" && Array.isArray(attendRes.value?.data) ? attendRes.value.data : [];
+  const presentCount = attendanceTotal.filter((a) => a.status === "Present").length;
+  const attendancePct = attendanceTotal.length > 0 ? Math.round((presentCount / attendanceTotal.length) * 1000) / 10 : 0;
+
+  const feeSummary = fees.status === "fulfilled" && fees.value ? fees.value : null;
+  const examData = exams.status === "fulfilled" && exams.value ? exams.value : { records: [], halls: [] };
+  const infra = infrastructure.status === "fulfilled" && infrastructure.value ? infrastructure.value : {};
+  const transportData = transport.status === "fulfilled" && transport.value ? transport.value : { transportRoutes: [], fleetRoutes: [] };
+  const leaves = leavesRes.status === "fulfilled" && Array.isArray(leavesRes.value) ? leavesRes.value : [];
 
   const stats = {
     totalStudents: "0",
@@ -814,6 +899,27 @@ export async function getAdminStats() {
     activePrograms: inst?.activePrograms || "0",
     monthlyFeeCollection: inst?.monthlyFeeCollection || "₹0",
     systemHealth: inst?.systemHealth || "—",
+    // Admin dashboard rich data
+    attendancePct: `${attendancePct}%`,
+    attendancePresent: presentCount,
+    attendanceTotal: attendanceTotal.length,
+    facultyOnCampus: staffCount.status === "fulfilled" && staffCount.value?.total != null ? String(staffCount.value.total) : "0",
+    feeCollectionPct: feeSummary?.feeCollectionPct || "0%",
+    feeCollectedStudents: feeSummary?.feeCollectedStudents || 0,
+    feePendingStudents: feeSummary?.feePendingStudents || 0,
+    feeCollected: feeSummary?.paidAmount ? `₹ ${Number(feeSummary.paidAmount).toLocaleString("en-IN")}` : "₹0",
+    feePending: feeSummary?.pendingAmount ? `₹ ${Number(feeSummary.pendingAmount).toLocaleString("en-IN")}` : "₹0",
+    hostelOccupancy: infra?.hostelOccupancy || "—",
+    hostelBeds: infra?.hostelBeds || "—",
+    labOccupancy: infra?.labOccupancy || "—",
+    labSystems: infra?.labSystems || "—",
+    libraryIssues: infra?.libraryIssues || "—",
+    libraryReturnRate: infra?.libraryReturnRate || "—",
+    examSchedule: examData.records || [],
+    examHalls: examData.halls || [],
+    transportRoutes: transportData.transportRoutes || [],
+    fleetRoutes: transportData.fleetRoutes || [],
+    pendingLeaves: leaves,
   };
   if (studentsCount.status === "fulfilled" && studentsCount.value?.total != null) {
     stats.totalStudents = Number(studentsCount.value.total).toLocaleString("en-IN");
@@ -869,4 +975,147 @@ export async function sendMessage(messageData) {
     console.warn("sendMessage error:", err);
     return null;
   }
+}
+
+// ─────────────────────────────────────────────
+// 🆕 ADDITIONAL COLLECTION SERVICES
+// (fees, exams, transport, infrastructure, logs, permits, reports, announcements)
+// ─────────────────────────────────────────────
+
+export async function getFeesSummary(params = {}) {
+  const list = await ensureCollection("/fees", [
+    {
+      studentId: "25ACSE001",
+      rollNo: "25ACSE001",
+      studentName: "Velu",
+      invoiceId: "INV-2026-001",
+      item: "Tuition Fee - Term 3",
+      amount: 30000,
+      paid: 0,
+      status: "Pending",
+      dueDate: "30 Nov 2026",
+      semester: "3rd Semester",
+    },
+  ]);
+  const paid = list.filter((f) => f.status === "Paid" || (Number(f.paid) > 0 && Number(f.paid) >= Number(f.amount)));
+  const pending = list.filter((f) => !(f.status === "Paid") && !(Number(f.paid) > 0 && Number(f.paid) >= Number(f.amount)));
+  const totalAmount = list.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+  const paidAmount = list.reduce((s, f) => s + (Number(f.paid) || 0), 0);
+  const pct = totalAmount > 0 ? Math.round((paidAmount / totalAmount) * 100) : 0;
+  return {
+    records: list,
+    totalAmount,
+    paidAmount,
+    pendingAmount: totalAmount - paidAmount,
+    feeCollectionPct: `${pct}%`,
+    feeCollectedStudents: paid.length,
+    feePendingStudents: pending.length,
+    dueInvoices: list.filter((f) => f.invoiceId?.startsWith?.("INV")),
+    recentPayments: list.filter((f) => f.invoiceId?.startsWith?.("TXN")),
+  };
+}
+
+export async function getExams(params = {}) {
+  const list = await ensureCollection("/exams", [
+    {
+      semester: "3rd Semester",
+      examName: "CIA-2 (Continuous Internal Assessment)",
+      subject: "Operating Systems",
+      subjectCode: "CS-302",
+      date: "15 Nov 2026",
+      time: "10:00 AM - 01:00 PM",
+      room: "Exam Hall A2",
+      hallCapacity: 120,
+      proctor: "Joe",
+      status: "Scheduled",
+    },
+  ]);
+  const halls = [...new Set(list.map((e) => e.room).filter(Boolean))];
+  return { records: list, halls, exams: list };
+}
+
+export async function getTransport(params = {}) {
+  const list = await ensureCollection("/transport", [
+    { route: "Route 1 - Gandhipuram CLG", type: "transport", driver: "Ramesh", bus: "TN-38-AE-4521", status: "On Route", speed: "42 km/h" },
+  ]);
+  const transportRoutes = list.filter((t) => t.type === "transport" || !t.type);
+  const fleetRoutes = list.filter((t) => t.type === "fleet");
+  return { records: list, transportRoutes, fleetRoutes };
+}
+
+export async function getInfrastructure(params = {}) {
+  const list = await ensureCollection("/infrastructure", [
+    { category: "hostel", name: "Boys Hostel", occupancy: "93%", occupiedBeds: 93, totalBeds: 100, warden: "Revathi" },
+  ]);
+  const byCat = (cat) => list.find((i) => i.category === cat) || {};
+  const hostel = byCat("hostel");
+  const labs = byCat("labs");
+  const library = byCat("library");
+  return {
+    records: list,
+    hostelOccupancy: hostel.occupancy || "—",
+    hostelBeds: hostel.occupiedBeds != null ? `${hostel.occupiedBeds} / ${hostel.totalBeds != null ? hostel.totalBeds : hostel.occupiedBeds}` : "—",
+    hostelOccupied: hostel.occupiedBeds != null ? Number(hostel.occupiedBeds) : 0,
+    hostelTotal: hostel.totalBeds != null ? Number(hostel.totalBeds) : 0,
+    labOccupancy: labs.occupancy || "—",
+    labOccupied: labs.occupiedSystems != null ? Number(labs.occupiedSystems) : 0,
+    labTotal: labs.totalSystems != null ? Number(labs.totalSystems) : 0,
+    labSystems: labs.occupiedSystems != null ? `${labs.occupiedSystems} / ${labs.totalSystems != null ? labs.totalSystems : labs.occupiedSystems}` : "—",
+    libraryIssues: library.issues != null ? library.issues : (library.totalIssues != null ? library.totalIssues : "—"),
+    libraryReturnRate: library.returnRate || "—",
+  };
+}
+
+export async function getSystemLogs(params = {}) {
+  try {
+    const res = await api.get("/logs", { sort: "-createdAt", limit: 50, ...params });
+    if (res?.data) return res.data;
+  } catch (err) {
+    console.warn("getSystemLogs error:", err);
+  }
+  return [];
+}
+
+export async function getPermits(params = {}) {
+  const list = await ensureCollection("/permits", [
+    {
+      studentId: "25ACSE001",
+      rollNo: "25ACSE001",
+      studentName: "Velu",
+      type: "entry",
+      gate: "Main Gate",
+      place: "Campus",
+      time: "08:45 AM",
+      date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+      status: "granted",
+    },
+  ]);
+  return list.filter((p) => p && (Boolean(p.studentName?.trim?.()) || Boolean(p.rollNo?.trim?.()) || Boolean(p.place?.trim?.())));
+}
+
+export async function getReports(params = {}) {
+  const list = await ensureCollection("/reports", [
+    {
+      title: "Academic Performance - CSE",
+      category: "academic",
+      desc: "Semester-wise performance across CSE batches.",
+      statPrimary: "8.42",
+      statPrimaryLabel: "Avg CGPA",
+      statSecondary: "91.2%",
+      statSecondaryLabel: "Pass Rate",
+      highlights: ["Top performer batch: II Year CSE-A (avg 8.6)"],
+      details: { "Total Students": "1", "Passed": "1" },
+    },
+  ]);
+  return list;
+}
+
+export async function getAnnouncements(params = {}) {
+  try {
+    const res = await api.get("/announcements", { sort: "-createdAt", limit: 50, ...params });
+    if (res?.data) return res.data;
+  } catch (err) {
+    console.warn("getAnnouncements error:", err);
+  }
+  return [];
 }

@@ -14,7 +14,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonKPIRow, SkeletonListItem } from "../../components/common/SkeletonLoader";
-import { getInstitutions, getAdminStats, getNoticesList } from "../../services/dataService";
+import { getInstitutions, getAdminStats, getNoticesList, getSystemLogs, getLeavesList } from "../../services/dataService";
 import { api } from "../../services/api";
 import { showToast } from "../../utils/toastService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
@@ -64,7 +64,7 @@ export default function DashboardAdmin() {
         getInstitutions().catch(() => null),
         getAdminStats().catch(() => null),
         getNoticesList().catch(() => []),
-        api.get("/leaves", { status: "pending" }).catch(() => null),
+        getLeavesList({ status: "pending" }).catch(() => []),
       ]);
 
       const inst = Array.isArray(institutionsRes) && institutionsRes.length > 0 ? institutionsRes[0] : null;
@@ -91,7 +91,7 @@ export default function DashboardAdmin() {
         {
           id: "3",
           label: "Departments",
-          value: String(inst?.overview?.departments || liveData.totalDepartments || "8"),
+          value: String(inst?.overview?.departments || liveData.totalDepartments || "—"),
           icon: "domain",
           color: "#F59E0B",
           sub: "Active Programs",
@@ -112,8 +112,8 @@ export default function DashboardAdmin() {
         setNotices([]);
       }
 
-      if (Array.isArray(leavesRes?.data) && leavesRes.data.length > 0) {
-        setLeaveRequests(leavesRes.data.slice(0, 10));
+      if (Array.isArray(leavesRes) && leavesRes.length > 0) {
+        setLeaveRequests(leavesRes.slice(0, 10));
       } else {
         setLeaveRequests([]);
       }
@@ -139,14 +139,14 @@ export default function DashboardAdmin() {
   // Handle Leave Approvals
   const handleApproveLeave = (id, applicantName) => {
     setLeaveRequests((prev) =>
-      prev.map((req) => (req.id === id ? { ...req, status: "approved" } : req))
+      prev.map((req) => ((req.id === id || req._id === id) ? { ...req, status: "approved" } : req))
     );
     showToast(`Approved leave request for ${applicantName}`, "success");
   };
 
   const handleRejectLeave = (id, applicantName) => {
     setLeaveRequests((prev) =>
-      prev.map((req) => (req.id === id ? { ...req, status: "rejected" } : req))
+      prev.map((req) => ((req.id === id || req._id === id) ? { ...req, status: "rejected" } : req))
     );
     showToast(`Rejected leave request for ${applicantName}`, "warning");
   };
@@ -204,13 +204,15 @@ export default function DashboardAdmin() {
   };
 
   // Handle Open Logs Modal
-  const openLogs = () => {
+  const openLogs = async () => {
     setLogsVisible(true);
     setLogsLoading(true);
-    setTimeout(() => {
-      setLogs([]);
+    try {
+      const logList = await getSystemLogs().catch(() => []);
+      setLogs(Array.isArray(logList) ? logList : []);
+    } finally {
       setLogsLoading(false);
-    }, 500);
+    }
   };
 
   const pendingLeavesCount = leaveRequests.filter((r) => r.status === "pending").length;
@@ -303,15 +305,15 @@ export default function DashboardAdmin() {
               {/* Top Row: Attendance Rates */}
               <View style={styles.healthStatsRow}>
                 <View style={styles.healthStatBox}>
-                  <Text style={[styles.healthStatPercent, { color: "#3B82F6" }]}>—%</Text>
+                  <Text style={[styles.healthStatPercent, { color: "#3B82F6" }]}>{live.attendancePct || "—"}</Text>
                   <Text style={[styles.healthStatTitle, { color: colors.primaryText }]}>Student Attendance</Text>
-                   <Text style={[styles.healthStatSub, { color: colors.secondaryText }]}>— / — Present</Text>
+                   <Text style={[styles.healthStatSub, { color: colors.secondaryText }]}>{live.attendancePresent != null && live.attendanceTotal != null ? `${live.attendancePresent} / ${live.attendanceTotal} Present` : "— / — Present"}</Text>
                 </View>
                 <View style={[styles.healthStatDivider, { backgroundColor: colors.divider }]} />
                 <View style={styles.healthStatBox}>
-                  <Text style={[styles.healthStatPercent, { color: "#10B981" }]}>—%</Text>
+                  <Text style={[styles.healthStatPercent, { color: "#10B981" }]}>{live.facultyOnCampus || "—"}</Text>
                   <Text style={[styles.healthStatTitle, { color: colors.primaryText }]}>Faculty On Campus</Text>
-                  <Text style={[styles.healthStatSub, { color: colors.secondaryText }]}>— / — On Duty</Text>
+                  <Text style={[styles.healthStatSub, { color: colors.secondaryText }]}>{live.facultyOnCampus ? `${live.facultyOnCampus} / ${live.totalFaculty || "—"} On Duty` : "— / — On Duty"}</Text>
                 </View>
               </View>
 
@@ -321,10 +323,10 @@ export default function DashboardAdmin() {
                   DEPARTMENT ATTENDANCE
                 </Text>
 
-                {(live.departmentAttendance || []).length > 0 ? (
-                  (live.departmentAttendance || []).map((dept, idx) => {
+                {(live.departmentAttendance || (live.attendancePct ? [{ name: (live.departments && live.departments[0] && (live.departments[0].name || live.departments[0].code)) || "All Departments", value: Number(String(live.attendancePct).replace("%", "")) || 0 }] : [])).length > 0 ? (
+                  (live.departmentAttendance || (live.attendancePct ? [{ name: (live.departments && live.departments[0] && (live.departments[0].name || live.departments[0].code)) || "All Departments", value: Number(String(live.attendancePct).replace("%", "")) || 0 }] : [])).map((dept, idx) => {
                     const colors_list = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EF4444"];
-                    const pct = Number(dept.percentage) || 0;
+                    const pct = Number(dept.percentage) || Number(dept.value) || 0;
                     return (
                       <View key={idx} style={styles.deptBarRow}>
                         <Text style={[styles.deptName, { color: colors.primaryText }]}>{dept.name || dept.department || "—"}</Text>
@@ -424,7 +426,9 @@ export default function DashboardAdmin() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.opTitle, { color: colors.primaryText }]}>Transport Fleet & GPS</Text>
                   <Text style={[styles.opSub, { color: colors.secondaryText }]}>
-                    {live.transportRoutes ? `${live.transportRoutes} Active Routes` : "Transport data unavailable"}
+                    {live.transportRoutes && live.transportRoutes.length
+                      ? `${live.transportRoutes.length} Active Routes`
+                      : "Transport data unavailable"}
                   </Text>
                 </View>
                 <Icon name="chevron-right" size={20} color={colors.secondaryText} />
@@ -441,9 +445,9 @@ export default function DashboardAdmin() {
             <View style={[styles.feeCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
               <View style={styles.feeCardTop}>
                 <View>
-                   <Text style={[styles.feeMainAmount, { color: colors.primaryText }]}>{live.feeCollected ? `₹ ${Number(live.feeCollected).toLocaleString("en-IN")}` : "—"}</Text>
+                   <Text style={[styles.feeMainAmount, { color: colors.primaryText }]}>{live.feeCollected || "—"}</Text>
                   <Text style={[styles.feeMainLabel, { color: colors.secondaryText }]}>
-                    Total Fee Realized {live.feeCollectionPct ? `(${live.feeCollectionPct}%)` : ""}
+                    Total Fee Realized {live.feeCollectionPct ? `(${live.feeCollectionPct})` : ""}
                   </Text>
                 </View>
                 <View style={[styles.pendingFeeBadge, { backgroundColor: "#EF444418" }]}>
@@ -453,8 +457,8 @@ export default function DashboardAdmin() {
               </View>
 
               {/* Dual Colored Progress Bar */}
-              <View style={[styles.feeProgressBar, { backgroundColor: "#EF444440" }]}>
-                <View style={[styles.feeCollectedBar, { width: `${live.feeCollectionPct || 0}%`, backgroundColor: "#10B981" }]} />
+                <View style={[styles.feeProgressBar, { backgroundColor: "#EF444440" }]}>
+                <View style={[styles.feeCollectedBar, { width: `${Number(String(live.feeCollectionPct || "0").replace("%", "")) || 0}%`, backgroundColor: "#10B981" }]} />
               </View>
 
               <View style={styles.feeLegendRow}>
@@ -586,9 +590,22 @@ export default function DashboardAdmin() {
                 <Text style={[styles.examBannerTitle, { color: "#3B82F6" }]}>
                    Examination Schedule
                 </Text>
-                <Text style={[styles.examBannerSub, { color: colors.primaryText }]}>
-                  {live.examSchedule || "Examination schedule pending"}
-                </Text>
+                {live.examSchedule && live.examSchedule.length > 0 ? (
+                  live.examSchedule.map((e, i) => (
+                    <View key={i} style={{ marginBottom: 6 }}>
+                      <Text style={[styles.examBannerSub, { color: colors.primaryText }]}>
+                        {e.subject || e.examName || "—"} · {e.date || "—"}
+                      </Text>
+                      <Text style={[styles.examBannerSub, { color: colors.secondaryText }]}>
+                        {e.time || ""}{e.time && e.room ? " · " : ""}{e.room || ""}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={[styles.examBannerSub, { color: colors.primaryText }]}>
+                    Examination schedule pending
+                  </Text>
+                )}
               </View>
 
               <Text style={[styles.subModalSection, { color: colors.secondaryText }]}>
@@ -599,13 +616,13 @@ export default function DashboardAdmin() {
                 (live.examHalls || []).map((h, i) => (
                   <View key={i} style={[styles.hallItem, { borderBottomColor: colors.divider }]}>
                     <View>
-                      <Text style={[styles.hallName, { color: colors.primaryText }]}>{h.hall || h.name || "—"}</Text>
-                      <Text style={[styles.hallChief, { color: colors.secondaryText }]}>Supervisor: {h.chief || h.supervisor || "—"}</Text>
+                      <Text style={[styles.hallName, { color: colors.primaryText }]}>{typeof h === "string" ? h : (h.hall || h.name || "—")}</Text>
+                      <Text style={[styles.hallChief, { color: colors.secondaryText }]}>Supervisor: {typeof h === "string" ? "—" : (h.chief || h.supervisor || "—")}</Text>
                     </View>
                     <View style={{ alignItems: "flex-end" }}>
-                      <Text style={[styles.hallCap, { color: colors.primaryAccent }]}>{h.cap || h.capacity || "—"}</Text>
+                      <Text style={[styles.hallCap, { color: colors.primaryAccent }]}>{typeof h === "string" ? "—" : (h.cap || h.capacity || "—")}</Text>
                       <View style={[styles.hallStatusBadge, { backgroundColor: "#10B98120" }]}>
-                        <Text style={[styles.hallStatusText, { color: "#10B981" }]}>{h.status || "Ready"}</Text>
+                        <Text style={[styles.hallStatusText, { color: "#10B981" }]}>{typeof h === "string" ? "Ready" : (h.status || "Ready")}</Text>
                       </View>
                     </View>
                   </View>
@@ -647,9 +664,17 @@ export default function DashboardAdmin() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-              {leaveRequests.map((req) => (
+              {leaveRequests.map((req) => {
+                const mappedLeave = {
+                  name: req.studentName || req.applicantName || req.name || "—",
+                  dept: req.rollNo || req.roll || req.dept || req.department || "—",
+                  role: req.type || req.leaveType || req.role || "Leave",
+                  dates: req.dates || (req.fromDate ? `${req.fromDate} → ${req.toDate || ""}` : ""),
+                  type: req.type || req.leaveType || "General",
+                };
+                return (
                 <View
-                  key={req.id}
+                  key={req._id || req.id}
                   style={[
                     styles.leaveItemCard,
                     {
@@ -660,31 +685,31 @@ export default function DashboardAdmin() {
                 >
                   <View style={styles.leaveItemTop}>
                     <View>
-                      <Text style={[styles.leaveApplicantName, { color: colors.primaryText }]}>{req.name}</Text>
+                      <Text style={[styles.leaveApplicantName, { color: colors.primaryText }]}>{mappedLeave.name}</Text>
                       <Text style={[styles.leaveApplicantDept, { color: colors.secondaryText }]}>
-                        {req.dept} · {req.role}
+                        {mappedLeave.dept} · {mappedLeave.role}
                       </Text>
                     </View>
                     <View style={[styles.leaveTypeBadge, { backgroundColor: colors.primaryAccent + "18" }]}>
-                      <Text style={[styles.leaveTypeBadgeText, { color: colors.primaryAccent }]}>{req.type}</Text>
+                      <Text style={[styles.leaveTypeBadgeText, { color: colors.primaryAccent }]}>{mappedLeave.type}</Text>
                     </View>
                   </View>
 
-                  <Text style={[styles.leaveDates, { color: colors.primaryText }]}>📅 {req.dates}</Text>
-                  <Text style={[styles.leaveReason, { color: colors.secondaryText }]}>{`"${req.reason}"`}</Text>
+                  <Text style={[styles.leaveDates, { color: colors.primaryText }]}>📅 {mappedLeave.dates}</Text>
+                  <Text style={[styles.leaveReason, { color: colors.secondaryText }]}>{`"${req.reason || ""}"`}</Text>
 
                   {req.status === "pending" ? (
                     <View style={styles.leaveActionRow}>
                       <TouchableOpacity
                         style={[styles.leaveApproveBtn, { backgroundColor: "#10B981" }]}
-                        onPress={() => handleApproveLeave(req.id, req.name)}
+                        onPress={() => handleApproveLeave(req._id || req.id, mappedLeave.name)}
                       >
                         <Icon name="check" size={16} color="#fff" />
                         <Text style={styles.leaveBtnText}>Approve</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.leaveRejectBtn, { backgroundColor: "#EF4444" }]}
-                        onPress={() => handleRejectLeave(req.id, req.name)}
+                        onPress={() => handleRejectLeave(req._id || req.id, mappedLeave.name)}
                       >
                         <Icon name="close" size={16} color="#fff" />
                         <Text style={styles.leaveBtnText}>Reject</Text>
@@ -698,7 +723,8 @@ export default function DashboardAdmin() {
                     </View>
                   )}
                 </View>
-              ))}
+                );
+              })}
             </ScrollView>
 
             <TouchableOpacity
@@ -896,21 +922,33 @@ export default function DashboardAdmin() {
               {logsLoading ? (
                 <ActivityIndicator size="large" color={colors.primaryAccent} style={{ marginVertical: 30 }} />
               ) : (
-                logs.map((log) => (
+                logs.map((log) => {
+                  const levelColor = log.level === "error" || log.level === "critical" ? "#EF4444"
+                    : log.level === "warn" || log.level === "warning" ? "#F59E0B"
+                    : log.level === "success" ? "#10B981"
+                    : "#3B82F6";
+                  const timestamp = log.createdAt ? new Date(log.createdAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+                  return (
                   <View
-                    key={log.id}
+                    key={log._id || log.id}
                     style={[
                       styles.logItem,
-                      { borderColor: log.color + "33", backgroundColor: colors.primaryBackground },
+                      { borderColor: levelColor + "33", backgroundColor: colors.primaryBackground },
                     ]}
                   >
-                    <Icon name={log.icon} size={22} color={log.color} />
+                    <Icon name="alert-circle-outline" size={22} color={levelColor} />
                     <View style={{ marginLeft: 10, flex: 1 }}>
-                      <Text style={[styles.logLabel, { color: colors.primaryText }]}>{log.label}</Text>
-                      <Text style={[styles.logValue, { color: log.color }]}>{log.value}</Text>
+                      <Text style={[styles.logLabel, { color: colors.primaryText }]}>{log.source || log.level || "System"}</Text>
+                      <Text style={[styles.logValue, { color: levelColor }]}>{log.message || log.value || ""}</Text>
+                      {log.username ? (
+                        <Text style={[styles.logValue, { color: colors.secondaryText }]}>
+                          {log.username}{timestamp ? ` · ${timestamp}` : ""}
+                        </Text>
+                      ) : null}
                     </View>
                   </View>
-                ))
+                  );
+                })
               )}
             </ScrollView>
 

@@ -13,7 +13,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonProfileCard, SkeletonKPIRow, SkeletonListItem } from "../../components/common/SkeletonLoader";
-import { getStudentData } from "../../services/dataService";
+import { getStudentData, getPermits } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
 
@@ -36,13 +36,14 @@ export default function WardDetailsParent() {
   const loadData = useCallback(async () => {
     try {
       const student = await getStudentData();
+      const permitDocs = await getPermits().catch(() => []);
       if (student) {
         setWardInfo((prev) => ({
           ...prev,
           name: student.name || prev.name,
           dept: student.department || student.dept || prev.dept,
           rollNo: student.roll || student.rollNo || prev.rollNo,
-          regNo: student.regNo || prev.regNo,
+          regNo: student.regNo || prev.regNo || "",
           year: student.year || prev.year,
           semester: student.semester || prev.semester,
           batch: student.batch || prev.batch,
@@ -54,14 +55,49 @@ export default function WardDetailsParent() {
           advisorEmail: student.advisor?.email || student.advisorEmail || prev.advisorEmail,
           advisorCabin: student.advisor?.cabin || prev.advisorCabin,
           bloodGroup: student.bloodGroup || prev.bloodGroup,
-          hostel: student.hostel || prev.hostel,
+          hostel:
+            typeof student.hostel === "boolean"
+              ? student.hostel
+                ? "Residential"
+                : "Day Scholar"
+              : student.hostel || prev.hostel || "—",
           phone: student.phone || prev.phone,
         }));
-        if (Array.isArray(student.courses)) {
+        if (Array.isArray(student.subjects)) {
+          setCourses(
+            student.subjects.map((c, i) => ({
+              code: c.code || "",
+              name: c.name || "",
+              faculty: c.faculty || c.teacher || "—",
+              credits: c.credits != null ? c.credits : "—",
+              grade: c.grade || "—",
+              attendance: c.attendance || "",
+              type: c.credits >= 4 ? "Core" : "Elective",
+              color:
+                c.color || ["#4F46E5", "#0EA5E9", "#8B5CF6", "#10B981", "#F59E0B"][i % 5],
+              icon: c.icon || "book-open-variant",
+            }))
+          );
+        } else if (Array.isArray(student.courses)) {
           setCourses(student.courses);
         }
-        if (Array.isArray(student.permits)) {
-          setPermits(student.permits);
+        if (Array.isArray(permitDocs) && permitDocs.length > 0) {
+          const wardRoll = student.rollNo || student.roll || "";
+          setPermits(
+            permitDocs
+              .filter((p) => !wardRoll || p.rollNo === wardRoll || p.studentId === wardRoll)
+              .map((p, i) => ({
+                id: p.id || p._id || `prm-${i}`,
+                type: p.type || "entry",
+                destination: p.place || p.destination || p.gate || "Campus",
+                place: p.place || p.gate || "Campus",
+                time: p.time || "",
+                date: p.date || "",
+                gate: p.gate || "Main Gate",
+                status: p.status || "granted",
+                color: p.color || (p.type === "exit" ? "#F59E0B" : "#10B981"),
+              }))
+          );
         }
       }
     } catch (err) {

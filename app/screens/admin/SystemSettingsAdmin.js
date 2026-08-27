@@ -18,6 +18,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../../context/ThemeContext";
 import { showToast } from "../../utils/toastService";
 import { clearAuthSession, api } from "../../services/api";
+import { getInstitutions } from "../../services/dataService";
 import { SkeletonProfileCard, SkeletonListItem } from "../../components/common/SkeletonLoader";
 
 const DEFAULT_SETTINGS = {
@@ -31,6 +32,11 @@ const DEFAULT_SETTINGS = {
   // Academic Controls
   academicYear: "—",
   currentSemester: "—",
+  systemHealth: "—",
+  bankName: "—",
+  bankAccount: "—",
+  bankIfsc: "—",
+  bankBranch: "—",
   gradeLock: false,
   minAttendancePercent: "—",
   feeGatewayActive: true,
@@ -75,12 +81,35 @@ export default function SystemSettingsAdmin({ onLogout }) {
   const loadSettings = useCallback(async () => {
     try {
       const stored = await AsyncStorage.getItem("adminSettings");
+      let merged = {};
       if (stored) {
-        setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(stored) });
+        merged = { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+        setSettings(merged);
       }
       const storedBackupTime = await AsyncStorage.getItem("lastBackupTime");
       if (storedBackupTime) {
         setLastBackupTime(storedBackupTime);
+      }
+
+      // Pre-fill academic & bank settings from the live institution (MongoDB)
+      try {
+        const institutions = await getInstitutions().catch(() => []);
+        const inst = Array.isArray(institutions) && institutions.length > 0 ? institutions[0] : null;
+        if (inst) {
+          const prefill = {
+            ...(stored ? merged : DEFAULT_SETTINGS),
+            academicYear: inst.academicYear || merged.academicYear || DEFAULT_SETTINGS.academicYear,
+            currentSemester: inst.currentTerm || (stored && merged.currentSemester) || DEFAULT_SETTINGS.currentSemester,
+            systemHealth: inst.systemHealth || (stored && merged.systemHealth) || DEFAULT_SETTINGS.systemHealth,
+            bankName: inst.bankName || (stored && merged.bankName) || DEFAULT_SETTINGS.bankName,
+            bankAccount: inst.bankAccount || (stored && merged.bankAccount) || DEFAULT_SETTINGS.bankAccount,
+            bankIfsc: inst.bankIfsc || (stored && merged.bankIfsc) || DEFAULT_SETTINGS.bankIfsc,
+            bankBranch: inst.bankBranch || (stored && merged.bankBranch) || DEFAULT_SETTINGS.bankBranch,
+          };
+          setSettings(prefill);
+        }
+      } catch (e) {
+        console.log("Institution prefill error:", e);
       }
     } catch (e) {
       console.log("Error loading stored settings:", e);

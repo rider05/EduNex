@@ -57,10 +57,20 @@ export default function ProfileParent({ onLogout }) {
           address: data?.address || prev.address,
           ward: {
             ...(prev.ward || {}),
+            ...(data?.ward || {}),
             name: data?.ward?.name || prev?.ward?.name,
             rollNo: data?.ward?.rollNo || data?.ward?.roll || prev?.ward?.rollNo,
-            attendance: data?.ward?.attendance?.percentage || prev?.ward?.attendance,
+            regNo: data?.ward?.regNo || prev?.ward?.regNo || "",
+            class: data?.ward?.class || prev?.ward?.class || "",
+            advisor: data?.ward?.advisor || data?.overview?.advisorName || prev?.ward?.advisor || "",
+            hostel: data?.ward?.hostel || prev?.ward?.hostel || "—",
+            bloodGroup: data?.ward?.bloodGroup || prev?.ward?.bloodGroup || "—",
+            attendance: data?.ward?.attendancePct || data?.ward?.attendance?.percentage || prev?.ward?.attendance,
             cgpa: data?.ward?.cgpa ? `${data.ward.cgpa} / 10.0` : prev?.ward?.cgpa,
+            feeStatus:
+              data?.overview?.feesDue
+                ? `Due ${data.overview.feesDue}`
+                : prev?.ward?.feeStatus || "Paid",
           },
         }));
       }
@@ -118,7 +128,7 @@ export default function ProfileParent({ onLogout }) {
     try {
       await Share.share({
         title: `Guardian Profile - ${parentData.name}`,
-        message: `🛡️ EDUNEX GUARDIAN DOSSIER\nGuardian: ${parentData.name} (${parentData.relation})\nGuardian ID: ${parentData.guardianId}\nContact: ${parentData.phone}\nWard: ${parentData.ward.name} (${parentData.ward.rollNo})\nProgram: ${parentData.ward.class}\nStatus: VERIFIED & ACTIVE`,
+        message: `🛡️ EDUNEX GUARDIAN DOSSIER\nGuardian: ${parentData.name} (${parentData.relation})\nGuardian ID: ${parentData.guardianId || parentData.parentId || parentData.id}\nContact: ${parentData.phone}\nWard: ${parentData.ward.name} (${parentData.ward.rollNo})\nProgram: ${parentData.ward.class}\nStatus: VERIFIED & ACTIVE`,
       });
       showToast("Guardian profile shared!", "success");
     } catch (err) {
@@ -208,7 +218,7 @@ export default function ProfileParent({ onLogout }) {
                     {parentData.relation}
                   </Text>
                   <Text style={[styles.guardianIdText, { color: colors.secondaryText }]}>
-                    ID: {parentData.guardianId} · {parentData.occupation}
+                    ID: {parentData.guardianId || parentData.parentId || parentData.id} · {parentData.occupation}
                   </Text>
                 </View>
               </View>

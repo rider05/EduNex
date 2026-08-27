@@ -45,12 +45,16 @@ export default function StudentsStaff() {
       const roster = await getFacultyRoster(cls || undefined);
       if (roster && roster.length > 0) {
         setStudents(
-          roster.map((s, idx) => ({
+          roster.map((s, idx) => {
+            const sec = s.section || s.class || "";
+            const marks = Array.isArray(s.subjects) ? s.subjects.map((x) => Number(x.marks)).filter((m) => !isNaN(m)) : [];
+            const avgCia = marks.length > 0 ? Math.round(marks.reduce((a, b) => a + b, 0) / marks.length) : null;
+            return {
             id: s.id || String(idx + 1),
             name: s.name || `Student ${idx + 1}`,
             roll: s.roll || s.rollNo || "—",
-            regNo: s.regNo || "—",
-            section: s.section || (idx % 2 === 0 ? "Section A" : "Section B"),
+            regNo: s.regNo || s.rollNo || "—",
+            section: sec || "—",
             cgpa: s.cgpa != null ? String(s.cgpa) : "—",
             attendance: s.attendance?.percentage || (s.attendance ? String(s.attendance) : "—"),
             attendanceStatus: s.attendance?.percentage && parseFloat(s.attendance.percentage) < 75 ? "Critical (<75%)" : "Safe",
@@ -58,12 +62,20 @@ export default function StudentsStaff() {
             parentName: s.parentName || s.parent?.name || "Parent / Guardian",
             parentPhone: s.parentPhone || s.parent?.phone || "—",
             email: s.email || `${s.name?.toLowerCase().replace(/\s+/g, ".")}@edunex.edu.in`,
-            hostel: s.hostel || "—",
+            hostel:
+              typeof s.hostel === "boolean"
+                ? s.hostel
+                  ? "Residential"
+                  : "Day Scholar"
+                : s.hostel || "—",
             bloodGroup: s.bloodGroup || "—",
-            ciaScore: s.ciaScore || "—",
-            mentorStatus: s.mentorStatus || s.mentorWard || (s.isMentee ? "Mentee Ward" : "Regular Student"),
+            ciaScore: avgCia != null ? String(avgCia) : (s.ciaScore || "—"),
+            department: s.department || s.deptShort || s.dept || "",
+            rollNo: s.rollNo || s.roll || "",
+            mentorStatus: s.mentorStatus || s.mentorWard || "Regular Student",
             isMentee: s.isMentee || s.mentorWard === "Mentee Ward" || false,
-          }))
+            };
+          })
         );
       }
     } catch (err) {
@@ -89,8 +101,8 @@ export default function StudentsStaff() {
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
       // Tab filter
-      if (selectedFilter === "Section A" && s.section !== "Section A") return false;
-      if (selectedFilter === "Section B" && s.section !== "Section B") return false;
+      if (selectedFilter === "Section A" && !/Section A|A$/i.test(s.section.replace(/\s*-\s*/g, " "))) return false;
+      if (selectedFilter === "Section B" && !/Section B|B$/i.test(s.section.replace(/\s*-\s*/g, " "))) return false;
       if (selectedFilter === "Mentee Wards" && !s.isMentee) return false;
       if (selectedFilter === "Critical Attendance" && !s.attendanceStatus.includes("Critical")) return false;
 

@@ -85,6 +85,7 @@ export default function ProfileScreen({ onLogout }) {
           ...prev,
           name: apiStudent?.name || sessionUser?.profile?.name || sessionUser?.name || prev.name,
           id: apiStudent?.rollNo || apiStudent?.id || prev.id,
+          regNo: apiStudent?.regNo || prev.regNo || "",
           email: apiStudent?.email || sessionUser?.email || prev.email,
           phone: apiStudent?.phone || sessionUser?.mobile || prev.phone,
           program: apiStudent?.department || prev.program,
@@ -93,6 +94,19 @@ export default function ProfileScreen({ onLogout }) {
           batch: apiStudent?.batch || prev.batch || "",
           department: apiStudent?.department || prev.department || "",
           semester: apiStudent?.semester || prev.semester || "",
+          dob: apiStudent?.dob || prev.dob || "",
+          advisor: apiStudent?.advisor?.name || prev.advisor || "",
+          mentorEmail: apiStudent?.advisor?.email || prev.mentorEmail || "",
+          hostel:
+            typeof apiStudent?.hostel === "boolean"
+              ? apiStudent.hostel
+                ? "Residential"
+                : "Day Scholar"
+              : apiStudent?.hostel || prev.hostel || "—",
+          fatherName: apiStudent?.parent?.name || prev.fatherName || "",
+          fatherPhone: apiStudent?.parent?.phone || apiStudent?.parent?.mobile || prev.fatherPhone || "",
+          motherName: apiStudent?.motherName || apiStudent?.parent?.motherName || prev.motherName || "",
+          emergencyContact: apiStudent?.emergencyContact || apiStudent?.parent?.phone || prev.emergencyContact || "",
         }));
       } else {
         const local = await AsyncStorage.getItem(PROFILE_DATA_KEY);

@@ -134,9 +134,9 @@ export default function DashboardStaff() {
         setFacultyNotices(
           noticesDocs.map((n, idx) => ({
             id: String(n.id ?? idx),
-            title: n.title || "—",
-            sub: n.description || n.sub || n.body || "",
-            tag: n.tag || n.source || "Notice",
+            title: n.title || n.subject || "—",
+            sub: n.content || n.message || n.description || n.body || n.sub || "",
+            tag: n.tag || n.category || n.source || "Notice",
             color: n.color || "#4F46E5",
           }))
         );

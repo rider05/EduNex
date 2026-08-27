@@ -13,7 +13,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonBox, SkeletonListItem } from "../../components/common/SkeletonLoader";
 import PaymentModal from "../students/modals/PaymentModal";
-import { getStudentFees, getParentData } from "../../services/dataService";
+import { getStudentFees, getParentData, getInstitutions } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
 
@@ -70,6 +70,12 @@ export default function FeesParent() {
         if (parentData?.institution) {
           setInstitution(parentData.institution);
         }
+      } catch (_e) {}
+      try {
+        const instList = await getInstitutions();
+        const inst =
+          Array.isArray(instList) && instList.length > 0 ? instList[0] : null;
+        if (inst) setInstitution(inst);
       } catch (_e) {}
     } catch (err) {
       console.warn("FeesParent load error:", err?.message || err);

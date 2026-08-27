@@ -10,9 +10,8 @@ import {
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import { getParentData } from "../../../services/dataService";
+import { getParentData, getPermits } from "../../../services/dataService";
 import { showToast } from "../../../utils/toastService";
-import { api } from "../../../services/api";
 
 export default function EntryExitModal({ visible, onClose }) {
   const { colors, isDarkMode } = useTheme();
@@ -24,18 +23,20 @@ export default function EntryExitModal({ visible, onClose }) {
   const [movements, setMovements] = useState([]);
   const [currentLocation, setCurrentLocation] = useState("—");
 
-  const fetchAttendance = useCallback(async () => {
+  const fetchGateLog = useCallback(async () => {
     try {
-      const res = await api.get("/attendance");
-      const items = res?.data || res || [];
-      const mapped = (Array.isArray(items) ? items : []).map((a, i) => ({
-        id: a._id || a.id || String(i),
-        time: a.time || a.timestamp || "—",
-        location: a.location || a.room || "—",
-        action: a.action || a.type || (a.isEntry ? "Entry" : "Exit"),
-        status: a.status || (a.isPresent ? "Present" : "Absent"),
-        isEntry: a.isEntry !== undefined ? a.isEntry : (a.action || "").toLowerCase() === "entry",
-      }));
+      const items = await getPermits();
+      const wardRoll = rollNo || "";
+      const mapped = (Array.isArray(items) ? items : [])
+        .filter((p) => !wardRoll || p.rollNo === wardRoll || p.studentId === wardRoll)
+        .map((p, i) => ({
+          id: p.id || p._id || String(i),
+          time: p.time || p.date || "—",
+          location: p.place || p.gate || "Campus",
+          action: p.type === "exit" ? "Exit Escort" : "Entry Cleared",
+          status: p.status || "granted",
+          isEntry: String(p.type || "entry").toLowerCase() === "entry",
+        }));
       setMovements(mapped);
       if (mapped.length > 0) {
         const latest = mapped[0];
@@ -44,7 +45,7 @@ export default function EntryExitModal({ visible, onClose }) {
     } catch {
       setMovements([]);
     }
-  }, []);
+  }, [rollNo]);
 
   useEffect(() => {
     getParentData().then((data) => {
@@ -53,8 +54,11 @@ export default function EntryExitModal({ visible, onClose }) {
         setRollNo(data.ward.rollNo || "");
       }
     }).catch(() => {});
-    fetchAttendance();
-  }, [fetchAttendance]);
+  }, []);
+
+  useEffect(() => {
+    if (visible) fetchGateLog();
+  }, [visible, fetchGateLog]);
 
   if (!visible) return null;
 

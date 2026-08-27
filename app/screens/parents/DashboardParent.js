@@ -53,7 +53,18 @@ export default function DashboardParent() {
         setParentOverview((prev) => ({ ...prev, ...data.overview }));
       }
       if (Array.isArray(data?.circulars)) {
-        setParentCirculars(data.circulars);
+        setParentCirculars(
+          data.circulars.map((c, i) => ({
+            ...c,
+            id: c.id || c._id || `circ-${i}`,
+            title: c.title || c.subject || c.sender || "Circular",
+            date: c.date || "",
+            desc: c.content || c.message || c.description || c.sub || "",
+            color:
+              c.color || ["#4F46E5", "#0EA5E9", "#8B5CF6", "#10B981", "#F59E0B"][i % 5],
+            icon: c.icon || "bullhorn-outline",
+          }))
+        );
       }
       if (Array.isArray(data?.timeline)) {
         setTodayTimeline(data.timeline);

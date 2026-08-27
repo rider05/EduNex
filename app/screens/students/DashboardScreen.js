@@ -14,7 +14,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 
 // Data & Services
-import { getStudentData, getGradeLevels, getParentNotices, getInstitutions } from "../../services/dataService";
+import { getStudentData, getGradeLevels, getParentNotices, getInstitutions, getAssignments } from "../../services/dataService";
 import { SkeletonScreenLoader } from "../../components/common/SkeletonLoader";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
@@ -35,6 +35,7 @@ export default function DashboardScreen() {
   const [studentData, setStudentData] = useState({});
   const [institution, setInstitution] = useState(null);
   const [notices, setNotices] = useState([]);
+  const [assignments, setAssignments] = useState([]);
   const [visibleModal, setVisibleModal] = useState(null);
 
   // Sub-Modals
@@ -49,11 +50,12 @@ export default function DashboardScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const [data, gradeLevels, noticesRes, instRes] = await Promise.all([
+      const [data, gradeLevels, noticesRes, instRes, assignRes] = await Promise.all([
         getStudentData().catch(() => null),
         getGradeLevels().catch(() => []),
         getParentNotices().catch(() => []),
         getInstitutions().catch(() => []),
+        getAssignments().catch(() => []),
       ]);
 
       const inst = Array.isArray(instRes) && instRes.length > 0 ? instRes[0] : null;
@@ -77,6 +79,25 @@ export default function DashboardScreen() {
           bloodGroup: data.bloodGroup || "—",
           batch: data.batch || "",
         });
+      }
+
+      if (Array.isArray(assignRes) && assignRes.length > 0) {
+        setAssignments(
+          assignRes.slice(0, 5).map((a, i) => ({
+            id: a.id || a._id || i,
+            title: a.title || a.subject || "Assignment",
+            due: a.dueDate || a.due || "",
+            color: ["#EC4899", "#F59E0B", "#10B981", "#3B82F6", "#8B5CF6"][i % 5],
+            status:
+              a.status === "Submitted" || a.status === "submitted"
+                ? "submitted"
+                : a.status === "in_progress" || a.status === "Working"
+                ? "in_progress"
+                : "pending",
+          }))
+        );
+      } else {
+        setAssignments([]);
       }
 
       if (Array.isArray(noticesRes)) {
@@ -386,9 +407,9 @@ export default function DashboardScreen() {
             </View>
 
             <View style={styles.deadlinesList}>
-              {[].map((item, idx) => (
+              {assignments.map((item, idx) => (
                 <View
-                  key={idx}
+                  key={item.id || idx}
                   style={[
                     styles.deadlineItem,
                     {
@@ -409,7 +430,7 @@ export default function DashboardScreen() {
                   </View>
                 </View>
               ))}
-              {[].length === 0 && (
+              {assignments.length === 0 && (
                 <View style={[styles.emptyNoticeBox, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
                   <Icon name="clipboard-check-outline" size={36} color={colors.secondaryText} />
                   <Text style={[styles.emptyNoticeTitle, { color: colors.primaryText }]}>No deadlines</Text>

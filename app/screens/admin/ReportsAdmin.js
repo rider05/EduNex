@@ -13,7 +13,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonKPIRow, SkeletonListItem } from "../../components/common/SkeletonLoader";
-import { getAdminStats } from "../../services/dataService";
+import { getAdminStats, getReports } from "../../services/dataService";
 import { showToast } from "../../utils/toastService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
@@ -36,6 +36,11 @@ export default function ReportsAdmin() {
   // Live Metric Overview
   const [overviewKPIs, setOverviewKPIs] = useState({});
 
+  // Live Reports Catalog
+  const [liveReports, setLiveReports] = useState([]);
+
+  const seedColors = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EF4444", "#06B6D4"];
+
   const termOptions = [
     "Odd Term (2025-26)",
     "Even Term (2024-25)",
@@ -46,18 +51,31 @@ export default function ReportsAdmin() {
   const loadData = useCallback(async () => {
     try {
       const statsRes = await getAdminStats().catch(() => null);
+      const reportsRes = await getReports().catch(() => []);
 
-      const totalStudents = statsRes?.studentCount || 0;
-      const totalStaff = statsRes?.staffCount || 0;
+      const totalStudents = Number(String(statsRes?.totalStudents || "0").replace(/[^0-9]/g, "")) || 0;
+      const totalStaff = Number(String(statsRes?.totalFaculty || "0").replace(/[^0-9]/g, "")) || 0;
       const ratio = totalStaff > 0 ? `1 : ${Math.round(totalStudents / totalStaff)}` : "";
 
+      const feeCollectionPct = statsRes?.feeCollectionPct || "—";
+      const attendancePct = statsRes?.attendancePct || "—";
+
+      // Derive academic/pass/placement from the reports collection if present
+      const reportCardsData = Array.isArray(reportsRes) ? reportsRes : [];
+      const academicReport = reportCardsData.find((r) => r.category === "academic" && (r.title || "").toLowerCase().includes("academic"));
+      const feeReport = reportCardsData.find((r) => (r.title || "").toLowerCase().includes("fee"));
+      const attendanceReport = reportCardsData.find((r) => (r.title || "").toLowerCase().includes("attendance"));
+      const placementReport = reportCardsData.find((r) => (r.title || "").toLowerCase().includes("placement"));
+
+      setLiveReports(reportCardsData);
+
       setOverviewKPIs({
-        academicPassRate: statsRes?.passRate || statsRes?.academicPassRate || "—",
-        feeRealization: statsRes?.feeRealization || statsRes?.feeCollectionPct ? `${statsRes.feeCollectionPct}%` : "—",
-        dailyAttendance: statsRes?.dailyAttendance || statsRes?.overallAttendance || "—",
+        academicPassRate: (academicReport && academicReport.statSecondary) || "—",
+        feeRealization: (feeReport && feeReport.statSecondary) || feeCollectionPct,
+        dailyAttendance: (attendanceReport && attendanceReport.statPrimary) || attendancePct,
         facultyStudentRatio: ratio,
-        avgGPA: statsRes?.avgGPA || statsRes?.averageGPA || "—",
-        placementRate: statsRes?.placementRate || "—",
+        avgGPA: (academicReport && academicReport.statPrimary) || "—",
+        placementRate: (placementReport && placementReport.statPrimary) || "—",
       });
     } catch (err) {
       console.log("ReportsAdmin load error:", err);
@@ -101,15 +119,44 @@ export default function ReportsAdmin() {
     }, 1400);
   };
 
-  // Detailed Reports Catalog
-  const reportCards = [
-    { id: "r1", title: "Academic Performance Analysis", subtitle: "CGPA distribution, pass rates, and grade analysis by department", icon: "chart-bar", color: "#3B82F6" },
-    { id: "r2", title: "Attendance Compliance Report", subtitle: "Daily, weekly, and monthly attendance trends across all departments", icon: "calendar-check", color: "#10B981" },
-    { id: "r3", title: "Fee Collection & Revenue", subtitle: "Fee realization, pending dues, and scholarship disbursement summary", icon: "currency-inr", color: "#F59E0B" },
-    { id: "r4", title: "Faculty Workload Analysis", subtitle: "Teaching hours, research output, and student-faculty ratio by department", icon: "account-tie", color: "#8B5CF6" },
-    { id: "r5", title: "Placement & Career Services", subtitle: "Campus recruitment statistics, offer letters, and company partnerships", icon: "briefcase-outline", color: "#EF4444" },
-    { id: "r6", title: "Infrastructure Utilization", subtitle: "Hostel, lab, library, and transport capacity usage analytics", icon: "domain", color: "#06B6D4" },
+  // Detailed Reports Catalog (built from live MongoDB reports, fallback to seeded catalog)
+  const seededCatalog = [
+    { id: "r1", title: "Academic Performance Analysis", subtitle: "CGPA distribution, pass rates, and grade analysis by department", desc: "CGPA distribution, pass rates, and grade analysis by department", icon: "chart-bar", color: "#3B82F6", category: "academic", statPrimary: "—", statSecondary: "—", highlights: [], details: {} },
+    { id: "r2", title: "Attendance Compliance Report", subtitle: "Daily, weekly, and monthly attendance trends across all departments", desc: "Daily, weekly, and monthly attendance trends across all departments", icon: "calendar-check", color: "#10B981", category: "attendance", statPrimary: "—", statSecondary: "—", highlights: [], details: {} },
+    { id: "r3", title: "Fee Collection & Revenue", subtitle: "Fee realization, pending dues, and scholarship disbursement summary", desc: "Fee realization, pending dues, and scholarship disbursement summary", icon: "currency-inr", color: "#F59E0B", category: "fees", statPrimary: "—", statSecondary: "—", highlights: [], details: {} },
+    { id: "r4", title: "Faculty Workload Analysis", subtitle: "Teaching hours, research output, and student-faculty ratio by department", desc: "Teaching hours, research output, and student-faculty ratio by department", icon: "account-tie", color: "#8B5CF6", category: "faculty", statPrimary: "—", statSecondary: "—", highlights: [], details: {} },
+    { id: "r5", title: "Placement & Career Services", subtitle: "Campus recruitment statistics, offer letters, and company partnerships", desc: "Campus recruitment statistics, offer letters, and company partnerships", icon: "briefcase-outline", color: "#EF4444", category: "placement", statPrimary: "—", statSecondary: "—", highlights: [], details: {} },
+    { id: "r6", title: "Infrastructure Utilization", subtitle: "Hostel, lab, library, and transport capacity usage analytics", desc: "Hostel, lab, library, and transport capacity usage analytics", icon: "domain", color: "#06B6D4", category: "infrastructure", statPrimary: "—", statSecondary: "—", highlights: [], details: {} },
   ];
+
+  const spreadReport = (r, i) => {
+    const color = r.color || seedColors[i % seedColors.length];
+    const highlights = Array.isArray(r.highlights)
+      ? r.highlights.map((h) =>
+          typeof h === "string" ? { label: h, value: "", bar: "100%", color } : h
+        )
+      : [];
+    return {
+      id: r._id || r.id || `r${i + 1}`,
+      title: r.title || "Report",
+      subtitle: r.desc || "",
+      desc: r.desc || "",
+      category: r.category || "General",
+      icon: r.icon || "chart-bar",
+      color,
+      statPrimary: r.statPrimary || "—",
+      statSecondary: r.statSecondary || "—",
+      statPrimaryLabel: r.statPrimaryLabel || "",
+      statSecondaryLabel: r.statSecondaryLabel || "",
+      highlights,
+      details: r.details && typeof r.details === "object" && !Array.isArray(r.details) ? r.details : {},
+    };
+  };
+
+  const reportCards =
+    liveReports.length > 0
+      ? liveReports.map(spreadReport)
+      : seededCatalog;
 
   const activeReportItem = reportCards.find((r) => r.id === activeModal);
 

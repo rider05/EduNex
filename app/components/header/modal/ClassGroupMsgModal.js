@@ -88,6 +88,15 @@ export default function ClassGroupMsgModal({ visible, onClose, colors: propColor
     setAttachment(null);
     setActiveTab("broadcasts");
     showToast("Classroom announcement broadcasted to all students!", "success");
+    api.post("/announcements", {
+      class: user?.className || user?.classTeacher || user?.role === "staff" ? (user?.classTeacher || "CSE - A") : "CSE - A",
+      tag: selectedTag,
+      title: title.trim(),
+      message: announcement.trim(),
+      postedBy: user?.name || user?.profile?.name || "Faculty",
+      date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+      pinned: false,
+    }).catch(() => {});
   };
 
   const pickAttachment = async () => {
