@@ -45,10 +45,7 @@ export default function ReportsAdmin() {
 
   const loadData = useCallback(async () => {
     try {
-      const [institutionsRes, statsRes] = await Promise.all([
-        getInstitutions().catch(() => null),
-        getAdminStats().catch(() => null),
-      ]);
+      const statsRes = await getAdminStats().catch(() => null);
 
       const totalStudents = statsRes?.studentCount || 0;
       const totalStaff = statsRes?.staffCount || 0;
