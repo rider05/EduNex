@@ -16,6 +16,8 @@ import LeaveFormModal from "./modal/LeaveFormModal";
 import HostelFormModal from "./modal/HostelFormModal";
 import NotificationModal from "./modal/NotificationModal";
 import ChatModal from "./modal/ChatModal";
+import BusTrackerModal from "./modal/BusTrackerModal";
+import MessMenuModal from "./modal/MessMenuModal";
 import { showToast } from "../../utils/toastService";
 import { resolveIdentity } from "../../services/identityService";
 
@@ -145,24 +147,24 @@ export default function Header() {
 
               <TouchableOpacity
                 style={styles.quickActionItem}
-                onPress={() => handleOpenModal("notify")}
+                onPress={() => handleOpenModal("bus")}
                 activeOpacity={0.8}
               >
                 <View style={styles.quickActionIcon}>
-                  <Icon name="bullhorn-outline" size={20} color="#FFFFFF" />
+                  <Icon name="bus-clock" size={20} color="#FFFFFF" />
                 </View>
-                <Text style={styles.quickActionLabel}>Circulars</Text>
+                <Text style={styles.quickActionLabel}>Bus Tracker</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.quickActionItem}
-                onPress={() => handleOpenModal("chat")}
+                onPress={() => handleOpenModal("mess")}
                 activeOpacity={0.8}
               >
                 <View style={styles.quickActionIcon}>
-                  <Icon name="shield-account-outline" size={20} color="#FFFFFF" />
+                  <Icon name="silverware-fork-knife" size={20} color="#FFFFFF" />
                 </View>
-                <Text style={styles.quickActionLabel}>Counselor</Text>
+                <Text style={styles.quickActionLabel}>Mess Menu</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -172,6 +174,8 @@ export default function Header() {
       {/* Student Modals */}
       <LeaveFormModal visible={activeModal === "leave"} onClose={closeModal} />
       <HostelFormModal visible={activeModal === "hostel"} onClose={closeModal} />
+      <BusTrackerModal visible={activeModal === "bus"} onClose={closeModal} />
+      <MessMenuModal visible={activeModal === "mess"} onClose={closeModal} />
       <NotificationModal visible={activeModal === "notify"} onClose={closeModal} />
       <ChatModal visible={activeModal === "chat"} onClose={closeModal} />
     </View>
