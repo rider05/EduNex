@@ -7,7 +7,7 @@ import { useTheme } from "../../context/ThemeContext";
 import DashboardScreen from "../../screens/students/DashboardScreen";
 import AcademicsScreen from "../../screens/students/AcademicsScreen";
 import FeesScreen from "../../screens/students/FeesScreen";
-import AdmissionFormScreen from "../../screens/students/AdmissionFormScreen";
+import DocSpaceScreen from "../../screens/students/DocSpaceScreen";
 import ProfileScreen from "../../screens/students/ProfileScreen";
 
 const Tab = createBottomTabNavigator();
@@ -51,8 +51,8 @@ export default function AppNavigator({ onLogout, userRole }) {
             case "Fees":
               iconName = focused ? "credit-card" : "credit-card-outline";
               break;
-            case "Apply":
-              iconName = focused ? "file-document-edit" : "file-document-edit-outline";
+            case "DocSpace":
+              iconName = focused ? "folder-account" : "folder-account-outline";
               break;
             case "Profile":
               iconName = focused ? "account" : "account-outline";
@@ -67,7 +67,7 @@ export default function AppNavigator({ onLogout, userRole }) {
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
       <Tab.Screen name="Academics" component={AcademicsScreen} />
       <Tab.Screen name="Fees" component={FeesScreen} />
-      <Tab.Screen name="Apply" component={AdmissionFormScreen} />
+      <Tab.Screen name="DocSpace" component={DocSpaceScreen} />
       <Tab.Screen name="Profile">
         {() => <ProfileScreen onLogout={onLogout} userRole={userRole} />}
       </Tab.Screen>

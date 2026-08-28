@@ -6,7 +6,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 
 import DashboardScreen from "../screens/students/DashboardScreen";
 import AcademicsScreen from "../screens/students/AcademicsScreen";
-import AdmissionFormScreen from "../screens/students/AdmissionFormScreen";
+import DocSpaceScreen from "../screens/students/DocSpaceScreen";
 import FeesScreen from "../screens/students/FeesScreen";
 import ProfileScreen from "../screens/students/ProfileScreen";
 
@@ -38,8 +38,8 @@ export default function AppNavigatorStudent() {
               case "Academics":
                 iconName = "school";
                 break;
-              case "Documents":
-                iconName = "file-certificate-outline";
+              case "DocSpace":
+                iconName = "folder-account";
                 break;
               case "Fees":
                 iconName = "cash";
@@ -57,7 +57,7 @@ export default function AppNavigatorStudent() {
       >
         <Tab.Screen name="Dashboard" component={DashboardScreen} />
         <Tab.Screen name="Academics" component={AcademicsScreen} />
-        <Tab.Screen name="Documents" component={AdmissionFormScreen} />
+        <Tab.Screen name="DocSpace" component={DocSpaceScreen} />
         <Tab.Screen name="Fees" component={FeesScreen} />
         <Tab.Screen name="Profile" component={ProfileScreen} />
       </Tab.Navigator>
