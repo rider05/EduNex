@@ -113,7 +113,7 @@ export default function AssignmentModal({ visible, onClose, colors: propColors }
               <View style={{ flex: 1 }}>
                 <Text style={[styles.title, { color: colors.primaryText }]}>Coursework & Assignments</Text>
                 <Text style={[styles.subtitle, { color: colors.secondaryText }]}>
-                  Semester 5 Lab Submissions & Review Metrics
+                  Batch Submissions & Review Metrics
                 </Text>
               </View>
             </View>

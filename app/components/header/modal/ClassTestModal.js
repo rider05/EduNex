@@ -99,7 +99,7 @@ export default function ClassTestModal({ visible, onClose, colors: propColors })
               <View style={{ flex: 1 }}>
                 <Text style={[styles.title, { color: colors.primaryText }]}>Continuous Assessment Reports</Text>
                 <Text style={[styles.subtitle, { color: colors.secondaryText }]}>
-                  Semester 5 CIA-1 Batch Performance Matrix
+                  Current Semester Assessment Analysis
                 </Text>
               </View>
             </View>

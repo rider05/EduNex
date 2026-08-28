@@ -32,493 +32,37 @@ const DEPT_CODE_MAP = {
   "MECH": "MECH",
 };
 
-// Full 5-Day Academic Schedule (Monday to Friday)
-const DEFAULT_TIMETABLE_AI = {
-  Monday: [
-    {
-      period: "Period 1",
-      time: "08:45 - 09:40 AM",
-      duration: "55 mins",
-      code: "AI8501",
-      subject: "Deep Learning & Neural Networks",
-      type: "Theory",
-      teacher: "Dr. Meenakshi Sundaram",
-      room: "Lecture Hall 201",
-      color: "#4F46E5",
-      isBreak: false,
-      teacherDetails: {
-        designation: "Professor & HOD",
-        cabin: "Staff Block A · Room 201",
-        email: "meenakshi.s@edunex.edu.in",
-        phone: "+91 98765 11001",
-      },
-    },
-    {
-      period: "Period 2",
-      time: "09:40 - 10:35 AM",
-      duration: "55 mins",
-      code: "CS8502",
-      subject: "Database Management Systems",
-      type: "Theory",
-      teacher: "Prof. Rajesh Kumar",
-      room: "Lecture Hall 201",
-      color: "#0D9488",
-      isBreak: false,
-      teacherDetails: {
-        designation: "Associate Professor",
-        cabin: "Staff Block A · Room 205",
-        email: "rajesh.k@edunex.edu.in",
-        phone: "+91 98765 11002",
-      },
-    },
-    {
-      period: "Recess",
-      time: "10:35 - 10:50 AM",
-      duration: "15 mins",
-      subject: "Morning Refreshment Break",
+
+// Normalizers for DB timetable rows: seeded docs use time/duration/subject/
+// teacher/room/isBreak and omit period/code/type, which the UI expects.
+const normalizeTimetableRow = (row, i) => {
+  if (row.isBreak) {
+    return {
+      ...row,
+      period: row.period || (String(row.subject || "").toLowerCase().includes("lunch") ? "Lunch" : "Recess"),
+      time: row.time || "—",
+      duration: row.duration || "",
       type: "Break",
-      room: "Campus Courtyard",
-      color: "#F59E0B",
-      isBreak: true,
-    },
-    {
-      period: "Period 3 & 4",
-      time: "10:50 - 12:40 PM",
-      duration: "110 mins",
-      code: "AI8511",
-      subject: "Big Data Analytics & PySpark Lab",
-      type: "Lab",
-      teacher: "Dr. Meenakshi Sundaram",
-      room: "AI Computing Lab 201",
-      color: "#7C3AED",
-      isBreak: false,
-      teacherDetails: {
-        designation: "Professor & HOD",
-        cabin: "Staff Block A · Room 201",
-        email: "meenakshi.s@edunex.edu.in",
-      },
-    },
-    {
-      period: "Lunch",
-      time: "12:40 - 01:30 PM",
-      duration: "50 mins",
-      subject: "Lunch Recess",
-      type: "Break",
-      room: "University Dining Hall",
-      color: "#F59E0B",
-      isBreak: true,
-    },
-    {
-      period: "Period 5",
-      time: "01:30 - 02:25 PM",
-      duration: "55 mins",
-      code: "AI8502",
-      subject: "Natural Language Processing",
-      type: "Theory",
-      teacher: "Dr. Anand Chandrasekar",
-      room: "Lecture Hall 204",
-      color: "#DB2777",
-      isBreak: false,
-      teacherDetails: {
-        designation: "Assistant Professor",
-        cabin: "Staff Block A · Room 208",
-        email: "anand.c@edunex.edu.in",
-      },
-    },
-    {
-      period: "Period 6",
-      time: "02:25 - 03:20 PM",
-      duration: "55 mins",
-      code: "MA8501",
-      subject: "Optimization Techniques in ML",
-      type: "Theory",
-      teacher: "Dr. S. Ramaswamy",
-      room: "Lecture Hall 201",
-      color: "#2563EB",
-      isBreak: false,
-      teacherDetails: {
-        designation: "Professor of Mathematics",
-        cabin: "Science Block · Room 102",
-        email: "ramaswamy.s@edunex.edu.in",
-      },
-    },
-    {
-      period: "Period 7",
-      time: "03:20 - 04:15 PM",
-      duration: "55 mins",
-      code: "AI8512",
-      subject: "Capstone Mentorship & Project Review",
-      type: "Lab",
-      teacher: "Dr. Meenakshi Sundaram",
-      room: "AI Lab 201",
-      color: "#10B981",
-      isBreak: false,
-    },
-  ],
-  Tuesday: [
-    {
-      period: "Period 1",
-      time: "08:45 - 09:40 AM",
-      duration: "55 mins",
-      code: "AI8502",
-      subject: "Natural Language Processing",
-      type: "Theory",
-      teacher: "Dr. Anand Chandrasekar",
-      room: "Lecture Hall 201",
-      color: "#DB2777",
-      isBreak: false,
-    },
-    {
-      period: "Period 2",
-      time: "09:40 - 10:35 AM",
-      duration: "55 mins",
-      code: "AI8501",
-      subject: "Deep Learning & Neural Networks",
-      type: "Theory",
-      teacher: "Dr. Meenakshi Sundaram",
-      room: "Lecture Hall 201",
-      color: "#4F46E5",
-      isBreak: false,
-    },
-    {
-      period: "Recess",
-      time: "10:35 - 10:50 AM",
-      duration: "15 mins",
-      subject: "Morning Refreshment Break",
-      type: "Break",
-      room: "Campus Courtyard",
-      color: "#F59E0B",
-      isBreak: true,
-    },
-    {
-      period: "Period 3",
-      time: "10:50 - 11:45 AM",
-      duration: "55 mins",
-      code: "CS8502",
-      subject: "Database Management Systems",
-      type: "Theory",
-      teacher: "Prof. Rajesh Kumar",
-      room: "Lecture Hall 201",
-      color: "#0D9488",
-      isBreak: false,
-    },
-    {
-      period: "Period 4",
-      time: "11:45 - 12:40 PM",
-      duration: "55 mins",
-      code: "MA8501",
-      subject: "Optimization Techniques in ML",
-      type: "Theory",
-      teacher: "Dr. S. Ramaswamy",
-      room: "Lecture Hall 201",
-      color: "#2563EB",
-      isBreak: false,
-    },
-    {
-      period: "Lunch",
-      time: "12:40 - 01:30 PM",
-      duration: "50 mins",
-      subject: "Lunch Recess",
-      type: "Break",
-      room: "University Dining Hall",
-      color: "#F59E0B",
-      isBreak: true,
-    },
-    {
-      period: "Period 5 & 6",
-      time: "01:30 - 03:20 PM",
-      duration: "110 mins",
-      code: "CS8511",
-      subject: "Database Systems Practical Lab",
-      type: "Lab",
-      teacher: "Prof. Rajesh Kumar",
-      room: "Database Lab 202",
-      color: "#0D9488",
-      isBreak: false,
-    },
-    {
-      period: "Period 7",
-      time: "03:20 - 04:15 PM",
-      duration: "55 mins",
-      code: "LIB001",
-      subject: "Digital Library & Paper Reading",
-      type: "Theory",
-      teacher: "Library Faculty",
-      room: "Central Digital Library",
-      color: "#6366F1",
-      isBreak: false,
-    },
-  ],
-  Wednesday: [
-    {
-      period: "Period 1 & 2",
-      time: "08:45 - 10:35 AM",
-      duration: "110 mins",
-      code: "AI8513",
-      subject: "Computer Vision & PyTorch Model Lab",
-      type: "Lab",
-      teacher: "Dr. Meenakshi Sundaram",
-      room: "AI Vision Lab 203",
-      color: "#4F46E5",
-      isBreak: false,
-    },
-    {
-      period: "Recess",
-      time: "10:35 - 10:50 AM",
-      duration: "15 mins",
-      subject: "Morning Refreshment Break",
-      type: "Break",
-      room: "Campus Courtyard",
-      color: "#F59E0B",
-      isBreak: true,
-    },
-    {
-      period: "Period 3",
-      time: "10:50 - 11:45 AM",
-      duration: "55 mins",
-      code: "AI8501",
-      subject: "Deep Learning & Neural Networks",
-      type: "Theory",
-      teacher: "Dr. Meenakshi Sundaram",
-      room: "Lecture Hall 201",
-      color: "#4F46E5",
-      isBreak: false,
-    },
-    {
-      period: "Period 4",
-      time: "11:45 - 12:40 PM",
-      duration: "55 mins",
-      code: "AI8502",
-      subject: "Natural Language Processing",
-      type: "Theory",
-      teacher: "Dr. Anand Chandrasekar",
-      room: "Lecture Hall 201",
-      color: "#DB2777",
-      isBreak: false,
-    },
-    {
-      period: "Lunch",
-      time: "12:40 - 01:30 PM",
-      duration: "50 mins",
-      subject: "Lunch Recess",
-      type: "Break",
-      room: "University Dining Hall",
-      color: "#F59E0B",
-      isBreak: true,
-    },
-    {
-      period: "Period 5",
-      time: "01:30 - 02:25 PM",
-      duration: "55 mins",
-      code: "CS8502",
-      subject: "Database Management Systems",
-      type: "Theory",
-      teacher: "Prof. Rajesh Kumar",
-      room: "Lecture Hall 201",
-      color: "#0D9488",
-      isBreak: false,
-    },
-    {
-      period: "Period 6 & 7",
-      time: "02:25 - 04:15 PM",
-      duration: "110 mins",
-      code: "AI8514",
-      subject: "Open Elective Seminar / Webinar",
-      type: "Theory",
-      teacher: "Guest Faculty",
-      room: "Auditorium Hall B",
-      color: "#8B5CF6",
-      isBreak: false,
-    },
-  ],
-  Thursday: [
-    {
-      period: "Period 1",
-      time: "08:45 - 09:40 AM",
-      duration: "55 mins",
-      code: "MA8501",
-      subject: "Optimization Techniques in ML",
-      type: "Theory",
-      teacher: "Dr. S. Ramaswamy",
-      room: "Lecture Hall 201",
-      color: "#2563EB",
-      isBreak: false,
-    },
-    {
-      period: "Period 2",
-      time: "09:40 - 10:35 AM",
-      duration: "55 mins",
-      code: "CS8502",
-      subject: "Database Management Systems",
-      type: "Theory",
-      teacher: "Prof. Rajesh Kumar",
-      room: "Lecture Hall 201",
-      color: "#0D9488",
-      isBreak: false,
-    },
-    {
-      period: "Recess",
-      time: "10:35 - 10:50 AM",
-      duration: "15 mins",
-      subject: "Morning Refreshment Break",
-      type: "Break",
-      room: "Campus Courtyard",
-      color: "#F59E0B",
-      isBreak: true,
-    },
-    {
-      period: "Period 3",
-      time: "10:50 - 11:45 AM",
-      duration: "55 mins",
-      code: "AI8502",
-      subject: "Natural Language Processing",
-      type: "Theory",
-      teacher: "Dr. Anand Chandrasekar",
-      room: "Lecture Hall 201",
-      color: "#DB2777",
-      isBreak: false,
-    },
-    {
-      period: "Period 4",
-      time: "11:45 - 12:40 PM",
-      duration: "55 mins",
-      code: "AI8501",
-      subject: "Deep Learning & Neural Networks",
-      type: "Theory",
-      teacher: "Dr. Meenakshi Sundaram",
-      room: "Lecture Hall 201",
-      color: "#4F46E5",
-      isBreak: false,
-    },
-    {
-      period: "Lunch",
-      time: "12:40 - 01:30 PM",
-      duration: "50 mins",
-      subject: "Lunch Recess",
-      type: "Break",
-      room: "University Dining Hall",
-      color: "#F59E0B",
-      isBreak: true,
-    },
-    {
-      period: "Period 5 & 6",
-      time: "01:30 - 03:20 PM",
-      duration: "110 mins",
-      code: "AI8515",
-      subject: "NLP & LLM Hands-on Practical Lab",
-      type: "Lab",
-      teacher: "Dr. Anand Chandrasekar",
-      room: "AI NLP Lab 204",
-      color: "#DB2777",
-      isBreak: false,
-    },
-    {
-      period: "Period 7",
-      time: "03:20 - 04:15 PM",
-      duration: "55 mins",
-      code: "TUT001",
-      subject: "CIA Tutorial & Doubt Clearance",
-      type: "Theory",
-      teacher: "Dr. Meenakshi Sundaram",
-      room: "Lecture Hall 201",
-      color: "#10B981",
-      isBreak: false,
-    },
-  ],
-  Friday: [
-    {
-      period: "Period 1",
-      time: "08:45 - 09:40 AM",
-      duration: "55 mins",
-      code: "AI8501",
-      subject: "Deep Learning & Neural Networks",
-      type: "Theory",
-      teacher: "Dr. Meenakshi Sundaram",
-      room: "Lecture Hall 201",
-      color: "#4F46E5",
-      isBreak: false,
-    },
-    {
-      period: "Period 2",
-      time: "09:40 - 10:35 AM",
-      duration: "55 mins",
-      code: "AI8502",
-      subject: "Natural Language Processing",
-      type: "Theory",
-      teacher: "Dr. Anand Chandrasekar",
-      room: "Lecture Hall 201",
-      color: "#DB2777",
-      isBreak: false,
-    },
-    {
-      period: "Recess",
-      time: "10:35 - 10:50 AM",
-      duration: "15 mins",
-      subject: "Morning Refreshment Break",
-      type: "Break",
-      room: "Campus Courtyard",
-      color: "#F59E0B",
-      isBreak: true,
-    },
-    {
-      period: "Period 3",
-      time: "10:50 - 11:45 AM",
-      duration: "55 mins",
-      code: "MA8501",
-      subject: "Optimization Techniques in ML",
-      type: "Theory",
-      teacher: "Dr. S. Ramaswamy",
-      room: "Lecture Hall 201",
-      color: "#2563EB",
-      isBreak: false,
-    },
-    {
-      period: "Period 4",
-      time: "11:45 - 12:40 PM",
-      duration: "55 mins",
-      code: "CS8502",
-      subject: "Database Management Systems",
-      type: "Theory",
-      teacher: "Prof. Rajesh Kumar",
-      room: "Lecture Hall 201",
-      color: "#0D9488",
-      isBreak: false,
-    },
-    {
-      period: "Lunch",
-      time: "12:40 - 01:30 PM",
-      duration: "50 mins",
-      subject: "Lunch Recess",
-      type: "Break",
-      room: "University Dining Hall",
-      color: "#F59E0B",
-      isBreak: true,
-    },
-    {
-      period: "Period 5 & 6",
-      time: "01:30 - 03:20 PM",
-      duration: "110 mins",
-      code: "PROJ501",
-      subject: "Industry Mini-Project Prototyping",
-      type: "Lab",
-      teacher: "Faculty Committee",
-      room: "Project Incubation Lab 101",
-      color: "#10B981",
-      isBreak: false,
-    },
-    {
-      period: "Period 7",
-      time: "03:20 - 04:15 PM",
-      duration: "55 mins",
-      code: "CLUB01",
-      subject: "AI Student Technical Society",
-      type: "Theory",
-      teacher: "Student Tech Leads",
-      room: "Seminar Hall A",
-      color: "#F59E0B",
-      isBreak: false,
-    },
-  ],
+    };
+  }
+  const isLab = /lab/i.test(String(row.subject || ""));
+  return {
+    ...row,
+    period: row.period || (isLab ? `Lab ${i + 1}` : `Period ${i + 1}`),
+    time: row.time || "—",
+    code: row.code || "",
+    type: row.type || (isLab ? "Lab" : "Theory"),
+    room: row.room || "",
+    teacher: row.teacher || row.faculty || "Faculty",
+  };
+};
+
+const normalizeTimetable = (schedule) => {
+  const out = {};
+  for (const day of Object.keys(schedule || {})) {
+    out[day] = (Array.isArray(schedule[day]) ? schedule[day] : []).map(normalizeTimetableRow);
+  }
+  return out;
 };
 
 const daysList = [
@@ -546,16 +90,16 @@ export default function FullTimetable({ visible = true, onClose }) {
     return dayNames[new Date().getDay()];
   };
 
-  // Student Profile Data
+  // Student Profile Data (populated from the database on mount)
   const [studentCohort, setStudentCohort] = useState({
-    name: "Karthik Raja M",
-    rollNo: "25ACSE001",
-    department: "Artificial Intelligence & Data Science",
-    deptShort: "AI & DS",
-    year: "III Year",
-    semester: "Semester 5 (Odd)",
-    section: "Section A",
-    advisor: "Dr. Meenakshi Sundaram",
+    name: "",
+    rollNo: "",
+    department: "",
+    deptShort: "",
+    year: "",
+    semester: "",
+    section: "",
+    advisor: "",
   });
 
   const [selectedDay, setSelectedDay] = useState(getCurrentDay());
@@ -563,7 +107,7 @@ export default function FullTimetable({ visible = true, onClose }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedClass, setSelectedClass] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [timetableData, setTimetableData] = useState(DEFAULT_TIMETABLE_AI);
+  const [timetableData, setTimetableData] = useState({});
   const [loading, setLoading] = useState(false);
 
   // Load student profile
@@ -581,25 +125,29 @@ export default function FullTimetable({ visible = true, onClose }) {
           student?.department ||
           identity?.department ||
           rawUser?.department ||
-          "Artificial Intelligence & Data Science";
-        const deptShort = dept.includes("AI")
-          ? "AI & DS"
-          : dept.includes("Computer") || dept.includes("CSE")
-          ? "CSE"
-          : "AI & DS";
-        const year = student?.year || identity?.year || rawUser?.year || "III Year";
-        const semester = student?.semester || identity?.semester || rawUser?.semester || "Semester 5";
-        const section = student?.section || student?.class || rawUser?.section || "A";
+          "";
+        const d = dept.toLowerCase();
+        const deptShort =
+          d.startsWith("ai") || d.includes("& ds")
+            ? "AI & DS"
+            : d.includes("computer") || d === "cse"
+            ? "CSE"
+            : d.includes("aiml") || d.includes("ai&ml")
+            ? "AIML"
+            : "";
+        const year = student?.year || identity?.year || rawUser?.year || "";
+        const semester = student?.semester || identity?.semester || rawUser?.semester || "";
+        const section = student?.section || student?.class || rawUser?.section || "";
 
         setStudentCohort({
-          name: student?.name || identity?.name || rawUser?.name || "Karthik Raja M",
-          rollNo: student?.rollNo || student?.roll || identity?.rollNo || "25ACSE001",
+          name: student?.name || identity?.name || rawUser?.name || "",
+          rollNo: student?.rollNo || student?.roll || identity?.rollNo || "",
           department: dept,
           deptShort,
-          year: typeof year === "number" ? `Year ${year}` : year,
-          semester: `${semester} (Odd)`,
-          section: section.includes("Section") ? section : `Section ${section}`,
-          advisor: "Dr. Meenakshi Sundaram",
+          year: typeof year === "number" ? `${year} Year` : year,
+          semester: semester ? `${semester} (Odd)` : "",
+          section: section ? (section.includes("Section") ? section : `Section ${section}`) : "",
+          advisor: student?.advisor?.name || (typeof student?.advisor === "string" ? student.advisor : "") || "",
         });
       } catch (e) {
         console.log("Error loading student cohort in Timetable:", e);
@@ -617,18 +165,26 @@ export default function FullTimetable({ visible = true, onClose }) {
       const match = docs.find(
         (d) =>
           d.departmentCode === code ||
+          (d.departmentCode || "").toLowerCase() === code.toLowerCase() ||
           d.department === studentCohort.department ||
           d.department === studentCohort.deptShort
       );
 
       if (match?.schedule && Object.keys(match.schedule).length > 0) {
-        setTimetableData(match.schedule);
+        setTimetableData(normalizeTimetable(match.schedule));
+        const matchAdvisor =
+          typeof match.advisor === "string"
+            ? match.advisor
+            : match.advisor?.name || "";
+        if (matchAdvisor) {
+          setStudentCohort((s) => ({ ...s, advisor: matchAdvisor }));
+        }
       } else {
-        setTimetableData(DEFAULT_TIMETABLE_AI);
+        setTimetableData({});
       }
     } catch (err) {
-      console.log("Timetable fetch error, using default:", err);
-      setTimetableData(DEFAULT_TIMETABLE_AI);
+      console.log("Timetable fetch error, showing empty state:", err);
+      setTimetableData({});
     } finally {
       setLoading(false);
     }
@@ -638,7 +194,7 @@ export default function FullTimetable({ visible = true, onClose }) {
     if (visible) fetchTimetable();
   }, [visible, fetchTimetable]);
 
-  const baseDaySchedule = useMemo(() => timetableData[selectedDay] || DEFAULT_TIMETABLE_AI[selectedDay] || [], [timetableData, selectedDay]);
+  const baseDaySchedule = useMemo(() => timetableData[selectedDay] || [], [timetableData, selectedDay]);
 
   const filteredSchedule = useMemo(() => {
     return baseDaySchedule.filter((item) => {
@@ -678,15 +234,15 @@ export default function FullTimetable({ visible = true, onClose }) {
       const classList = filteredSchedule
         .map(
           (c) =>
-            `• [${c.time}] ${c.period ? `${c.period}: ` : ""}${c.subject} (${
-              c.isBreak ? "Break" : `${c.room} · ${c.teacher || "Faculty"}`
+            `â€¢ [${c.time}] ${c.period ? `${c.period}: ` : ""}${c.subject} (${
+              c.isBreak ? "Break" : `${c.room} Â· ${c.teacher || "Faculty"}`
             })`
         )
         .join("\n");
 
       await Share.share({
         title: `EduNex Timetable - ${selectedDay} (${studentCohort.deptShort})`,
-        message: `📅 EDUNEX OFFICIAL ACADEMIC TIMETABLE\nCohort: ${studentCohort.deptShort} · ${studentCohort.year} (${studentCohort.section})\nDay: ${selectedDay}\n\nSchedule:\n${classList}\n\nGenerated via EduNex Campus App.`,
+        message: `ðŸ“… EDUNEX OFFICIAL ACADEMIC TIMETABLE\nCohort: ${studentCohort.deptShort} Â· ${studentCohort.year} (${studentCohort.section})\nDay: ${selectedDay}\n\nSchedule:\n${classList}\n\nGenerated via EduNex Campus App.`,
       });
       showToast(`Shared ${selectedDay}'s schedule!`, "success");
     } catch (err) {
@@ -726,7 +282,7 @@ export default function FullTimetable({ visible = true, onClose }) {
                 </View>
               </View>
               <Text style={[styles.headerSubtitle, { color: colors.secondaryText }]}>
-                {studentCohort.deptShort} · {studentCohort.year} ({studentCohort.section})
+                {studentCohort.deptShort} Â· {studentCohort.year} ({studentCohort.section})
               </Text>
             </View>
           </View>
@@ -761,7 +317,7 @@ export default function FullTimetable({ visible = true, onClose }) {
                 </View>
 
                 <Text style={[styles.cohortSub, { color: colors.secondaryText }]}>
-                  {studentCohort.year} · {studentCohort.section} · {studentCohort.semester}
+                  {studentCohort.year} Â· {studentCohort.section} Â· {studentCohort.semester}
                 </Text>
               </View>
             </View>
@@ -906,7 +462,7 @@ export default function FullTimetable({ visible = true, onClose }) {
                           <Text style={[styles.breakDuration, { color: "#F59E0B" }]}>{item.duration}</Text>
                         </View>
                         <Text style={[styles.breakMeta, { color: colors.secondaryText }]}>
-                          ⏰ {item.time} · 📍 {item.room}
+                          â° {item.time} Â· ðŸ“ {item.room}
                         </Text>
                       </View>
                     </View>
@@ -984,7 +540,7 @@ export default function FullTimetable({ visible = true, onClose }) {
                             {selectedClass.subject}
                           </Text>
                           <Text style={[styles.modalSubjCode, { color: colors.secondaryText }]}>
-                            {selectedClass.code || "Course Core"} · {selectedClass.type}
+                            {selectedClass.code || "Course Core"} Â· {selectedClass.type}
                           </Text>
                         </View>
                         <TouchableOpacity onPress={closeDetailsModal}>

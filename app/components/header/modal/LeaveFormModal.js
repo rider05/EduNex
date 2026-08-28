@@ -157,21 +157,21 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
 
   // Student DB Profile
   const [studentInfo, setStudentInfo] = useState({
-    name: "Karthik Raja M",
-    rollNo: "25ACSE001",
-    department: "Artificial Intelligence & Data Science",
-    deptCode: "AI & DS",
-    year: "III Year",
-    section: "Section A",
-    emergencyContact: "+91 98765 43210",
-    advisor: "Dr. Meenakshi Sundaram",
+    name: "",
+    rollNo: "",
+    department: "",
+    deptCode: "",
+    year: "",
+    section: "",
+    emergencyContact: "",
+    advisor: "",
   });
 
   // Form fields
   const [leaveType, setLeaveType] = useState("Academic OD");
   const [sessionTiming, setSessionTiming] = useState("Full Day");
   const [reason, setReason] = useState("");
-  const [emergencyContact, setEmergencyContact] = useState("+91 98765 43210");
+  const [emergencyContact, setEmergencyContact] = useState("");
 
   const [fromDate, setFromDate] = useState(new Date());
   const [toDate, setToDate] = useState(new Date());
@@ -199,14 +199,18 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
         resolveIdentity().catch(() => null),
       ]);
 
-      const name = dbStudent?.name || identity?.name || "Karthik Raja M";
-      const rollNo = dbStudent?.rollNo || dbStudent?.roll || identity?.rollNo || identity?.username || "25ACSE001";
-      const department = dbStudent?.department || identity?.department || "Artificial Intelligence & Data Science";
-      const deptCode = department.includes("AI") ? "AI & DS" : department.includes("Computer") || department.includes("CSE") ? "CSE" : "AI & DS";
-      const year = dbStudent?.year || identity?.year || "III Year";
-      const section = dbStudent?.section || dbStudent?.class || "Section A";
-      const phone = dbStudent?.phone || identity?.phone || identity?.parentContact || "+91 98765 43210";
-      const advisor = dbStudent?.advisor?.name || "Dr. Meenakshi Sundaram";
+      const name = dbStudent?.name || identity?.name || "";
+      const rollNo = dbStudent?.rollNo || dbStudent?.roll || identity?.rollNo || identity?.username || "";
+      const department = dbStudent?.department || identity?.department || "";
+      const deptCode = department.includes("AI")
+        ? "AI & DS"
+        : department.includes("Computer") || department.includes("CSE")
+        ? "CSE"
+        : "";
+      const year = dbStudent?.year || identity?.year || "";
+      const section = dbStudent?.section || dbStudent?.class || "";
+      const phone = dbStudent?.phone || identity?.phone || identity?.parentContact || "";
+      const advisor = dbStudent?.advisor?.name || (typeof dbStudent?.advisor === "string" ? dbStudent.advisor : "") || "";
 
       setStudentInfo({
         name,

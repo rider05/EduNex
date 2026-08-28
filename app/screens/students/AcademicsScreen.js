@@ -354,7 +354,7 @@ export default function AcademicsScreen() {
               <Icon name="magnify" size={18} color={colors.secondaryText} />
               <TextInput
                 style={[styles.searchInput, { color: colors.primaryText }]}
-                placeholder="Search subject title, course code (e.g. AI8501)..."
+                placeholder="Search subject title, course code (e.g. CS-301)..."
                 placeholderTextColor={colors.disabledText}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
