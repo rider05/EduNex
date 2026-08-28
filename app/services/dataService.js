@@ -513,9 +513,54 @@ export async function getTimetable(params = {}) {
   return list;
 }
 
-// ─────────────────────────────────────────────
+// –––––––––––––––––––––––––––––––––––––––––––––
+// 📖 SUBJECT CATALOG (live GET /subjects resource)
+// –––––––––––––––––––––––––––––––––––––––––––––
+export async function getSubjects(params = {}) {
+  try {
+    const res = await api.get("/subjects", { limit: 200, ...params });
+    return Array.isArray(res?.data) ? res.data : [];
+  } catch (e) {
+    console.log("getSubjects fetch failed:", e?.message || e);
+    return [];
+  }
+}
+
+// Build a lookup table (by code, then by name) from the subject catalog.
+export function buildSubjectCatalogMap(catalog) {
+  const byCode = {};
+  const byName = {};
+  for (const c of Array.isArray(catalog) ? catalog : []) {
+    if (c?.code) byCode[String(c.code).trim().toLowerCase()] = c;
+    if (c?.name) byName[String(c.name).trim().toLowerCase()] = c;
+  }
+  return { byCode, byName };
+}
+
+export function findCatalogSubject(catalog, subject) {
+  const { byCode, byName } = buildSubjectCatalogMap(catalog);
+  const codeKey = String(subject?.code || "").trim().toLowerCase();
+  const nameKey = String(subject?.name || subject?.title || "").trim().toLowerCase();
+  return (codeKey && byCode[codeKey]) || (nameKey && byName[nameKey]) || null;
+}
+
+// Merge catalog metadata (credits/type/faculty/syllabus) onto a student's
+// enrolled subject when the embedded subject is missing those fields.
+export function enrichSubjectFromCatalog(subject, catalog) {
+  const cat = findCatalogSubject(catalog, subject);
+  if (!cat) return subject;
+  return {
+    ...subject,
+    type: subject.type || cat.type || subject.type,
+    credits: subject.credits != null ? subject.credits : cat.credits,
+    faculty: subject.faculty || subject.facultyInCharge || cat.facultyInCharge || subject.faculty,
+    syllabus: subject.syllabus || cat.syllabus || "",
+  };
+}
+
+// –––––––––––––––––––––––––––––––––––––––––––––
 // 👨‍🏫 FACULTY DATA SERVICES
-// ─────────────────────────────────────────────
+// –––––––––––––––––––––––––––––––––––––––––––––
 
 export async function getFacultyData() {
   const identity = await resolveIdentity();

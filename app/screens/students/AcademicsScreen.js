@@ -15,7 +15,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import FullTimetable from "./modals/FullTimeTable";
 import { SkeletonKPIRow, SkeletonListItem } from "../../components/common/SkeletonLoader";
-import { getStudentData, getAssignments, getStudentAttendanceSummary } from "../../services/dataService";
+import { getStudentData, getAssignments, getStudentAttendanceSummary, getSubjects, enrichSubjectFromCatalog } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
 
@@ -47,10 +47,15 @@ const mapSubjectsToCourses = (subjects) =>
     activeUnit: s.activeUnit || "—",
     ciaScore: s.ciaScore || (s.marks != null ? `${s.marks} / 100` : "—"),
     gradeExpected: s.gradeExpected || s.grade || "—",
+    syllabus: s.syllabus || "",
     color: s.color || "#4F46E5",
     icon: s.icon || "book-open-page-variant",
     units:
-      Array.isArray(s.units) && s.units.length > 0 ? s.units : [],
+      Array.isArray(s.units) && s.units.length > 0
+        ? s.units
+        : s.syllabus
+        ? [s.syllabus]
+        : ["Syllabus details will be added by the faculty."],
   }));
 
 const mapAssignment = (a, i) => ({
@@ -104,10 +109,11 @@ export default function AcademicsScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const [student, asgRes, attSummary] = await Promise.all([
+      const [student, asgRes, attSummary, subjectCatalog] = await Promise.all([
         getStudentData().catch(() => null),
         getAssignments().catch(() => []),
         getStudentAttendanceSummary().catch(() => null),
+        getSubjects().catch(() => []),
       ]);
 
       if (student) {
@@ -127,7 +133,8 @@ export default function AcademicsScreen() {
         setAttendance(attVal);
 
         if (Array.isArray(student.subjects)) {
-          setSemesterCourses(mapSubjectsToCourses(student.subjects));
+          const enriched = student.subjects.map((s) => enrichSubjectFromCatalog(s, subjectCatalog));
+          setSemesterCourses(mapSubjectsToCourses(enriched));
         }
       }
 

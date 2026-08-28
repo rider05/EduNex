@@ -13,7 +13,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonProfileCard, SkeletonKPIRow, SkeletonListItem } from "../../components/common/SkeletonLoader";
-import { getStudentData, getPermits } from "../../services/dataService";
+import { getStudentData, getPermits, getSubjects, enrichSubjectFromCatalog } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
 
@@ -37,6 +37,7 @@ export default function WardDetailsParent() {
     try {
       const student = await getStudentData();
       const permitDocs = await getPermits().catch(() => []);
+      const subjectCatalog = await getSubjects().catch(() => []);
       if (student) {
         setWardInfo((prev) => ({
           ...prev,
@@ -65,18 +66,21 @@ export default function WardDetailsParent() {
         }));
         if (Array.isArray(student.subjects)) {
           setCourses(
-            student.subjects.map((c, i) => ({
-              code: c.code || "",
-              name: c.name || "",
-              faculty: c.faculty || c.teacher || "—",
-              credits: c.credits != null ? c.credits : "—",
-              grade: c.grade || "—",
-              attendance: c.attendance || "",
-              type: c.credits >= 4 ? "Core" : "Elective",
-              color:
-                c.color || ["#4F46E5", "#0EA5E9", "#8B5CF6", "#10B981", "#F59E0B"][i % 5],
-              icon: c.icon || "book-open-variant",
-            }))
+            student.subjects.map((c, i) => {
+              const en = enrichSubjectFromCatalog(c, subjectCatalog);
+              return {
+                code: en.code || en.subjectCode || "",
+                name: en.name || en.title || "",
+                faculty: en.faculty || en.facultyInCharge || en.teacher || "—",
+                credits: en.credits != null ? en.credits : "—",
+                grade: en.grade || "—",
+                attendance: en.attendance || "",
+                type: en.type || (en.credits >= 4 ? "Core" : "Theory"),
+                color:
+                  en.color || ["#4F46E5", "#0EA5E9", "#8B5CF6", "#10B981", "#F59E0B"][i % 5],
+                icon: en.icon || "book-open-variant",
+              };
+            })
           );
         } else if (Array.isArray(student.courses)) {
           setCourses(student.courses);
