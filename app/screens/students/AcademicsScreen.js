@@ -24,12 +24,23 @@ const CREDIT_TARGET = 160;
 
 // Courses & assignments are ALWAYS derived from the database `subjects` /
 // `assignments` collections. No hardcoded course content remains here.
+// Normalize catalog/db type labels onto the filter chips (All / Theory / Lab / Project).
+const normalizeCourseType = (raw) => {
+  const t = String(raw || "").trim();
+  if (!t) return "";
+  if (/lab/i.test(t)) return "Lab";
+  if (/project/i.test(t) || /seminar/i.test(t)) return "Project";
+  return "Theory";
+};
+
 const mapSubjectsToCourses = (subjects) =>
   (Array.isArray(subjects) ? subjects : []).map((s, i) => ({
     id: s.id || s._id || `c${i + 1}`,
     code: s.code || `SUB-${i + 1}`,
     title: s.title || s.name || `Subject ${i + 1}`,
-    type: s.type || (s.code && /11\d*$/.test(String(s.code)) ? "Lab" : "Theory"),
+    type:
+      normalizeCourseType(s.type) ||
+      (s.code && /11\d*$/.test(String(s.code)) ? "Lab" : "Theory"),
     credits: s.credits || 3,
     faculty: s.faculty || s.facultyInCharge || "Course Faculty",
     marks: s.marks,
@@ -390,6 +401,9 @@ export default function AcademicsScreen() {
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <View style={styles.courseTitleRow}>
                         <Text style={[styles.courseCodeBadge, { color: course.color }]}>{course.code}</Text>
+                        <View style={[styles.creditsBadge, { backgroundColor: course.color + "18" }]}>
+                          <Text style={[styles.creditsBadgeText, { color: course.color }]}>{course.type}</Text>
+                        </View>
                         <View style={[styles.creditsBadge, { backgroundColor: colors.primaryBackground }]}>
                           <Text style={[styles.creditsBadgeText, { color: colors.secondaryText }]}>{course.credits} Credits</Text>
                         </View>
