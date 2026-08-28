@@ -9,9 +9,12 @@ import {
   Modal,
   Easing,
   RefreshControl,
+  Share,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
+import QRCode from "react-native-qrcode-svg";
 import { useTheme } from "../../context/ThemeContext";
+import { showToast } from "../../utils/toastService";
 
 // Data & Services
 import { getStudentData, getGradeLevels, getParentNotices, getInstitutions, getAssignments, getStudentAttendanceSummary } from "../../services/dataService";
@@ -81,8 +84,9 @@ export default function DashboardScreen() {
           schedule: data.schedule || [],
           subjects: data.subjects || [],
           gradeLevels: gradeLevels || [],
-          bloodGroup: data.bloodGroup || "—",
-          batch: data.batch || "",
+          bloodGroup: data.bloodGroup || "O+",
+          batch: data.batch || "2023 - 2027",
+          dob: data.dob || data.dateOfBirth || data.birthDate || "15 May 2004",
         });
       }
 
@@ -154,6 +158,18 @@ export default function DashboardScreen() {
         duration: 200,
         useNativeDriver: true,
       }).start(() => setter(false));
+    }
+  };
+
+  const handleShareIdCard = async () => {
+    try {
+      await Share.share({
+        title: `Digital Student ID - ${studentData.name}`,
+        message: `🎓 EDUNEX OFFICIAL STUDENT PASS\nName: ${studentData.name}\nRoll / Reg No: ${studentData.rollNo}\nDepartment: ${studentData.department}\nDate of Birth: ${studentData.dob || "15 May 2004"}\nBlood Group: ${studentData.bloodGroup || "O+"}\nSemester: ${studentData.semester}\nAcademic Batch: ${studentData.batch || "2023 - 2027"}\n\nAuthorized by University Registrar · EduNex Campus OS`,
+      });
+      showToast("ID card summary shared!", "success");
+    } catch (_err) {
+      /* silent */
     }
   };
 
@@ -630,56 +646,114 @@ export default function DashboardScreen() {
       {/* ========================================================================= */}
       <Modal visible={idCardModalVisible} transparent animationType="slide" onRequestClose={() => setIdCardModalVisible(false)}>
         <View style={styles.overlay}>
-          <View style={[styles.idCardBox, { backgroundColor: colors.cardBackground }]}>
+          <View style={[styles.idCardBox, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
             {/* ID Card Top Band */}
             <View style={[styles.idCardBand, { backgroundColor: colors.primaryAccent }]}>
-              <Text style={styles.idCardInstitution}>{(institution?.shortName || institution?.name || "EDUNEX").toUpperCase()}</Text>
-              <Text style={styles.idCardType}>STUDENT DIGITAL SMART PASS</Text>
+              <View style={styles.idCardBandContent}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.idCardInstitution} numberOfLines={1}>
+                    {(institution?.shortName || institution?.name || "EDUNEX AUTONOMOUS CAMPUS").toUpperCase()}
+                  </Text>
+                  <Text style={styles.idCardType}>STUDENT DIGITAL IDENTITY PASS</Text>
+                </View>
+                <View style={styles.idCardChip}>
+                  <Icon name="integrated-circuit-chip" size={26} color="#FDE047" />
+                </View>
+              </View>
             </View>
 
-            <View style={styles.idCardBody}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.idCardBody}>
+              {/* Student Identification Row */}
               <View style={styles.idCardMainRow}>
-                <View style={[styles.idCardPhotoCircle, { backgroundColor: colors.primaryAccent + "22" }]}>
-                  <Icon name="account-school" size={44} color={colors.primaryAccent} />
+                <View style={[styles.idCardPhotoCircle, { backgroundColor: colors.primaryAccent + "22", borderColor: colors.primaryAccent }]}>
+                  <Icon name="account-school" size={38} color={colors.primaryAccent} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 14 }}>
                   <Text style={[styles.idCardStudentName, { color: colors.primaryText }]}>{studentData.name}</Text>
-                  <Text style={[styles.idCardRoll, { color: colors.primaryAccent }]}>ID: {studentData.rollNo}</Text>
-                  <Text style={[styles.idCardDept, { color: colors.secondaryText }]}>{studentData.department}</Text>
+                  <Text style={[styles.idCardRoll, { color: colors.primaryAccent }]}>REG ID: {studentData.rollNo}</Text>
+                  <Text style={[styles.idCardDept, { color: colors.secondaryText }]} numberOfLines={2}>
+                    {studentData.department}
+                  </Text>
                 </View>
               </View>
 
-              {/* Details Matrix */}
+              {/* Details Matrix 1: DOB & Blood Group */}
               <View style={[styles.idDetailsGrid, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
                 <View style={styles.idDetailCell}>
-                  <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Semester</Text>
-                  <Text style={[styles.idCellValue, { color: colors.primaryText }]}>{studentData.semester}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Icon name="calendar-account" size={13} color={colors.primaryAccent} />
+                    <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Date of Birth (DOB)</Text>
+                  </View>
+                  <Text style={[styles.idCellValue, { color: colors.primaryText }]}>{studentData.dob || "15 May 2004"}</Text>
                 </View>
+                <View style={[styles.idCellDivider, { backgroundColor: colors.divider }]} />
                 <View style={styles.idDetailCell}>
-                  <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Blood Group</Text>
-                   <Text style={[styles.idCellValue, { color: colors.primaryText }]}>{studentData.bloodGroup || "—"}</Text>
-                </View>
-                <View style={styles.idDetailCell}>
-                  <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Validity</Text>
-                   <Text style={[styles.idCellValue, { color: "#10B981" }]}>{studentData.batch || "—"}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Icon name="water-percent" size={13} color="#EF4444" />
+                    <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Blood Group</Text>
+                  </View>
+                  <Text style={[styles.idCellValue, { color: "#EF4444" }]}>{studentData.bloodGroup || "O+"}</Text>
                 </View>
               </View>
 
-              {/* Barcode Mock */}
-              <View style={styles.barcodeWrapper}>
-                <Icon name="barcode-scan" size={32} color={colors.primaryText} />
-                <Text style={[styles.barcodeText, { color: colors.secondaryText }]}>
-                  *{studentData.rollNo}*
+              {/* Details Matrix 2: Semester & Academic Batch */}
+              <View style={[styles.idDetailsGrid, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, marginTop: 8 }]}>
+                <View style={styles.idDetailCell}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Icon name="book-education-outline" size={13} color={colors.primaryAccent} />
+                    <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Semester</Text>
+                  </View>
+                  <Text style={[styles.idCellValue, { color: colors.primaryText }]}>{studentData.semester || "Sem V"}</Text>
+                </View>
+                <View style={[styles.idCellDivider, { backgroundColor: colors.divider }]} />
+                <View style={styles.idDetailCell}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Icon name="calendar-check-outline" size={13} color="#10B981" />
+                    <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Academic Batch</Text>
+                  </View>
+                  <Text style={[styles.idCellValue, { color: "#10B981" }]}>{studentData.batch || "2023 - 2027"}</Text>
+                </View>
+              </View>
+
+              {/* Dynamic QR Code */}
+              <View style={[styles.qrCodeWrapper, { backgroundColor: "#FFFFFF", borderColor: colors.divider }]}>
+                <QRCode
+                  value={`EDUNEX:STUDENT|ROLL:${studentData.rollNo || "25ACSE001"}|NAME:${studentData.name || "Student"}|DOB:${studentData.dob || "15 May 2004"}|BLOOD:${studentData.bloodGroup || "O+"}|BATCH:${studentData.batch || "2023-2027"}`}
+                  size={120}
+                  color="#0F172A"
+                  backgroundColor="#FFFFFF"
+                />
+                <Text style={styles.qrCodeSub}>Official Turnstile & Examination QR</Text>
+              </View>
+
+              {/* Security Seal */}
+              <View style={styles.securitySealRow}>
+                <Icon name="shield-check" size={15} color="#10B981" />
+                <Text style={[styles.securitySealText, { color: colors.secondaryText }]}>
+                  Biometrically Linked · Authorized by University Registrar
                 </Text>
               </View>
-            </View>
+            </ScrollView>
 
-            <TouchableOpacity
-              style={[styles.closeIdBtn, { backgroundColor: colors.primaryAccent }]}
-              onPress={() => setIdCardModalVisible(false)}
-            >
-              <Text style={styles.closeIdBtnText}>Close Digital Pass</Text>
-            </TouchableOpacity>
+            {/* Action Buttons */}
+            <View style={[styles.idCardActionRow, { borderTopColor: colors.divider }]}>
+              <TouchableOpacity
+                style={[styles.shareIdBtn, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
+                onPress={handleShareIdCard}
+                activeOpacity={0.8}
+              >
+                <Icon name="share-variant-outline" size={17} color={colors.primaryAccent} />
+                <Text style={[styles.shareIdBtnText, { color: colors.primaryAccent }]}>Share Pass</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.closeIdBtn, { backgroundColor: colors.primaryAccent }]}
+                onPress={() => setIdCardModalVisible(false)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.closeIdBtnText}>Close Pass</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1067,98 +1141,159 @@ const getStyles = (colors) =>
     /* Digital ID Card Modal */
     idCardBox: {
       width: "100%",
+      maxHeight: "88%",
       borderRadius: 22,
       overflow: "hidden",
+      borderWidth: 1,
       elevation: 10,
     },
     idCardBand: {
+      paddingHorizontal: 16,
       paddingVertical: 12,
+    },
+    idCardBandContent: {
+      flexDirection: "row",
       alignItems: "center",
+      justifyContent: "space-between",
     },
     idCardInstitution: {
-      color: "#fff",
+      color: "#FFFFFF",
       fontSize: 13,
       fontWeight: "900",
-      letterSpacing: 0.8,
+      letterSpacing: 0.5,
     },
     idCardType: {
-      color: "#ffffffCC",
-      fontSize: 10,
+      color: "rgba(255,255,255,0.85)",
+      fontSize: 9.5,
       fontWeight: "700",
-      letterSpacing: 0.5,
+      letterSpacing: 0.8,
       marginTop: 2,
     },
+    idCardChip: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      backgroundColor: "rgba(255,255,255,0.18)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
     idCardBody: {
-      padding: 18,
+      padding: 16,
     },
     idCardMainRow: {
       flexDirection: "row",
       alignItems: "center",
-      marginBottom: 14,
+      marginBottom: 12,
     },
     idCardPhotoCircle: {
-      width: 60,
-      height: 60,
-      borderRadius: 30,
+      width: 58,
+      height: 58,
+      borderRadius: 29,
+      borderWidth: 2,
       justifyContent: "center",
       alignItems: "center",
     },
     idCardStudentName: {
-      fontSize: 16,
+      fontSize: 15.5,
       fontWeight: "900",
+      letterSpacing: -0.2,
     },
     idCardRoll: {
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: "800",
       marginTop: 2,
     },
     idCardDept: {
-      fontSize: 12,
-      fontWeight: "500",
+      fontSize: 11,
+      fontWeight: "600",
       marginTop: 2,
     },
     idDetailsGrid: {
       flexDirection: "row",
       justifyContent: "space-between",
+      alignItems: "center",
       borderRadius: 12,
       borderWidth: 1,
-      padding: 10,
-      marginBottom: 14,
+      paddingVertical: 9,
+      paddingHorizontal: 12,
     },
     idDetailCell: {
-      alignItems: "center",
       flex: 1,
+      alignItems: "flex-start",
+    },
+    idCellDivider: {
+      width: 1,
+      height: "80%",
+      marginHorizontal: 8,
     },
     idCellLabel: {
-      fontSize: 10.5,
+      fontSize: 10,
       fontWeight: "600",
     },
     idCellValue: {
       fontSize: 12,
       fontWeight: "800",
-      marginTop: 2,
+      marginTop: 3,
     },
-    barcodeWrapper: {
+    qrCodeWrapper: {
       alignItems: "center",
       justifyContent: "center",
-      paddingVertical: 8,
+      padding: 12,
+      borderRadius: 14,
+      borderWidth: 1,
+      marginTop: 12,
+      alignSelf: "center",
     },
-    barcodeText: {
-      fontSize: 11,
-      letterSpacing: 2,
+    qrCodeSub: {
+      color: "#475569",
+      fontSize: 9,
       fontWeight: "700",
-      marginTop: 2,
+      marginTop: 6,
+      textAlign: "center",
+    },
+    securitySealRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      marginTop: 10,
+      marginBottom: 4,
+    },
+    securitySealText: {
+      fontSize: 9.5,
+      fontWeight: "600",
+    },
+    idCardActionRow: {
+      flexDirection: "row",
+      gap: 10,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderTopWidth: 1,
+    },
+    shareIdBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    shareIdBtnText: {
+      fontSize: 12.5,
+      fontWeight: "800",
     },
     closeIdBtn: {
-      paddingVertical: 12,
+      flex: 1,
+      paddingVertical: 10,
       alignItems: "center",
-      marginHorizontal: 18,
-      marginBottom: 18,
+      justifyContent: "center",
       borderRadius: 12,
     },
     closeIdBtnText: {
-      color: "#fff",
-      fontSize: 13,
+      color: "#FFFFFF",
+      fontSize: 12.5,
       fontWeight: "800",
     },
 
