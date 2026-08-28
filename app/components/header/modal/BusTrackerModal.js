@@ -22,18 +22,23 @@ const BUS_ROUTES = [
     busNo: "TN 38 N 8492",
     driverName: "Mr. M. Selvam",
     driverPhone: "+91 98421 77310",
+    coordinatorName: "Prof. K. Sundaram (CSE)",
+    coordinatorPhone: "+91 98421 99001",
     status: "On Time",
     statusColor: "#10B981",
     currentLocation: "Lakshmi Mills Junction",
+    currentSpeed: "42 km/h",
     etaMins: 7,
     capacity: "48 / 55 Seats",
+    occupancyPercent: 87,
     morningDeparture: "07:15 AM",
     eveningReturn: "05:15 PM",
+    gpsStatus: "Live High Accuracy",
     stops: [
       { name: "Gandhipuram Central Bus Stand", time: "07:15 AM", passed: true },
       { name: "Lakshmi Mills Signal", time: "07:30 AM", passed: true, isCurrent: true },
       { name: "Peelamedu / Hope College", time: "07:42 AM", passed: false },
-      { name: "Civil Aerodrome", time: "07:55 AM", passed: false },
+      { name: "Civil Aerodrome Junction", time: "07:55 AM", passed: false },
       { name: "Campus Main Gate (Arrival)", time: "08:15 AM", passed: false },
     ],
   },
@@ -44,13 +49,18 @@ const BUS_ROUTES = [
     busNo: "TN 38 N 9104",
     driverName: "Mr. K. Palanisamy",
     driverPhone: "+91 98422 44190",
+    coordinatorName: "Dr. A. Meenakshi (ECE)",
+    coordinatorPhone: "+91 98422 88200",
     status: "Arriving Soon",
     statusColor: "#3B82F6",
     currentLocation: "NSR Road Bus Stop",
+    currentSpeed: "36 km/h",
     etaMins: 4,
     capacity: "52 / 55 Seats",
+    occupancyPercent: 94,
     morningDeparture: "07:20 AM",
     eveningReturn: "05:15 PM",
+    gpsStatus: "Live High Accuracy",
     stops: [
       { name: "RS Puram Head Post Office", time: "07:20 AM", passed: true },
       { name: "Saibaba Colony NSR Road", time: "07:35 AM", passed: true, isCurrent: true },
@@ -65,13 +75,18 @@ const BUS_ROUTES = [
     busNo: "TN 38 N 7721",
     driverName: "Mr. S. Murugesan",
     driverPhone: "+91 98423 88120",
+    coordinatorName: "Prof. V. Rajesh (IT)",
+    coordinatorPhone: "+91 98423 77300",
     status: "Delayed (Traffic)",
     statusColor: "#F59E0B",
     currentLocation: "CHIL SEZ IT Park",
+    currentSpeed: "18 km/h",
     etaMins: 14,
     capacity: "42 / 55 Seats",
+    occupancyPercent: 76,
     morningDeparture: "07:10 AM",
     eveningReturn: "05:15 PM",
+    gpsStatus: "Live High Accuracy",
     stops: [
       { name: "Thudiyalur Junction", time: "07:10 AM", passed: true },
       { name: "Saravanampatti Checkpost", time: "07:25 AM", passed: true },
@@ -87,13 +102,18 @@ const BUS_ROUTES = [
     busNo: "TN 38 N 6610",
     driverName: "Mr. R. Vetrivel",
     driverPhone: "+91 98424 99015",
+    coordinatorName: "Dr. N. Sathish (Mech)",
+    coordinatorPhone: "+91 98424 66400",
     status: "On Time",
     statusColor: "#10B981",
     currentLocation: "Singanallur Bus Stand",
+    currentSpeed: "45 km/h",
     etaMins: 9,
     capacity: "46 / 55 Seats",
+    occupancyPercent: 83,
     morningDeparture: "07:25 AM",
     eveningReturn: "05:15 PM",
+    gpsStatus: "Live High Accuracy",
     stops: [
       { name: "Ondipudur Flyover", time: "07:25 AM", passed: true },
       { name: "Singanallur Bus Stand", time: "07:38 AM", passed: true, isCurrent: true },
@@ -104,22 +124,107 @@ const BUS_ROUTES = [
   {
     id: "R-105",
     routeNumber: "Route 05",
-    name: "Hostel & Sports Complex Shuttle",
+    name: "Hostel & Sports Shuttle",
     busNo: "TN 38 N 2209",
     driverName: "Mr. C. Arumugam",
     driverPhone: "+91 98425 11090",
+    coordinatorName: "Chief Hostel Warden",
+    coordinatorPhone: "+91 98425 22100",
     status: "Every 15 Mins",
     statusColor: "#8B5CF6",
     currentLocation: "Block A Boys Hostel",
+    currentSpeed: "22 km/h",
     etaMins: 2,
     capacity: "24 / 32 Seats",
+    occupancyPercent: 75,
     morningDeparture: "Continuous",
     eveningReturn: "09:00 PM",
+    gpsStatus: "Live High Accuracy",
     stops: [
       { name: "Block A & B Hostels", time: "Every 15m", passed: true, isCurrent: true },
       { name: "Indoor Sports Complex", time: "+5m", passed: false },
       { name: "Central Library & Food Court", time: "+10m", passed: false },
       { name: "Academic Block 1 & 2", time: "+15m", passed: false },
+    ],
+  },
+  {
+    id: "R-106",
+    routeNumber: "Route 06",
+    name: "Pollachi & Kinathukadavu Suburban",
+    busNo: "TN 38 N 5543",
+    driverName: "Mr. P. Velusamy",
+    driverPhone: "+91 98426 33210",
+    coordinatorName: "Prof. M. Karthik (Civil)",
+    coordinatorPhone: "+91 98426 44300",
+    status: "On Time",
+    statusColor: "#10B981",
+    currentLocation: "Kinathukadavu Tollgate",
+    currentSpeed: "50 km/h",
+    etaMins: 16,
+    capacity: "50 / 55 Seats",
+    occupancyPercent: 90,
+    morningDeparture: "07:00 AM",
+    eveningReturn: "05:15 PM",
+    gpsStatus: "Live High Accuracy",
+    stops: [
+      { name: "Pollachi Central Stand", time: "07:00 AM", passed: true },
+      { name: "Kinathukadavu Checkpost", time: "07:22 AM", passed: true, isCurrent: true },
+      { name: "Othakkalmandapam Jn", time: "07:45 AM", passed: false },
+      { name: "Malumichampatti", time: "07:55 AM", passed: false },
+      { name: "Campus Main Gate (Arrival)", time: "08:15 AM", passed: false },
+    ],
+  },
+  {
+    id: "R-107",
+    routeNumber: "Route 07",
+    name: "Tirupur & Avinashi Highway Line",
+    busNo: "TN 38 N 3391",
+    driverName: "Mr. D. Natarajan",
+    driverPhone: "+91 98427 55490",
+    coordinatorName: "Dr. S. Ramesh (AI & DS)",
+    coordinatorPhone: "+91 98427 66500",
+    status: "On Time",
+    statusColor: "#10B981",
+    currentLocation: "Avinashi Old Bus Stand",
+    currentSpeed: "55 km/h",
+    etaMins: 19,
+    capacity: "49 / 55 Seats",
+    occupancyPercent: 89,
+    morningDeparture: "06:50 AM",
+    eveningReturn: "05:15 PM",
+    gpsStatus: "Live High Accuracy",
+    stops: [
+      { name: "Tirupur Old Bus Stand", time: "06:50 AM", passed: true },
+      { name: "Avinashi New Bypass", time: "07:15 AM", passed: true, isCurrent: true },
+      { name: "Kaniyur Toll Plaza", time: "07:40 AM", passed: false },
+      { name: "Neelambur Bypass", time: "07:52 AM", passed: false },
+      { name: "Campus Main Gate (Arrival)", time: "08:15 AM", passed: false },
+    ],
+  },
+  {
+    id: "R-108",
+    routeNumber: "Route 08",
+    name: "Vadavalli & Marudhamalai Express",
+    busNo: "TN 38 N 1184",
+    driverName: "Mr. G. Karuppusamy",
+    driverPhone: "+91 98428 77610",
+    coordinatorName: "Prof. T. Selvi (MBA)",
+    coordinatorPhone: "+91 98428 88700",
+    status: "On Time",
+    statusColor: "#10B981",
+    currentLocation: "Vadavalli Bus Terminus",
+    currentSpeed: "38 km/h",
+    etaMins: 11,
+    capacity: "44 / 55 Seats",
+    occupancyPercent: 80,
+    morningDeparture: "07:20 AM",
+    eveningReturn: "05:15 PM",
+    gpsStatus: "Live High Accuracy",
+    stops: [
+      { name: "Marudhamalai Adivaram", time: "07:15 AM", passed: true },
+      { name: "Vadavalli Bus Terminus", time: "07:30 AM", passed: true, isCurrent: true },
+      { name: "Lawley Road Junction", time: "07:45 AM", passed: false },
+      { name: "Campus Main Gate (Arrival)", time: "08:15 AM", passed: false },
     ],
   },
 ];
@@ -147,9 +252,9 @@ export default function BusTrackerModal({ visible, onClose }) {
     );
   }, [searchQuery]);
 
-  const handleCallDriver = (phone) => {
+  const handleCall = (phone, label) => {
     Linking.openURL(`tel:${phone}`).catch(() => {
-      showToast(`Driver contact: ${phone}`, "info");
+      showToast(`${label}: ${phone}`, "info");
     });
   };
 
@@ -157,7 +262,7 @@ export default function BusTrackerModal({ visible, onClose }) {
     try {
       await Share.share({
         title: `Campus Bus - ${route.name}`,
-        message: `🚌 EDUNEX CAMPUS TRANSIT TRACKER\nRoute: ${route.routeNumber} (${route.name})\nBus No: ${route.busNo}\nStatus: ${route.status} · ETA: ${route.etaMins} mins\nCurrent Stop: ${route.currentLocation}\nDriver: ${route.driverName} (${route.driverPhone})\nMorning Departure: ${route.morningDeparture} · Evening: ${route.eveningReturn}`,
+        message: `🚌 EDUNEX CAMPUS TRANSIT TRACKER\nRoute: ${route.routeNumber} (${route.name})\nBus No: ${route.busNo}\nStatus: ${route.status} · ETA: ${route.etaMins} mins\nLive Speed: ${route.currentSpeed} · Location: ${route.currentLocation}\nDriver: ${route.driverName} (${route.driverPhone})\nFaculty In-Charge: ${route.coordinatorName}\nMorning Departure: ${route.morningDeparture} · Evening: ${route.eveningReturn}`,
       });
       showToast("Bus route info shared!", "success");
     } catch (_e) {}
@@ -172,12 +277,18 @@ export default function BusTrackerModal({ visible, onClose }) {
             <Icon name="arrow-left" size={22} color="#FFFFFF" />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={styles.fullHeaderTitle}>Campus Bus & Shuttle Tracker</Text>
-            <Text style={styles.fullHeaderSub}>Live Routes, ETAs & Transit Timetable</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={styles.fullHeaderTitle}>Campus Bus & Transit Hub</Text>
+              <View style={styles.liveGpsBadge}>
+                <View style={styles.gpsPulseDot} />
+                <Text style={styles.liveGpsBadgeText}>GPS LIVE</Text>
+              </View>
+            </View>
+            <Text style={styles.fullHeaderSub}>8 Active Routes · Real-Time Speed & Arrival ETAs</Text>
           </View>
           <TouchableOpacity
             style={styles.headerBtn}
-            onPress={() => showToast("📡 Transit data updated real-time", "success")}
+            onPress={() => showToast("📡 Satellite telemetry refreshed!", "success")}
           >
             <Icon name="refresh" size={22} color="#FFFFFF" />
           </TouchableOpacity>
@@ -190,7 +301,7 @@ export default function BusTrackerModal({ visible, onClose }) {
             <Icon name="magnify" size={18} color={colors.secondaryText} />
             <TextInput
               style={[styles.searchInput, { color: colors.primaryText }]}
-              placeholder="Search route name, stop, or bus number..."
+              placeholder="Search route name, stop, driver, or bus number..."
               placeholderTextColor={colors.disabledText}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -239,7 +350,7 @@ export default function BusTrackerModal({ visible, onClose }) {
             <View style={[styles.heroCard, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
               <View style={styles.heroTopRow}>
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <Text style={[styles.heroRouteNumber, { color: colors.primaryAccent }]}>
                       {activeRoute.routeNumber}
                     </Text>
@@ -261,24 +372,54 @@ export default function BusTrackerModal({ visible, onClose }) {
                 </View>
               </View>
 
-              {/* Current Location Banner */}
+              {/* Current Location & Speed Banner */}
               <View style={[styles.locationBanner, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
-                <Icon name="crosshairs-gps" size={18} color={colors.primaryAccent} />
+                <Icon name="crosshairs-gps" size={20} color={colors.primaryAccent} />
                 <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={[styles.locationLabel, { color: colors.secondaryText }]}>LIVE CURRENT LOCATION</Text>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={[styles.locationLabel, { color: colors.secondaryText }]}>CURRENT STOP & SPEED</Text>
+                    <Text style={[styles.speedText, { color: "#10B981" }]}>⚡ {activeRoute.currentSpeed}</Text>
+                  </View>
                   <Text style={[styles.locationText, { color: colors.primaryText }]}>{activeRoute.currentLocation}</Text>
                 </View>
               </View>
 
-              {/* Driver & Schedule Quick Strip */}
+              {/* Seat Capacity & Occupancy Bar */}
+              <View style={[styles.occupancyBox, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <Text style={[styles.occupancyLabel, { color: colors.secondaryText }]}>Live Seat Capacity</Text>
+                  <Text style={[styles.occupancyVal, { color: colors.primaryText }]}>
+                    {activeRoute.capacity} ({activeRoute.occupancyPercent}%)
+                  </Text>
+                </View>
+                <View style={[styles.occupancyTrack, { backgroundColor: colors.primaryBackground }]}>
+                  <View
+                    style={[
+                      styles.occupancyFill,
+                      {
+                        width: `${activeRoute.occupancyPercent}%`,
+                        backgroundColor: activeRoute.occupancyPercent > 90 ? "#EF4444" : "#10B981",
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+
+              {/* Driver & Coordinator Info */}
               <View style={styles.driverScheduleRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.metaKey, { color: colors.secondaryText }]}>Driver In-Charge</Text>
                   <Text style={[styles.metaVal, { color: colors.primaryText }]}>{activeRoute.driverName}</Text>
+                  <TouchableOpacity onPress={() => handleCall(activeRoute.driverPhone, "Driver")}>
+                    <Text style={[styles.phoneLink, { color: colors.primaryAccent }]}>{activeRoute.driverPhone}</Text>
+                  </TouchableOpacity>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.metaKey, { color: colors.secondaryText }]}>Capacity</Text>
-                  <Text style={[styles.metaVal, { color: colors.primaryText }]}>{activeRoute.capacity}</Text>
+                <View style={{ flex: 1, paddingLeft: 10 }}>
+                  <Text style={[styles.metaKey, { color: colors.secondaryText }]}>Faculty In-Charge</Text>
+                  <Text style={[styles.metaVal, { color: colors.primaryText }]} numberOfLines={1}>{activeRoute.coordinatorName}</Text>
+                  <TouchableOpacity onPress={() => handleCall(activeRoute.coordinatorPhone, "Faculty")}>
+                    <Text style={[styles.phoneLink, { color: colors.primaryAccent }]}>{activeRoute.coordinatorPhone}</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -286,7 +427,7 @@ export default function BusTrackerModal({ visible, onClose }) {
               <View style={styles.actionBtnRow}>
                 <TouchableOpacity
                   style={[styles.callDriverBtn, { backgroundColor: "#10B981" }]}
-                  onPress={() => handleCallDriver(activeRoute.driverPhone)}
+                  onPress={() => handleCall(activeRoute.driverPhone, "Driver")}
                   activeOpacity={0.85}
                 >
                   <Icon name="phone" size={16} color="#FFFFFF" />
@@ -304,9 +445,20 @@ export default function BusTrackerModal({ visible, onClose }) {
               </View>
             </View>
 
+            {/* Digital Student Bus Pass Badge */}
+            <View style={[styles.busPassCard, { backgroundColor: colors.primaryAccent + "14", borderColor: colors.primaryAccent + "33" }]}>
+              <Icon name="smart-card" size={24} color={colors.primaryAccent} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={[styles.busPassTitle, { color: colors.primaryAccent }]}>DIGITAL STUDENT BUS PASS</Text>
+                <Text style={[styles.busPassSub, { color: colors.secondaryText }]}>
+                  ID: #BP-2025-AI041 · Valid across all 8 campus routes for current semester.
+                </Text>
+              </View>
+            </View>
+
             {/* Route Stop-by-Stop Timeline */}
             <Text style={[styles.sectionTitle, { color: colors.primaryText, marginTop: 18, marginBottom: 12 }]}>
-              Route Stops & Timings
+              Route Stops & Timetable Schedule
             </Text>
 
             <View style={[styles.timelineCard, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
@@ -365,6 +517,17 @@ export default function BusTrackerModal({ visible, onClose }) {
                 );
               })}
             </View>
+
+            {/* Transport Desk Emergency Help */}
+            <View style={[styles.helpDeskCard, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+              <Icon name="phone-classic" size={20} color="#F59E0B" />
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <Text style={[styles.helpDeskTitle, { color: colors.primaryText }]}>Campus Transport Control Room</Text>
+                <Text style={[styles.helpDeskSub, { color: colors.secondaryText }]}>
+                  Helpline: 0422-2680150 · Transport Officer: +91 94430 11990
+                </Text>
+              </View>
+            </View>
           </ScrollView>
         </View>
       </View>
@@ -400,6 +563,27 @@ const getStyles = (colors, _isDarkMode) =>
       color: "rgba(255,255,255,0.8)",
       fontSize: 11,
       fontWeight: "500",
+      marginTop: 2,
+    },
+    liveGpsBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: "rgba(255,255,255,0.2)",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    gpsPulseDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: "#10B981",
+    },
+    liveGpsBadgeText: {
+      color: "#FFFFFF",
+      fontSize: 8.5,
+      fontWeight: "900",
     },
     bodyContainer: {
       flex: 1,
@@ -512,6 +696,33 @@ const getStyles = (colors, _isDarkMode) =>
       fontWeight: "800",
       marginTop: 1,
     },
+    speedText: {
+      fontSize: 11,
+      fontWeight: "800",
+    },
+    occupancyBox: {
+      padding: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+      marginTop: 10,
+    },
+    occupancyLabel: {
+      fontSize: 10.5,
+      fontWeight: "700",
+    },
+    occupancyVal: {
+      fontSize: 11,
+      fontWeight: "800",
+    },
+    occupancyTrack: {
+      height: 6,
+      borderRadius: 3,
+      overflow: "hidden",
+    },
+    occupancyFill: {
+      height: "100%",
+      borderRadius: 3,
+    },
     driverScheduleRow: {
       flexDirection: "row",
       justifyContent: "space-between",
@@ -525,9 +736,14 @@ const getStyles = (colors, _isDarkMode) =>
       fontWeight: "600",
     },
     metaVal: {
-      fontSize: 12.5,
+      fontSize: 12,
       fontWeight: "800",
       marginTop: 1,
+    },
+    phoneLink: {
+      fontSize: 11,
+      fontWeight: "700",
+      marginTop: 2,
     },
     actionBtnRow: {
       flexDirection: "row",
@@ -561,6 +777,24 @@ const getStyles = (colors, _isDarkMode) =>
     shareRouteText: {
       fontSize: 12.5,
       fontWeight: "700",
+    },
+    busPassCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 12,
+      borderRadius: 14,
+      borderWidth: 1,
+      marginTop: 12,
+    },
+    busPassTitle: {
+      fontSize: 11,
+      fontWeight: "900",
+      letterSpacing: 0.5,
+    },
+    busPassSub: {
+      fontSize: 10.5,
+      fontWeight: "500",
+      marginTop: 1,
     },
     sectionTitle: {
       fontSize: 14,
@@ -617,5 +851,22 @@ const getStyles = (colors, _isDarkMode) =>
       color: "#3B82F6",
       fontSize: 9,
       fontWeight: "900",
+    },
+    helpDeskCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 12,
+      borderRadius: 14,
+      borderWidth: 1,
+      marginTop: 14,
+    },
+    helpDeskTitle: {
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    helpDeskSub: {
+      fontSize: 10.5,
+      fontWeight: "500",
+      marginTop: 2,
     },
   });
