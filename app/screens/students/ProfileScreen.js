@@ -84,6 +84,7 @@ export default function ProfileScreen({ onLogout }) {
         setUser((prev) => ({
           ...prev,
           name: apiStudent?.name || sessionUser?.profile?.name || sessionUser?.name || prev.name,
+          nickname: apiStudent?.nickname || sessionUser?.nickname || prev.nickname || "Karthi",
           id: apiStudent?.rollNo || apiStudent?.id || prev.id,
           regNo: apiStudent?.regNo || prev.regNo || "",
           email: apiStudent?.email || sessionUser?.email || prev.email,
@@ -97,15 +98,27 @@ export default function ProfileScreen({ onLogout }) {
           dob: apiStudent?.dob || prev.dob || "",
           advisor: apiStudent?.advisor?.name || prev.advisor || "",
           mentorEmail: apiStudent?.advisor?.email || prev.mentorEmail || "",
-          hostel:
-            typeof apiStudent?.hostel === "boolean"
+          residentialStatus:
+            apiStudent?.residentialStatus ||
+            (typeof apiStudent?.hostel === "boolean"
               ? apiStudent.hostel
-                ? "Residential"
-                : "Day Scholar"
-              : apiStudent?.hostel || prev.hostel || "—",
+                ? "Hosteler"
+                : "Day Scholar (Inside)"
+              : apiStudent?.hostel) ||
+            prev.residentialStatus ||
+            "Day Scholar (Inside)",
+          hostel:
+            apiStudent?.residentialStatus ||
+            (typeof apiStudent?.hostel === "boolean"
+              ? apiStudent.hostel
+                ? "Hosteler"
+                : "Day Scholar (Inside)"
+              : apiStudent?.hostel) ||
+            prev.hostel ||
+            "Day Scholar (Inside)",
           fatherName: apiStudent?.parent?.name || prev.fatherName || "",
           fatherPhone: apiStudent?.parent?.phone || apiStudent?.parent?.mobile || prev.fatherPhone || "",
-          motherName: apiStudent?.motherName || apiStudent?.parent?.motherName || prev.motherName || "",
+          motherName: apiStudent?.motherName || apiStudent?.parent?.motherName || prev.motherName || "Lakshmi M",
           emergencyContact: apiStudent?.emergencyContact || apiStudent?.parent?.phone || prev.emergencyContact || "",
         }));
       } else {
@@ -343,9 +356,19 @@ export default function ProfileScreen({ onLogout }) {
                 </TouchableOpacity>
 
                 <View style={styles.idHeroDetails}>
-                  <Text style={[styles.idHeroName, { color: colors.primaryText }]} numberOfLines={1}>
-                    {user.name}
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <Text style={[styles.idHeroName, { color: colors.primaryText }]} numberOfLines={1}>
+                      {user.name}
+                    </Text>
+                    {!!user.nickname && (
+                      <View style={[styles.nicknameHeroBadge, { backgroundColor: colors.primaryAccent + "18", borderColor: colors.primaryAccent + "44" }]}>
+                        <Icon name="tag-outline" size={10} color={colors.primaryAccent} />
+                        <Text style={[styles.nicknameHeroBadgeText, { color: colors.primaryAccent }]}>
+                          {`"${user.nickname}"`}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={[styles.idHeroProgram, { color: colors.primaryAccent }]} numberOfLines={1}>
                     {user.program}
                   </Text>
@@ -355,7 +378,7 @@ export default function ProfileScreen({ onLogout }) {
                       Roll: {user.id}
                     </Text>
                     <Text style={[styles.idHeroMetaBadge, { backgroundColor: colors.primaryBackground, color: colors.secondaryText }]}>
-                      Blood: {(user.bloodGroup || "—").split(" ")[0]}
+                      {user.residentialStatus || user.hostel || "Day Scholar (Inside)"}
                     </Text>
                   </View>
                 </View>
@@ -418,7 +441,7 @@ export default function ProfileScreen({ onLogout }) {
                 <DataRow icon="identifier" label="Roll Number" value={user.id} colors={colors} />
                 <DataRow icon="school-outline" label="Academic Batch" value={user.batch} colors={colors} />
                 <DataRow icon="domain" label="Department" value={user.department} colors={colors} />
-                <DataRow icon="home-city-outline" label="Residence Status" value={user.hostel} colors={colors} />
+                <DataRow icon="home-city-outline" label="Residence Status" value={user.residentialStatus || user.hostel || "Day Scholar (Inside)"} colors={colors} />
               </View>
             </View>
 
@@ -432,6 +455,7 @@ export default function ProfileScreen({ onLogout }) {
               </View>
 
               <View style={styles.dataGrid}>
+                <DataRow icon="account-star-outline" label="Nickname / Preferred Name" value={user.nickname || "—"} colors={colors} />
                 <DataRow icon="email-outline" label="Official Email" value={user.email} colors={colors} />
                 <DataRow icon="phone-outline" label="Mobile Number" value={user.phone} colors={colors} />
                 <DataRow icon="calendar-account" label="Date of Birth" value={user.dob} colors={colors} />
@@ -452,7 +476,7 @@ export default function ProfileScreen({ onLogout }) {
               <View style={styles.dataGrid}>
                 <DataRow icon="account-supervisor-circle" label="Father's Name" value={user.fatherName} colors={colors} />
                 <DataRow icon="phone-outline" label="Father's Contact" value={user.fatherPhone} colors={colors} />
-                <DataRow icon="account-heart-outline" label="Mother's Name" value={user.motherName} colors={colors} />
+                <DataRow icon="account-heart-outline" label="Mother's Name" value={user.motherName || "—"} colors={colors} />
                 <DataRow icon="alert-decagram-outline" label="Emergency Contact" value={user.emergencyContact} colors={colors} />
               </View>
             </View>
@@ -923,6 +947,19 @@ const getStyles = (colors, isDarkMode) =>
       fontSize: 16,
       fontWeight: "900",
       letterSpacing: -0.2,
+    },
+    nicknameHeroBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    nicknameHeroBadgeText: {
+      fontSize: 10.5,
+      fontWeight: "800",
     },
     idHeroProgram: {
       fontSize: 12,

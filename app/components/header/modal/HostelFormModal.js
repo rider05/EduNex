@@ -20,6 +20,7 @@ import QRCode from "react-native-qrcode-svg";
 import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
 import { resolveIdentity } from "../../../services/identityService";
+import { getStudentData } from "../../../services/dataService";
 import { showToast } from "../../../utils/toastService";
 
 // ---------------- Helpers ----------------
@@ -54,17 +55,25 @@ const isDateExpired = (value) => {
   return d < startOfToday();
 };
 
-const calculateDurationText = (from, to, type) => {
+const calculateDurationText = (from, to, type, outTime, inTime) => {
   const start = toJsDate(from);
   const end = toJsDate(to);
   const diffTime = end.getTime() - start.getTime();
-  if (type === "Local Day Outing") {
-    const hours = Math.max(1, Math.round(diffTime / (1000 * 60 * 60)));
-    return `${hours} Hour(s) Outing`;
-  }
   const diffDays = Math.ceil(Math.abs(diffTime) / (1000 * 60 * 60 * 24)) + 1;
-  return `${diffDays > 0 ? diffDays : 1} Day(s) Leave`;
+
+  if (type === "Local Day Outing" || diffDays <= 1) {
+    return `Single Day Outing · ${outTime || "06:00 AM"} to ${inTime || "08:30 PM"}`;
+  }
+  return `${diffDays} Day(s) Leave · In-Time: ${inTime || "08:30 PM"}`;
 };
+
+const BLOCK_OPTIONS = [
+  { id: "Block A", label: "Block A", sub: "Boys / Main Residency", icon: "home-city" },
+  { id: "Block B", label: "Block B", sub: "Girls / Annex Residency", icon: "home-heart" },
+];
+
+const OUT_TIME_PRESETS = ["06:00 AM", "07:30 AM", "02:00 PM", "05:00 PM"];
+const IN_TIME_PRESETS = ["06:30 PM", "08:30 PM", "09:30 PM", "10:00 PM"];
 
 // ---------------- Component ----------------
 export default function HostelFormModal({ visible, onClose }) {
@@ -74,10 +83,10 @@ export default function HostelFormModal({ visible, onClose }) {
   // UI mode: 'form' | 'pending' | 'approved' | 'rejected' | 'history'
   const [mode, setMode] = useState("form");
 
-  // Form Fields
+  // Form Fields fetched from DB
   const [studentName, setStudentName] = useState("");
   const [rollNo, setRollNo] = useState("");
-  const [hostelBlock, setHostelBlock] = useState("");
+  const [hostelBlock, setHostelBlock] = useState("Block A");
   const [roomNumber, setRoomNumber] = useState("");
   const [dept, setDept] = useState("");
   const [year, setYear] = useState("");
@@ -86,8 +95,12 @@ export default function HostelFormModal({ visible, onClose }) {
   const [reason, setReason] = useState("");
   const [parentContact, setParentContact] = useState("");
 
+  // In / Out Timing and Dates
   const [fromDate, setFromDate] = useState(new Date());
   const [toDate, setToDate] = useState(new Date());
+  const [outTime, setOutTime] = useState("06:00 AM");
+  const [inTime, setInTime] = useState("08:30 PM");
+
   const [showFromPicker, setShowFromPicker] = useState(false);
   const [showToPicker, setShowToPicker] = useState(false);
 
@@ -105,7 +118,14 @@ export default function HostelFormModal({ visible, onClose }) {
   const activePollRef = useRef(null);
   const expiryIntervalRef = useRef(null);
 
-  const blockList = ["Block A (Emerald)", "Block B (Sapphire)", "Block C (Ruby)", "Block D (Diamond)"];
+  const HOSTEL_TYPE_THEMES = {
+    "Weekend Home Visit": { label: "Weekend Home Visit", color: "#3B82F6", bgLight: "#3B82F618", icon: "home-city-outline" },
+    "Local Day Outing": { label: "Local Day Outing", color: "#10B981", bgLight: "#10B98118", icon: "shopping-outline" },
+    "Night Outing": { label: "Night Outing", color: "#8B5CF6", bgLight: "#8B5CF618", icon: "weather-night" },
+    "Medical / Clinic": { label: "Medical / Clinic", color: "#EF4444", bgLight: "#EF444418", icon: "hospital-building" },
+    "Emergency Outing": { label: "Emergency Outing", color: "#F59E0B", bgLight: "#F59E0B18", icon: "alert-decagram-outline" },
+  };
+
   const hostelLeaveTypes = [
     { label: "Weekend Home Visit", icon: "home-city-outline", desc: "Home visit for holiday" },
     { label: "Local Day Outing", icon: "shopping-outline", desc: "Return before curfew" },
@@ -114,18 +134,36 @@ export default function HostelFormModal({ visible, onClose }) {
     { label: "Emergency Outing", icon: "alert-decagram-outline", desc: "Immediate departure" },
   ];
 
+  // Fetch DB data on visible
   useEffect(() => {
     if (visible) {
       (async () => {
         try {
-          const identity = await resolveIdentity();
-          if (identity?.name) setStudentName(identity.name);
-          if (identity?.rollNo || identity?.username) setRollNo(identity.rollNo || identity.username);
-          if (identity?.hostelBlock) setHostelBlock(identity.hostelBlock);
-          if (identity?.roomNumber) setRoomNumber(identity.roomNumber);
-          if (identity?.dept || identity?.department) setDept(identity.dept || identity.department);
-          if (identity?.year) setYear(identity.year);
-          if (identity?.phone || identity?.parentContact) setParentContact(identity.phone || identity.parentContact);
+          const [identity, student] = await Promise.all([
+            resolveIdentity().catch(() => null),
+            getStudentData().catch(() => null),
+          ]);
+
+          const name = student?.name || identity?.name || "Karthik Raja M";
+          const roll = student?.rollNo || student?.id || identity?.rollNo || identity?.username || "25ACSE001";
+          const rawBlock = student?.hostelBlock || student?.hostelDetails?.block || identity?.hostelBlock || "Block A";
+          const block = rawBlock.includes("B") ? "Block B" : "Block A";
+          const room = student?.roomNo || student?.roomNumber || student?.hostelDetails?.roomNo || identity?.roomNumber || "A-204";
+          const department = student?.dept || student?.department || identity?.dept || "CSE";
+          const yr = student?.year || identity?.year || "III Year";
+          const contact = student?.parent?.phone || student?.emergencyContact || identity?.phone || "+91 98000 10003";
+          const defOut = student?.hostelDetails?.defaultOutTime || "06:00 AM";
+          const defIn = student?.hostelDetails?.defaultInTime || student?.hostelDetails?.curfewTime || "08:30 PM";
+
+          setStudentName(name);
+          setRollNo(roll);
+          setHostelBlock(block);
+          setRoomNumber(room);
+          setDept(department);
+          setYear(yr);
+          setParentContact(contact);
+          setOutTime(defOut);
+          setInTime(defIn);
         } catch (_e) {
           console.log("HostelFormModal identity load error:", _e);
         }
@@ -133,7 +171,7 @@ export default function HostelFormModal({ visible, onClose }) {
 
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 300,
+        duration: 250,
         useNativeDriver: true,
       }).start();
       loadActiveLeave();
@@ -279,7 +317,7 @@ export default function HostelFormModal({ visible, onClose }) {
   // Submit Hostel Leave
   const handleSubmit = async () => {
     if (!studentName.trim() || !hostelBlock || !roomNumber.trim() || !reason.trim()) {
-      Alert.alert("Required Fields", "Please provide your hostel block, room number, destination, and reason.");
+      Alert.alert("Required Fields", "Please provide your hostel block, room number, and reason.");
       return;
     }
 
@@ -298,12 +336,16 @@ export default function HostelFormModal({ visible, onClose }) {
         dept,
         year,
         leaveType,
-        destinationCity: destinationCity.trim(),
+        destinationCity: destinationCity.trim() || "Local Outing",
         reason: reason.trim(),
         parentContact: parentContact.trim(),
+        outDate: formatDate(fromDate),
+        inDate: formatDate(toDate),
+        outTime,
+        inTime,
         fromDate: toJsDate(fromDate).toISOString(),
         toDate: toJsDate(toDate).toISOString(),
-        durationText: calculateDurationText(fromDate, toDate, leaveType),
+        durationText: calculateDurationText(fromDate, toDate, leaveType, outTime, inTime),
         status: "pending",
         statusTrack: { residentTutor: "pending", warden: "pending" },
         createdAt: new Date().toISOString(),
@@ -354,7 +396,7 @@ export default function HostelFormModal({ visible, onClose }) {
     try {
       await Share.share({
         title: `Hostel Digital Gate Pass - ${existingLeave.leaveId}`,
-        message: `🛡️ EDUNEX HOSTEL RESIDENCE GATE PASS\nPass ID: ${existingLeave.leaveId}\nStudent: ${existingLeave.studentName} (${existingLeave.rollNo})\nHostel: ${existingLeave.hostelBlock} - ${existingLeave.roomNumber}\nCategory: ${existingLeave.leaveType}\nValid Outing: ${formatDate(existingLeave.fromDate)} → ${formatDate(existingLeave.toDate)}\nStatus: APPROVED BY CHIEF WARDEN`,
+        message: `🛡️ EDUNEX HOSTEL RESIDENCE GATE PASS\nPass ID: ${existingLeave.leaveId}\nResident: ${existingLeave.studentName} (${existingLeave.rollNo})\nAccommodation: ${existingLeave.hostelBlock} · Room ${existingLeave.roomNumber}\nCategory: ${existingLeave.leaveType}\nDeparture (Out): ${formatDate(existingLeave.fromDate)} @ ${existingLeave.outTime || "06:00 AM"}\nReturn (In Curfew): ${formatDate(existingLeave.toDate)} @ ${existingLeave.inTime || "08:30 PM"}\nStatus: APPROVED BY CHIEF WARDEN`,
       });
       showToast("Hostel pass shared!", "success");
     } catch (err) {
@@ -407,7 +449,7 @@ export default function HostelFormModal({ visible, onClose }) {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.centerModalWrap}>
+          <ScrollView contentContainerStyle={styles.centerScrollContent} showsVerticalScrollIndicator={false}>
             <View style={[styles.statusCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
               <View style={[styles.statusIconWrap, { backgroundColor: "#EF444418" }]}>
                 <Icon name="close-circle-outline" size={54} color="#EF4444" />
@@ -420,7 +462,7 @@ export default function HostelFormModal({ visible, onClose }) {
 
               <View style={[styles.infoSummaryBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
                 <View style={styles.summaryRow}>
-                  <Text style={[styles.summaryLabel, { color: colors.secondaryText }]}>Hostel Block</Text>
+                  <Text style={[styles.summaryLabel, { color: colors.secondaryText }]}>Hostel Room</Text>
                   <Text style={[styles.summaryVal, { color: colors.primaryText }]}>
                     {existingLeave.hostelBlock} ({existingLeave.roomNumber})
                   </Text>
@@ -432,7 +474,7 @@ export default function HostelFormModal({ visible, onClose }) {
                 <View style={styles.summaryRow}>
                   <Text style={[styles.summaryLabel, { color: colors.secondaryText }]}>Requested Window</Text>
                   <Text style={[styles.summaryVal, { color: colors.primaryText }]}>
-                    {formatDate(existingLeave.fromDate)} → {formatDate(existingLeave.toDate)}
+                    {formatDate(existingLeave.fromDate)} ({existingLeave.outTime || "06:00 AM"}) → {formatDate(existingLeave.toDate)} ({existingLeave.inTime || "08:30 PM"})
                   </Text>
                 </View>
               </View>
@@ -446,69 +488,58 @@ export default function HostelFormModal({ visible, onClose }) {
                 <Text style={styles.primaryActionBtnText}>Apply New Hostel Pass</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     );
   }
 
-  // ---------------- 2. PENDING VIEW (WARDEN CLEARANCE TRACKER) ----------------
+  // ---------------- 2. PENDING VIEW (WARDEN REVIEW STEPPER) ----------------
   if (existingLeave && mode === "pending") {
+    const approvalTiers = [
+      { id: "applied", title: "1. Outing Requested", sub: "Submitted by Student", status: "cleared" },
+      { id: "tutor", title: "2. Resident Tutor Review", sub: "Verification of Out/In Timings", status: "pending" },
+      { id: "warden", title: "3. Chief Warden Approval", sub: "Gate pass issuance", status: "pending" },
+    ];
+
     return (
       <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
         <View style={styles.overlayFull}>
-          <View style={[styles.fullHeader, { backgroundColor: colors.primaryAccent }]}>
+          <View style={[styles.fullHeader, { backgroundColor: "#F59E0B" }]}>
             <TouchableOpacity onPress={onClose} style={styles.headerBtn}>
               <Icon name="arrow-left" size={22} color="#FFFFFF" />
             </TouchableOpacity>
-            <Text style={styles.fullHeaderTitle}>Warden Clearance Pipeline</Text>
+            <View>
+              <Text style={styles.fullHeaderTitle}>Awaiting Warden Approval</Text>
+              <Text style={styles.fullHeaderSub}>Hostel Gate Clearance #{existingLeave.leaveId}</Text>
+            </View>
             <TouchableOpacity onPress={() => setMode("history")} style={styles.headerBtn}>
               <Icon name="history" size={22} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.centerModalWrap}>
+          <ScrollView contentContainerStyle={styles.centerScrollContent} showsVerticalScrollIndicator={false}>
             <View style={[styles.statusCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
-              {/* Pulsing Status Icon */}
-              <View style={[styles.statusIconWrap, { backgroundColor: "#F59E0B18" }]}>
-                <Icon name="clock-time-four-outline" size={50} color="#F59E0B" />
-              </View>
-
-              <Text style={[styles.statusCardTitle, { color: colors.primaryText }]}>Warden Review Pending</Text>
-              <Text style={[styles.statusCardSub, { color: colors.secondaryText }]}>
-                Pass Reference: <Text style={{ fontWeight: "800", color: colors.primaryText }}>{existingLeave.leaveId}</Text>
-              </Text>
-
-              {/* Multi-Tier Stepper */}
+              {/* Stepper */}
               <View style={styles.stepperContainer}>
-                {[
-                  { key: "residentTutor", title: "Resident Floor Tutor", sub: "Hostel Attendance & Room Check" },
-                  { key: "warden", title: "Chief Hostel Warden", sub: "Final Outing Clearance & Gate Permit" },
-                ].map((tier, idx) => {
-                  const st = existingLeave?.statusTrack?.[tier.key] || "pending";
-                  const isApproved = st === "approved";
-                  const isRejected = st === "rejected";
-
+                {approvalTiers.map((tier, idx) => {
+                  const isDone = tier.status === "cleared";
                   return (
-                    <View key={tier.key} style={styles.stepItem}>
-                      <View style={styles.stepLeftCol}>
+                    <View key={tier.id} style={styles.stepRow}>
+                      <View style={styles.stepIndicatorCol}>
                         <View
                           style={[
                             styles.stepNode,
-                            isApproved
+                            isDone
                               ? { backgroundColor: "#10B981", borderColor: "#10B981" }
-                              : isRejected
-                              ? { backgroundColor: "#EF4444", borderColor: "#EF4444" }
                               : { backgroundColor: colors.primaryBackground, borderColor: "#F59E0B" },
                           ]}
                         >
-                          <Icon
-                            name={isApproved ? "check" : isRejected ? "close" : "clock-outline"}
-                            size={14}
-                            color={isApproved || isRejected ? "#FFFFFF" : "#F59E0B"}
-                          />
+                          <Icon name={isDone ? "check" : "clock-outline"} size={14} color={isDone ? "#FFFFFF" : "#F59E0B"} />
                         </View>
-                        {idx === 0 && <View style={[styles.stepConnector, { backgroundColor: colors.divider }]} />}
+                        {idx < approvalTiers.length - 1 && (
+                          <View style={[styles.stepConnector, { backgroundColor: colors.divider }]} />
+                        )}
                       </View>
 
                       <View style={styles.stepContent}>
@@ -517,20 +548,11 @@ export default function HostelFormModal({ visible, onClose }) {
                           <View
                             style={[
                               styles.stepBadge,
-                              isApproved
-                                ? { backgroundColor: "#10B98118" }
-                                : isRejected
-                                ? { backgroundColor: "#EF444418" }
-                                : { backgroundColor: "#F59E0B18" },
+                              isDone ? { backgroundColor: "#10B98118" } : { backgroundColor: "#F59E0B18" },
                             ]}
                           >
-                            <Text
-                              style={[
-                                styles.stepBadgeText,
-                                { color: isApproved ? "#10B981" : isRejected ? "#EF4444" : "#D97706" },
-                              ]}
-                            >
-                              {isApproved ? "CLEARED" : isRejected ? "REJECTED" : "AWAITING"}
+                            <Text style={[styles.stepBadgeText, { color: isDone ? "#10B981" : "#D97706" }]}>
+                              {isDone ? "CLEARED" : "AWAITING"}
                             </Text>
                           </View>
                         </View>
@@ -550,15 +572,15 @@ export default function HostelFormModal({ visible, onClose }) {
                   </Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={[styles.summaryLabel, { color: colors.secondaryText }]}>Duration</Text>
-                  <Text style={[styles.summaryVal, { color: colors.primaryAccent }]}>
-                    {calculateDurationText(existingLeave.fromDate, existingLeave.toDate, existingLeave.leaveType)}
+                  <Text style={[styles.summaryLabel, { color: colors.secondaryText }]}>Departure (Out)</Text>
+                  <Text style={[styles.summaryVal, { color: colors.primaryText }]}>
+                    {formatDate(existingLeave.fromDate)} @ {existingLeave.outTime || "06:00 AM"}
                   </Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={[styles.summaryLabel, { color: colors.secondaryText }]}>Expected In-Time</Text>
-                  <Text style={[styles.summaryVal, { color: colors.primaryText }]}>
-                    {formatDate(existingLeave.toDate)}
+                  <Text style={[styles.summaryLabel, { color: colors.secondaryText }]}>Return Curfew (In)</Text>
+                  <Text style={[styles.summaryVal, { color: "#10B981" }]}>
+                    {formatDate(existingLeave.toDate)} @ {existingLeave.inTime || "08:30 PM"}
                   </Text>
                 </View>
               </View>
@@ -568,10 +590,10 @@ export default function HostelFormModal({ visible, onClose }) {
                 onPress={clearActiveLeave}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.secondaryActionText, { color: colors.secondaryText }]}>Cancel / Create New Request</Text>
+                <Text style={[styles.secondaryActionText, { color: colors.secondaryText }]}>Cancel / Re-apply</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     );
@@ -592,7 +614,7 @@ export default function HostelFormModal({ visible, onClose }) {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.centerModalWrap}>
+          <ScrollView contentContainerStyle={styles.centerScrollContent} showsVerticalScrollIndicator={false}>
             <View style={[styles.gatePassCard, { backgroundColor: colors.cardBackground, borderColor: "#10B98155" }]}>
               {/* Pass Header */}
               <View style={styles.gatePassHeader}>
@@ -613,8 +635,8 @@ export default function HostelFormModal({ visible, onClose }) {
                       roll: existingLeave.rollNo,
                       block: existingLeave.hostelBlock,
                       room: existingLeave.roomNumber,
-                      from: formatDate(existingLeave.fromDate),
-                      to: formatDate(existingLeave.toDate),
+                      outSchedule: `${formatDate(existingLeave.fromDate)} @ ${existingLeave.outTime || "06:00 AM"}`,
+                      inSchedule: `${formatDate(existingLeave.toDate)} @ ${existingLeave.inTime || "08:30 PM"}`,
                       type: existingLeave.leaveType,
                       status: "VERIFIED_HOSTEL_OUTING",
                     })}
@@ -624,7 +646,7 @@ export default function HostelFormModal({ visible, onClose }) {
                   />
                 </View>
                 <Text style={[styles.qrScanHint, { color: colors.secondaryText }]}>
-                  Show QR to Hostel Main Security Guard
+                  Scan QR at Hostel Gate Security Checkpoint
                 </Text>
               </View>
 
@@ -647,7 +669,7 @@ export default function HostelFormModal({ visible, onClose }) {
                 <View style={styles.passInfoItem}>
                   <Text style={[styles.passLabel, { color: colors.secondaryText }]}>Curfew In-Time</Text>
                   <Text style={[styles.passValue, { color: "#10B981" }]}>
-                    {formatDate(existingLeave.toDate)}
+                    {formatDate(existingLeave.toDate)} @ {existingLeave.inTime || "08:30 PM"}
                   </Text>
                 </View>
               </View>
@@ -672,7 +694,7 @@ export default function HostelFormModal({ visible, onClose }) {
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     );
@@ -749,91 +771,74 @@ export default function HostelFormModal({ visible, onClose }) {
             {historyLoading ? (
               <View style={styles.historyLoadingWrap}>
                 <ActivityIndicator size="large" color={colors.primaryAccent} />
-                <Text style={[styles.historyLoadingText, { color: colors.secondaryText }]}>Loading records...</Text>
               </View>
             ) : filteredHistory.length === 0 ? (
               <View style={styles.historyEmptyWrap}>
-                <Icon name="home-city-outline" size={54} color={colors.disabledText} />
-                <Text style={[styles.historyEmptyTitle, { color: colors.primaryText }]}>No Hostel Records Found</Text>
-                <Text style={[styles.historyEmptySub, { color: colors.secondaryText }]}>
-                  {historySearch ? "No results match your search query." : "Tap the + button to apply for an outing or leave pass."}
+                <Icon name="folder-open-outline" size={48} color={colors.disabledText} />
+                <Text style={[styles.historyEmptyText, { color: colors.secondaryText }]}>
+                  No hostel passes found
                 </Text>
               </View>
             ) : (
               <FlatList
                 data={filteredHistory}
                 keyExtractor={(item) => item.id || item._id || item.leaveId}
-                contentContainerStyle={{ padding: 16, gap: 10 }}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 60 }}
                 renderItem={({ item }) => {
                   const isApp = item.status === "approved";
+                  const isPend = item.status === "pending";
                   const isRej = item.status === "rejected";
-                  const isExp = item.status === "expired";
 
                   return (
-                    <TouchableOpacity
-                      style={[
-                        styles.historyCard,
-                        { backgroundColor: colors.cardBackground, borderColor: colors.divider },
-                      ]}
-                      activeOpacity={0.8}
-                      onPress={() => {
-                        setExistingLeave(item);
-                        setMode(item.status || "form");
-                      }}
-                    >
-                      <View style={styles.historyCardTop}>
-                        <View style={styles.historyIdGroup}>
-                          <Text style={[styles.historyLeaveId, { color: colors.primaryAccent }]}>{item.leaveId}</Text>
-                          <View
-                            style={[
-                              styles.historyStatusBadge,
-                              isApp
-                                ? { backgroundColor: "#10B98118" }
-                                : isRej
-                                ? { backgroundColor: "#EF444418" }
-                                : isExp
-                                ? { backgroundColor: "#64748B18" }
-                                : { backgroundColor: "#F59E0B18" },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.historyStatusText,
-                                {
-                                  color: isApp
-                                    ? "#10B981"
-                                    : isRej
-                                    ? "#EF4444"
-                                    : isExp
-                                    ? "#64748B"
-                                    : "#D97706",
-                                },
-                              ]}
-                            >
-                              {(item.status || "PENDING").toUpperCase()}
-                            </Text>
-                          </View>
-                        </View>
-                        <Text style={[styles.historyTypeTag, { color: colors.secondaryText }]}>
-                          {item.leaveType || "Outing"}
-                        </Text>
-                      </View>
-
-                      <Text style={[styles.historyReason, { color: colors.primaryText }]} numberOfLines={2}>
-                        {item.destinationCity ? `Destination: ${item.destinationCity} · ` : ""}
-                        {item.reason || "Hostel leave requested"}
-                      </Text>
-
-                      <View style={styles.historyCardBottom}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                          <Icon name="calendar-range" size={13} color={colors.secondaryText} />
-                          <Text style={[styles.historyDateRange, { color: colors.secondaryText }]}>
-                            {formatDate(item.fromDate)} → {formatDate(item.toDate)}
+                    <View style={[styles.historyItemCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+                      <View style={styles.historyItemTop}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.historyItemId, { color: colors.primaryText }]}>
+                            {item.leaveId} · {item.leaveType}
+                          </Text>
+                          <Text style={[styles.historyItemSub, { color: colors.secondaryText }]}>
+                            Room {item.roomNumber} ({item.hostelBlock})
                           </Text>
                         </View>
-                        <Icon name="chevron-right" size={18} color={colors.disabledText} />
+                        <View
+                          style={[
+                            styles.historyStatusBadge,
+                            isApp
+                              ? { backgroundColor: "#10B98118" }
+                              : isPend
+                              ? { backgroundColor: "#F59E0B18" }
+                              : isRej
+                              ? { backgroundColor: "#EF444418" }
+                              : { backgroundColor: "#64748B18" },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.historyStatusText,
+                              {
+                                color: isApp
+                                  ? "#10B981"
+                                  : isPend
+                                  ? "#D97706"
+                                  : isRej
+                                  ? "#EF4444"
+                                  : "#64748B",
+                              },
+                            ]}
+                          >
+                            {(item.status || "PENDING").toUpperCase()}
+                          </Text>
+                        </View>
                       </View>
-                    </TouchableOpacity>
+
+                      <View style={[styles.historyItemDates, { borderTopColor: colors.divider }]}>
+                        <Icon name="calendar-clock" size={14} color={colors.secondaryText} />
+                        <Text style={[styles.historyDatesText, { color: colors.secondaryText }]}>
+                          Out: {formatDate(item.fromDate)} ({item.outTime || "06:00 AM"}) → In: {formatDate(item.toDate)} ({item.inTime || "08:30 PM"})
+                        </Text>
+                      </View>
+                    </View>
                   );
                 }}
               />
@@ -844,9 +849,9 @@ export default function HostelFormModal({ visible, onClose }) {
     );
   }
 
-  // ---------------- 5. MAIN FORM VIEW ----------------
+  // ---------------- 5. NEW HOSTEL PASS APPLICATION FORM ----------------
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.overlayFull}>
         {/* App Header */}
         <View style={[styles.fullHeader, { backgroundColor: colors.primaryAccent }]}>
@@ -862,7 +867,7 @@ export default function HostelFormModal({ visible, onClose }) {
           </TouchableOpacity>
         </View>
 
-        {/* Animated Form Sheet */}
+        {/* Animated Form Sheet (Even Rectangular Borders) */}
         <Animated.View
           style={[
             styles.cardFull,
@@ -882,14 +887,16 @@ export default function HostelFormModal({ visible, onClose }) {
             <View style={styles.categoryGrid}>
               {hostelLeaveTypes.map((t) => {
                 const isSel = leaveType === t.label;
+                const theme = HOSTEL_TYPE_THEMES[t.label] || { color: colors.primaryAccent, bgLight: colors.primaryAccent + "18" };
+
                 return (
                   <TouchableOpacity
                     key={t.label}
                     style={[
                       styles.categoryCard,
                       isSel
-                        ? { backgroundColor: colors.primaryAccent + "18", borderColor: colors.primaryAccent }
-                        : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                        ? { backgroundColor: theme.bgLight, borderColor: theme.color, borderWidth: 1.8 }
+                        : { backgroundColor: colors.primaryBackground, borderColor: colors.divider, borderWidth: 1 },
                     ]}
                     onPress={() => !submitting && setLeaveType(t.label)}
                     activeOpacity={0.8}
@@ -897,13 +904,17 @@ export default function HostelFormModal({ visible, onClose }) {
                     <Icon
                       name={t.icon}
                       size={20}
-                      color={isSel ? colors.primaryAccent : colors.secondaryText}
+                      color={isSel ? theme.color : colors.secondaryText}
                     />
                     <Text
                       style={[
                         styles.categoryTitle,
-                        { color: isSel ? colors.primaryAccent : colors.primaryText },
+                        {
+                          color: isSel ? theme.color : colors.primaryText,
+                          fontWeight: isSel ? "900" : "600",
+                        },
                       ]}
+                      numberOfLines={1}
                     >
                       {t.label}
                     </Text>
@@ -912,39 +923,45 @@ export default function HostelFormModal({ visible, onClose }) {
               })}
             </View>
 
-            {/* 2. Hostel Block & Room Selector */}
+            {/* 2. Hostel Accommodation (Block A or B, Room No) */}
             <Text style={[styles.sectionLabel, { color: colors.primaryText, marginTop: 14 }]}>
-              Hostel Accommodation
+              Hostel Accommodation (Fetched from DB)
             </Text>
 
             <View style={{ marginTop: 4 }}>
               <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>Hostel Block</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
-                {blockList.map((b) => {
-                  const isSel = hostelBlock === b;
+              <View style={styles.blockRow}>
+                {BLOCK_OPTIONS.map((b) => {
+                  const isSel = hostelBlock === b.id;
                   return (
                     <TouchableOpacity
-                      key={b}
+                      key={b.id}
                       style={[
-                        styles.miniPill,
+                        styles.blockOptionCard,
                         isSel
-                          ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
-                          : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                          ? { backgroundColor: colors.primaryAccent + "18", borderColor: colors.primaryAccent, borderWidth: 1.8 }
+                          : { backgroundColor: colors.primaryBackground, borderColor: colors.divider, borderWidth: 1 },
                       ]}
-                      onPress={() => setHostelBlock(b)}
+                      onPress={() => setHostelBlock(b.id)}
+                      activeOpacity={0.8}
                     >
-                      <Text style={[styles.miniPillText, { color: isSel ? "#FFFFFF" : colors.primaryText }]}>
-                        {b}
-                      </Text>
+                      <Icon name={b.icon} size={20} color={isSel ? colors.primaryAccent : colors.secondaryText} />
+                      <View style={{ flex: 1, marginLeft: 8 }}>
+                        <Text style={[styles.blockOptionTitle, { color: isSel ? colors.primaryAccent : colors.primaryText, fontWeight: isSel ? "800" : "600" }]}>
+                          {b.label}
+                        </Text>
+                        <Text style={[styles.blockOptionSub, { color: colors.secondaryText }]}>{b.sub}</Text>
+                      </View>
+                      {isSel && <Icon name="check-circle" size={16} color={colors.primaryAccent} />}
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </View>
             </View>
 
             <View style={[styles.fieldRowTwoCol, { marginTop: 10 }]}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>Room Number</Text>
+                <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>Room Number (DB)</Text>
                 <TextInput
                   style={[
                     styles.inputField,
@@ -952,7 +969,7 @@ export default function HostelFormModal({ visible, onClose }) {
                   ]}
                   value={roomNumber}
                   onChangeText={setRoomNumber}
-                  placeholder="e.g. 304-B"
+                  placeholder="e.g. A-204"
                   placeholderTextColor={colors.disabledText}
                   editable={!submitting}
                 />
@@ -967,7 +984,7 @@ export default function HostelFormModal({ visible, onClose }) {
                   ]}
                   value={destinationCity}
                   onChangeText={setDestinationCity}
-                  placeholder="e.g. Chennai"
+                  placeholder="e.g. Coimbatore / Home"
                   placeholderTextColor={colors.disabledText}
                   editable={!submitting}
                 />
@@ -1010,44 +1027,132 @@ export default function HostelFormModal({ visible, onClose }) {
               </View>
             </View>
 
-            {/* 4. Dates & Curfew Time */}
+            {/* 4. Departure & Return Schedule (In/Out Time & Dates) */}
             <Text style={[styles.sectionLabel, { color: colors.primaryText, marginTop: 16 }]}>
-              Departure & Return Schedule
+              Departure & Return Schedule (In/Out Time & Dates)
             </Text>
 
-            <View style={styles.datePickerRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>Departure (Out Date)</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.dateSelectBtn,
-                    { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
-                  ]}
-                  onPress={() => !submitting && setShowFromPicker(true)}
-                  activeOpacity={0.8}
-                >
-                  <Icon name="calendar-arrow-right" size={18} color={colors.primaryAccent} />
-                  <Text style={[styles.dateSelectText, { color: colors.primaryText }]}>
-                    {formatDate(fromDate)}
-                  </Text>
-                </TouchableOpacity>
+            {/* Out Schedule */}
+            <View style={[styles.scheduleCard, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+              <View style={styles.scheduleHeaderRow}>
+                <Icon name="clock-out" size={16} color="#3B82F6" />
+                <Text style={[styles.scheduleHeaderTitle, { color: "#3B82F6" }]}>DEPARTURE (OUT SCHEDULE)</Text>
               </View>
 
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>Return Curfew (In Date)</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.dateSelectBtn,
-                    { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
-                  ]}
-                  onPress={() => !submitting && setShowToPicker(true)}
-                  activeOpacity={0.8}
-                >
-                  <Icon name="calendar-arrow-left" size={18} color={colors.primaryAccent} />
-                  <Text style={[styles.dateSelectText, { color: colors.primaryText }]}>
-                    {formatDate(toDate)}
-                  </Text>
-                </TouchableOpacity>
+              <View style={styles.datePickerRow}>
+                <View style={{ flex: 1.2 }}>
+                  <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>Out Date</Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.dateSelectBtn,
+                      { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+                    ]}
+                    onPress={() => !submitting && setShowFromPicker(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Icon name="calendar" size={16} color={colors.primaryAccent} />
+                    <Text style={[styles.dateSelectText, { color: colors.primaryText }]} numberOfLines={1}>
+                      {formatDate(fromDate)}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>Out Time</Text>
+                  <TextInput
+                    style={[
+                      styles.inputField,
+                      { backgroundColor: colors.cardBackground, borderColor: colors.divider, color: colors.primaryText },
+                    ]}
+                    value={outTime}
+                    onChangeText={setOutTime}
+                    placeholder="06:00 AM"
+                    placeholderTextColor={colors.disabledText}
+                    editable={!submitting}
+                  />
+                </View>
+              </View>
+
+              {/* Out Time Presets */}
+              <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                {OUT_TIME_PRESETS.map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[
+                      styles.miniTimePill,
+                      outTime === t
+                        ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
+                        : { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+                    ]}
+                    onPress={() => setOutTime(t)}
+                  >
+                    <Text style={[styles.miniTimePillText, { color: outTime === t ? "#FFFFFF" : colors.secondaryText }]}>
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* In Schedule (Return Curfew) */}
+            <View style={[styles.scheduleCard, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, marginTop: 10 }]}>
+              <View style={styles.scheduleHeaderRow}>
+                <Icon name="clock-in" size={16} color="#10B981" />
+                <Text style={[styles.scheduleHeaderTitle, { color: "#10B981" }]}>RETURN CURFEW (IN SCHEDULE)</Text>
+              </View>
+
+              <View style={styles.datePickerRow}>
+                <View style={{ flex: 1.2 }}>
+                  <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>In Date</Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.dateSelectBtn,
+                      { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+                    ]}
+                    onPress={() => !submitting && setShowToPicker(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Icon name="calendar-check" size={16} color="#10B981" />
+                    <Text style={[styles.dateSelectText, { color: colors.primaryText }]} numberOfLines={1}>
+                      {formatDate(toDate)}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>Curfew In-Time</Text>
+                  <TextInput
+                    style={[
+                      styles.inputField,
+                      { backgroundColor: colors.cardBackground, borderColor: colors.divider, color: colors.primaryText },
+                    ]}
+                    value={inTime}
+                    onChangeText={setInTime}
+                    placeholder="08:30 PM"
+                    placeholderTextColor={colors.disabledText}
+                    editable={!submitting}
+                  />
+                </View>
+              </View>
+
+              {/* In Time Presets */}
+              <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                {IN_TIME_PRESETS.map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[
+                      styles.miniTimePill,
+                      inTime === t
+                        ? { backgroundColor: "#10B981", borderColor: "#10B981" }
+                        : { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+                    ]}
+                    onPress={() => setInTime(t)}
+                  >
+                    <Text style={[styles.miniTimePillText, { color: inTime === t ? "#FFFFFF" : colors.secondaryText }]}>
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
 
@@ -1055,7 +1160,7 @@ export default function HostelFormModal({ visible, onClose }) {
             <View style={[styles.durationCounterBadge, { backgroundColor: colors.primaryAccent + "14", borderColor: colors.primaryAccent + "33" }]}>
               <Icon name="clock-fast" size={16} color={colors.primaryAccent} />
               <Text style={[styles.durationCounterText, { color: colors.primaryAccent }]}>
-                Estimated Duration: {calculateDurationText(fromDate, toDate, leaveType)}
+                Permit Window: {calculateDurationText(fromDate, toDate, leaveType, outTime, inTime)}
               </Text>
             </View>
 
@@ -1099,9 +1204,9 @@ export default function HostelFormModal({ visible, onClose }) {
               editable={!submitting}
             />
 
-            {/* 6. Parent Emergency Contact */}
+            {/* Emergency Parent Phone */}
             <Text style={[styles.inputLabel, { color: colors.secondaryText, marginTop: 12 }]}>
-              Parent / Local Guardian Mobile Number
+              Parent / Guardian Emergency Phone
             </Text>
             <TextInput
               style={[
@@ -1110,13 +1215,13 @@ export default function HostelFormModal({ visible, onClose }) {
               ]}
               value={parentContact}
               onChangeText={setParentContact}
-              placeholder="+91 Contact Phone"
+              placeholder="+91 Emergency Phone"
               placeholderTextColor={colors.disabledText}
               keyboardType="phone-pad"
               editable={!submitting}
             />
 
-            {/* 7. Action Button */}
+            {/* Submit Button */}
             <View style={styles.formActionRow}>
               <TouchableOpacity
                 style={[styles.submitFormBtn, { backgroundColor: colors.primaryAccent }]}
@@ -1128,8 +1233,8 @@ export default function HostelFormModal({ visible, onClose }) {
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <>
-                    <Icon name="shield-airplane" size={18} color="#FFFFFF" />
-                    <Text style={styles.submitFormBtnText}>Submit to Hostel Warden</Text>
+                    <Icon name="shield-lock-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.submitFormBtnText}>Submit for Warden Approval</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -1144,7 +1249,7 @@ export default function HostelFormModal({ visible, onClose }) {
 }
 
 // ---------------- Styles ----------------
-const getStyles = (colors, isDarkMode) =>
+const getStyles = (colors, _isDarkMode) =>
   StyleSheet.create({
     overlayFull: {
       flex: 1,
@@ -1155,6 +1260,11 @@ const getStyles = (colors, isDarkMode) =>
       justifyContent: "center",
       alignItems: "center",
       backgroundColor: "rgba(0,0,0,0.6)",
+    },
+    centerScrollContent: {
+      flexGrow: 1,
+      justifyContent: "center",
+      padding: 16,
     },
     fullHeader: {
       paddingTop: 44,
@@ -1180,12 +1290,9 @@ const getStyles = (colors, isDarkMode) =>
       fontWeight: "500",
     },
 
-    /* Card Bottom Sheet */
+    /* Card Bottom Sheet (Even Rectangular Borders) */
     cardFull: {
       flex: 1,
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      elevation: 20,
     },
     formContainer: {
       padding: 18,
@@ -1209,18 +1316,40 @@ const getStyles = (colors, isDarkMode) =>
       gap: 8,
     },
     categoryCard: {
-      width: "48.5%",
+      flexBasis: "48%",
+      flexGrow: 1,
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
       paddingVertical: 10,
-      paddingHorizontal: 12,
+      paddingHorizontal: 10,
       borderRadius: 12,
-      borderWidth: 1,
     },
     categoryTitle: {
-      fontSize: 12,
-      fontWeight: "800",
+      fontSize: 11.5,
+      flex: 1,
+    },
+
+    /* Block Selection */
+    blockRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginVertical: 4,
+    },
+    blockOptionCard: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 12,
+    },
+    blockOptionTitle: {
+      fontSize: 12.5,
+    },
+    blockOptionSub: {
+      fontSize: 9.5,
+      marginTop: 2,
     },
 
     /* Inputs */
@@ -1232,22 +1361,30 @@ const getStyles = (colors, isDarkMode) =>
       borderWidth: 1,
       borderRadius: 10,
       paddingHorizontal: 12,
-      paddingVertical: 9,
+      paddingVertical: 8,
+      height: 42,
       fontSize: 13,
       fontWeight: "600",
     },
-    miniPill: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 16,
-      borderWidth: 1,
-    },
-    miniPillText: {
-      fontSize: 11.5,
-      fontWeight: "700",
-    },
 
-    /* Date Pickers */
+    /* Schedule Card */
+    scheduleCard: {
+      borderRadius: 14,
+      borderWidth: 1,
+      padding: 12,
+      marginTop: 4,
+    },
+    scheduleHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginBottom: 8,
+    },
+    scheduleHeaderTitle: {
+      fontSize: 11,
+      fontWeight: "900",
+      letterSpacing: 0.5,
+    },
     datePickerRow: {
       flexDirection: "row",
       gap: 10,
@@ -1256,20 +1393,31 @@ const getStyles = (colors, isDarkMode) =>
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      borderWidth: 1,
+      paddingHorizontal: 10,
+      height: 42,
       borderRadius: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
+      borderWidth: 1,
     },
     dateSelectText: {
       fontSize: 12,
+      fontWeight: "700",
+      flex: 1,
+    },
+    miniTimePill: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    miniTimePillText: {
+      fontSize: 10.5,
       fontWeight: "700",
     },
     durationCounterBadge: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
       gap: 6,
+      paddingHorizontal: 12,
       paddingVertical: 8,
       borderRadius: 10,
       borderWidth: 1,
@@ -1277,16 +1425,15 @@ const getStyles = (colors, isDarkMode) =>
     },
     durationCounterText: {
       fontSize: 12,
-      fontWeight: "800",
+      fontWeight: "700",
     },
     textAreaField: {
       borderWidth: 1,
       borderRadius: 12,
       padding: 12,
       fontSize: 13,
-      fontWeight: "500",
-      height: 80,
       textAlignVertical: "top",
+      minHeight: 80,
     },
     formActionRow: {
       marginTop: 20,
@@ -1302,24 +1449,16 @@ const getStyles = (colors, isDarkMode) =>
     },
     submitFormBtnText: {
       color: "#FFFFFF",
-      fontSize: 14,
+      fontSize: 15,
       fontWeight: "800",
     },
 
-    /* Center Modal Wrap */
-    centerModalWrap: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      paddingHorizontal: 18,
-    },
+    /* Pending / Rejected Centered Wraps */
     statusCard: {
-      width: "100%",
-      borderRadius: 22,
+      borderRadius: 20,
       borderWidth: 1,
-      padding: 20,
-      alignItems: "center",
-      elevation: 10,
+      padding: 18,
+      elevation: 8,
     },
     statusIconWrap: {
       width: 80,
@@ -1327,35 +1466,30 @@ const getStyles = (colors, isDarkMode) =>
       borderRadius: 40,
       justifyContent: "center",
       alignItems: "center",
+      alignSelf: "center",
       marginBottom: 12,
     },
     statusCardTitle: {
       fontSize: 18,
-      fontWeight: "900",
-      letterSpacing: -0.3,
+      fontWeight: "800",
+      textAlign: "center",
     },
     statusCardSub: {
       fontSize: 12,
-      fontWeight: "500",
       textAlign: "center",
       marginTop: 4,
       marginBottom: 16,
     },
-
-    /* Stepper */
     stepperContainer: {
-      width: "100%",
-      marginBottom: 14,
-      paddingHorizontal: 8,
+      marginVertical: 12,
     },
-    stepItem: {
+    stepRow: {
       flexDirection: "row",
-      alignItems: "flex-start",
+      minHeight: 46,
     },
-    stepLeftCol: {
+    stepIndicatorCol: {
+      width: 28,
       alignItems: "center",
-      width: 24,
-      marginRight: 10,
     },
     stepNode: {
       width: 22,
@@ -1367,12 +1501,13 @@ const getStyles = (colors, isDarkMode) =>
     },
     stepConnector: {
       width: 2,
-      height: 32,
+      flex: 1,
       marginVertical: 2,
     },
     stepContent: {
       flex: 1,
-      paddingBottom: 14,
+      marginLeft: 10,
+      paddingBottom: 8,
     },
     stepTitleRow: {
       flexDirection: "row",
@@ -1394,18 +1529,14 @@ const getStyles = (colors, isDarkMode) =>
     },
     stepSub: {
       fontSize: 11,
-      fontWeight: "500",
-      marginTop: 2,
+      marginTop: 1,
     },
-
-    /* Info Summary Box */
     infoSummaryBox: {
-      width: "100%",
-      borderRadius: 14,
+      borderRadius: 12,
       borderWidth: 1,
       padding: 12,
+      marginVertical: 12,
       gap: 6,
-      marginBottom: 16,
     },
     summaryRow: {
       flexDirection: "row",
@@ -1413,59 +1544,57 @@ const getStyles = (colors, isDarkMode) =>
       alignItems: "center",
     },
     summaryLabel: {
-      fontSize: 11.5,
+      fontSize: 12,
       fontWeight: "600",
     },
     summaryVal: {
-      fontSize: 12,
+      fontSize: 12.5,
       fontWeight: "800",
     },
     primaryActionBtn: {
-      width: "100%",
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
       gap: 6,
       paddingVertical: 12,
       borderRadius: 12,
+      marginTop: 6,
     },
     primaryActionBtnText: {
       color: "#FFFFFF",
-      fontSize: 13,
+      fontSize: 14,
       fontWeight: "800",
     },
     secondaryActionBtn: {
-      width: "100%",
       alignItems: "center",
+      justifyContent: "center",
       paddingVertical: 10,
-      borderRadius: 10,
+      borderRadius: 12,
       borderWidth: 1,
+      marginTop: 6,
     },
     secondaryActionText: {
-      fontSize: 12,
+      fontSize: 12.5,
       fontWeight: "700",
     },
 
-    /* Gate Pass Card */
+    /* Approved Gate Pass */
     gatePassCard: {
-      width: "100%",
       borderRadius: 22,
       borderWidth: 1.5,
-      padding: 20,
-      alignItems: "center",
-      elevation: 12,
+      padding: 18,
+      elevation: 10,
     },
     gatePassHeader: {
-      width: "100%",
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 14,
+      marginBottom: 12,
     },
     verifiedPassPill: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 5,
+      gap: 4,
       backgroundColor: "#10B98118",
       paddingHorizontal: 8,
       paddingVertical: 4,
@@ -1473,16 +1602,16 @@ const getStyles = (colors, isDarkMode) =>
     },
     verifiedPassPillText: {
       color: "#10B981",
-      fontSize: 10,
+      fontSize: 10.5,
       fontWeight: "900",
     },
     gatePassIdText: {
       fontSize: 12,
-      fontWeight: "800",
+      fontWeight: "700",
     },
     qrContainer: {
       alignItems: "center",
-      marginBottom: 14,
+      marginVertical: 10,
     },
     qrFrame: {
       padding: 10,
@@ -1496,35 +1625,33 @@ const getStyles = (colors, isDarkMode) =>
       marginTop: 8,
     },
     passInfoGrid: {
-      width: "100%",
-      borderRadius: 14,
-      borderWidth: 1,
-      padding: 12,
       flexDirection: "row",
       flexWrap: "wrap",
-      justifyContent: "space-between",
-      gap: 8,
-      marginBottom: 16,
+      borderRadius: 14,
+      borderWidth: 1,
+      padding: 10,
+      marginVertical: 10,
     },
     passInfoItem: {
-      width: "48%",
+      flexBasis: "50%",
+      padding: 4,
     },
     passLabel: {
-      fontSize: 10.5,
+      fontSize: 10,
       fontWeight: "600",
     },
     passValue: {
       fontSize: 12,
       fontWeight: "800",
-      marginTop: 2,
+      marginTop: 1,
     },
     gatePassActionsRow: {
-      width: "100%",
       flexDirection: "row",
       gap: 10,
+      marginTop: 6,
     },
     sharePassBtn: {
-      flex: 1,
+      flex: 1.4,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
@@ -1534,7 +1661,7 @@ const getStyles = (colors, isDarkMode) =>
     },
     sharePassBtnText: {
       color: "#FFFFFF",
-      fontSize: 13,
+      fontSize: 13.5,
       fontWeight: "800",
     },
     donePassBtn: {
@@ -1547,92 +1674,72 @@ const getStyles = (colors, isDarkMode) =>
     },
     donePassBtnText: {
       fontSize: 13,
-      fontWeight: "800",
+      fontWeight: "700",
     },
 
     /* History View */
     historyControlBar: {
-      paddingHorizontal: 16,
-      paddingVertical: 10,
+      padding: 12,
       borderBottomWidth: 1,
-      gap: 8,
     },
     historySearchBar: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      borderWidth: 1,
       borderRadius: 10,
+      borderWidth: 1,
       paddingHorizontal: 10,
       paddingVertical: 6,
+      marginBottom: 8,
     },
     historySearchInput: {
       flex: 1,
-      fontSize: 12.5,
-      fontWeight: "600",
+      fontSize: 12,
       padding: 0,
     },
     historyFilterPill: {
       paddingHorizontal: 12,
       paddingVertical: 5,
-      borderRadius: 14,
+      borderRadius: 8,
       borderWidth: 1,
     },
     historyFilterText: {
-      fontSize: 11.5,
+      fontSize: 11,
       fontWeight: "700",
     },
     historyListContainer: {
       flex: 1,
     },
     historyLoadingWrap: {
-      flex: 1,
-      justifyContent: "center",
+      paddingTop: 40,
       alignItems: "center",
-      paddingTop: 60,
-    },
-    historyLoadingText: {
-      fontSize: 12,
-      fontWeight: "600",
-      marginTop: 8,
     },
     historyEmptyWrap: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
       paddingTop: 60,
-      paddingHorizontal: 20,
+      alignItems: "center",
+      gap: 8,
     },
-    historyEmptyTitle: {
-      fontSize: 16,
-      fontWeight: "800",
-      marginTop: 8,
+    historyEmptyText: {
+      fontSize: 13,
+      fontWeight: "600",
     },
-    historyEmptySub: {
-      fontSize: 12,
-      textAlign: "center",
-      marginTop: 4,
-    },
-    historyCard: {
-      borderRadius: 16,
+    historyItemCard: {
+      borderRadius: 14,
       borderWidth: 1,
-      padding: 14,
-      elevation: 2,
+      padding: 12,
     },
-    historyCardTop: {
+    historyItemTop: {
       flexDirection: "row",
       justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 6,
+      alignItems: "flex-start",
     },
-    historyIdGroup: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    historyLeaveId: {
+    historyItemId: {
       fontSize: 13,
       fontWeight: "800",
+    },
+    historyItemSub: {
+      fontSize: 11,
+      marginTop: 2,
     },
     historyStatusBadge: {
       paddingHorizontal: 6,
@@ -1643,25 +1750,16 @@ const getStyles = (colors, isDarkMode) =>
       fontSize: 9.5,
       fontWeight: "900",
     },
-    historyTypeTag: {
-      fontSize: 11,
-      fontWeight: "700",
-    },
-    historyReason: {
-      fontSize: 13,
-      fontWeight: "600",
-      marginBottom: 8,
-    },
-    historyCardBottom: {
+    historyItemDates: {
       flexDirection: "row",
-      justifyContent: "space-between",
       alignItems: "center",
+      gap: 6,
+      marginTop: 8,
+      paddingTop: 6,
       borderTopWidth: 1,
-      borderTopColor: "rgba(150,150,150,0.1)",
-      paddingTop: 8,
     },
-    historyDateRange: {
-      fontSize: 11.5,
-      fontWeight: "500",
+    historyDatesText: {
+      fontSize: 11,
+      fontWeight: "600",
     },
   });

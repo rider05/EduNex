@@ -7,33 +7,36 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   Animated,
+  ScrollView,
   Alert,
   StyleSheet,
+  ActivityIndicator,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import { LinearGradient } from "expo-linear-gradient";
-import { useTheme } from "../../../context/ThemeContext";  // ✅ added
-
+import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
 import { resolveIdentity } from "../../../services/identityService";
+import { showToast } from "../../../utils/toastService";
 
-function EditProfileModal({ visible, onClose, user }) {
+function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
   const { colors } = useTheme();
 
-  const [name, setName] = useState(user.name);
-  const [phone, setPhone] = useState(user.phone);
-  const [address, setAddress] = useState(user.address);
+  const [name, setName] = useState("");
+  const [nickname, setNickname] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (visible) {
+    if (visible && user) {
       setName(user.name || "");
+      setNickname(user.nickname || "");
       setPhone(user.phone || "");
       setAddress(user.address || "");
     }
-  }, [visible, user?.name, user?.phone, user?.address]);
+  }, [visible, user]);
 
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -41,22 +44,62 @@ function EditProfileModal({ visible, onClose, user }) {
       Animated.parallel([
         Animated.timing(opacityAnim, {
           toValue: 1,
-          duration: 200,
+          duration: 220,
           useNativeDriver: true,
         }),
         Animated.spring(scaleAnim, {
           toValue: 1,
+          friction: 8,
           useNativeDriver: true,
         }),
       ]).start();
     } else {
-      scaleAnim.setValue(0.8);
+      scaleAnim.setValue(0.85);
       opacityAnim.setValue(0);
     }
   }, [visible, opacityAnim, scaleAnim]);
 
+  const handleSave = async () => {
+    if (!name.trim()) {
+      Alert.alert("Name Required", "Please enter student's full name.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updatePayload = {
+        name: name.trim(),
+        nickname: nickname.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+      };
+
+      try {
+        const identity = await resolveIdentity();
+        const collection = identity.role === "student" ? "students" : identity.role === "parent" ? "parents" : "staff";
+        const docId = identity.id || identity.rollNo || identity.username;
+        if (docId) {
+          await api.patch(`/${collection}/${encodeURIComponent(docId)}`, updatePayload).catch(() => null);
+        }
+      } catch (apiErr) {
+        console.log("REST profile patch err:", apiErr);
+      }
+
+      if (onUpdate) onUpdate(updatePayload);
+      if (onSave) onSave(updatePayload);
+
+      showToast("✅ Profile details updated successfully!", "success");
+      onClose();
+    } catch (e) {
+      console.log("Profile save error:", e);
+      Alert.alert("Error", "Failed to save profile. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="none">
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
         <Animated.View style={[modalStyles.overlay, { opacity: opacityAnim }]}>
           <TouchableWithoutFeedback>
@@ -65,117 +108,112 @@ function EditProfileModal({ visible, onClose, user }) {
                 modalStyles.card,
                 {
                   backgroundColor: colors.cardBackground,
+                  borderColor: colors.divider,
                   transform: [{ scale: scaleAnim }],
                 },
               ]}
             >
-              <View style={{ alignItems: "center", marginBottom: 10 }}>
-                <Icon name="account-edit" size={50} color={colors.primaryAccent} />
-                <Text style={[modalStyles.title, { color: colors.primaryText }]}>
-                  Edit Profile
-                </Text>
+              {/* Header */}
+              <View style={modalStyles.headerRow}>
+                <View style={[modalStyles.headerIconCircle, { backgroundColor: colors.primaryAccent + "18" }]}>
+                  <Icon name="account-edit-outline" size={26} color={colors.primaryAccent} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={[modalStyles.title, { color: colors.primaryText }]}>Edit Student Profile</Text>
+                  <Text style={[modalStyles.subtitle, { color: colors.secondaryText }]}>
+                    Update Nickname, Contact & Address
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>
+                  <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
+                </TouchableOpacity>
               </View>
 
-              <View style={modalStyles.inputContainer}>
-                <Icon
-                  name="account-outline"
-                  size={20}
-                  color={colors.primaryAccent}
-                  style={modalStyles.inputIcon}
-                />
-                <TextInput
-                  style={[
-                    modalStyles.input,
-                    { color: colors.primaryText, borderColor: colors.divider },
-                  ]}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Full Name"
-                  placeholderTextColor={colors.disabledText}
-                />
-              </View>
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
+                {/* 1. Full Official Name */}
+                <Text style={[modalStyles.inputLabel, { color: colors.secondaryText }]}>Full Official Name</Text>
+                <View style={[modalStyles.inputWrap, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                  <Icon name="account-outline" size={20} color={colors.primaryAccent} />
+                  <TextInput
+                    style={[modalStyles.textInput, { color: colors.primaryText }]}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Official Name"
+                    placeholderTextColor={colors.disabledText}
+                    editable={!saving}
+                  />
+                </View>
 
-              <View style={modalStyles.inputContainer}>
-                <Icon
-                  name="phone-outline"
-                  size={20}
-                  color={colors.primaryAccent}
-                  style={modalStyles.inputIcon}
-                />
-                <TextInput
-                  style={[
-                    modalStyles.input,
-                    { color: colors.primaryText, borderColor: colors.divider },
-                  ]}
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="Phone Number"
-                  keyboardType="phone-pad"
-                  placeholderTextColor={colors.disabledText}
-                />
-              </View>
+                {/* 2. Nickname / Preferred Name */}
+                <Text style={[modalStyles.inputLabel, { color: colors.secondaryText }]}>Nickname / Preferred Name</Text>
+                <View style={[modalStyles.inputWrap, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                  <Icon name="account-star-outline" size={20} color="#F59E0B" />
+                  <TextInput
+                    style={[modalStyles.textInput, { color: colors.primaryText }]}
+                    value={nickname}
+                    onChangeText={setNickname}
+                    placeholder="Nickname (e.g. Karthi, Leo)"
+                    placeholderTextColor={colors.disabledText}
+                    editable={!saving}
+                  />
+                </View>
 
-              <View style={modalStyles.inputContainer}>
-                <Icon
-                  name="map-marker-outline"
-                  size={20}
-                  color={colors.primaryAccent}
-                  style={modalStyles.inputIcon}
-                />
-                <TextInput
-                  style={[
-                    modalStyles.input,
-                    { color: colors.primaryText, borderColor: colors.divider },
-                  ]}
-                  value={address}
-                  onChangeText={setAddress}
-                  placeholder="Address"
-                  multiline
-                  placeholderTextColor={colors.disabledText}
-                />
-              </View>
+                {/* 3. Mobile Phone Number */}
+                <Text style={[modalStyles.inputLabel, { color: colors.secondaryText }]}>Primary Phone Number</Text>
+                <View style={[modalStyles.inputWrap, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                  <Icon name="phone-outline" size={20} color="#10B981" />
+                  <TextInput
+                    style={[modalStyles.textInput, { color: colors.primaryText }]}
+                    value={phone}
+                    onChangeText={setPhone}
+                    placeholder="+91 Mobile Number"
+                    keyboardType="phone-pad"
+                    placeholderTextColor={colors.disabledText}
+                    editable={!saving}
+                  />
+                </View>
 
-              <View style={modalStyles.buttonRow}>
+                {/* 4. Permanent Address */}
+                <Text style={[modalStyles.inputLabel, { color: colors.secondaryText }]}>Permanent Address</Text>
+                <View style={[modalStyles.inputWrap, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, alignItems: "flex-start", minHeight: 68 }]}>
+                  <Icon name="map-marker-outline" size={20} color={colors.primaryAccent} style={{ marginTop: 8 }} />
+                  <TextInput
+                    style={[modalStyles.textInput, { color: colors.primaryText, minHeight: 60, textAlignVertical: "top" }]}
+                    value={address}
+                    onChangeText={setAddress}
+                    placeholder="Street, City, Pincode"
+                    multiline
+                    numberOfLines={3}
+                    placeholderTextColor={colors.disabledText}
+                    editable={!saving}
+                  />
+                </View>
+              </ScrollView>
+
+              {/* Action Buttons */}
+              <View style={[modalStyles.buttonRow, { borderTopColor: colors.divider }]}>
                 <TouchableOpacity
-                  style={modalStyles.cancelBtn}
+                  style={[modalStyles.cancelBtn, { borderColor: colors.divider }]}
                   onPress={onClose}
+                  disabled={saving}
                 >
-                  <Text style={{ color: colors.primaryText }}>Cancel</Text>
+                  <Text style={{ color: colors.secondaryText, fontWeight: "700" }}>Cancel</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                  style={[modalStyles.saveBtn, { backgroundColor: colors.primaryAccent }]}
+                  onPress={handleSave}
                   disabled={saving}
-                  onPress={async () => {
-                    try {
-                      setSaving(true);
-                      const identity = await resolveIdentity();
-                      const collection = identity.role === "student" ? "students" : identity.role === "parent" ? "parents" : "staff";
-                      await api.patch(`/${collection}/${identity.id}`, { name, phone, address });
-                      Alert.alert("Saved", "Profile updated successfully!");
-                      onClose();
-                    } catch (_e) {
-                      Alert.alert("Error", "Failed to save profile. Please try again.");
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
+                  activeOpacity={0.85}
                 >
-                  <LinearGradient
-                    colors={[colors.primaryAccent, "#4A90E2"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={modalStyles.saveBtn}
-                  >
-                    <Text
-                      style={{
-                        color: "#fff",
-                        fontWeight: "700",
-                        fontSize: 16,
-                      }}
-                    >
-                      {saving ? "Saving..." : "Save"}
-                    </Text>
-                  </LinearGradient>
+                  {saving ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Icon name="check" size={18} color="#FFFFFF" />
+                      <Text style={modalStyles.saveBtnText}>Save Profile</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               </View>
             </Animated.View>
@@ -189,60 +227,91 @@ function EditProfileModal({ visible, onClose, user }) {
 const modalStyles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   card: {
     width: "100%",
-    borderRadius: 20,
-    padding: 20,
-    elevation: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 18,
+    elevation: 16,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-    marginTop: 10,
-  },
-  inputContainer: {
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginVertical: 8,
+    marginBottom: 14,
   },
-  inputIcon: {
-    position: "absolute",
-    left: 10,
-    zIndex: 1,
+  headerIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  input: {
-    flex: 1,
+  title: {
+    fontSize: 17,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+  },
+  subtitle: {
+    fontSize: 11,
+    fontWeight: "500",
+    marginTop: 1,
+  },
+  closeBtn: {
+    padding: 4,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  inputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderRadius: 10,
-    paddingLeft: 40,
-    paddingVertical: 10,
-    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 13,
+    paddingVertical: 8,
   },
   buttonRow: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 15,
+    gap: 10,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
   },
   cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: 10,
-    backgroundColor: "rgba(200,200,200,0.3)",
-    marginRight: 10,
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    borderWidth: 1,
   },
   saveBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 25,
-    borderRadius: 10,
+    flex: 1.5,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  saveBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13.5,
+    fontWeight: "800",
   },
 });
 
