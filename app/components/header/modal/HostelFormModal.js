@@ -449,7 +449,7 @@ export default function HostelFormModal({ visible, onClose }) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.centerScrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.centerModalWrap}>
             <View style={[styles.statusCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
               <View style={[styles.statusIconWrap, { backgroundColor: "#EF444418" }]}>
                 <Icon name="close-circle-outline" size={54} color="#EF4444" />
@@ -488,7 +488,7 @@ export default function HostelFormModal({ visible, onClose }) {
                 <Text style={styles.primaryActionBtnText}>Apply New Hostel Pass</Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
+          </View>
         </View>
       </Modal>
     );
@@ -518,7 +518,7 @@ export default function HostelFormModal({ visible, onClose }) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.centerScrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.centerModalWrap}>
             <View style={[styles.statusCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
               {/* Stepper */}
               <View style={styles.stepperContainer}>
@@ -593,7 +593,7 @@ export default function HostelFormModal({ visible, onClose }) {
                 <Text style={[styles.secondaryActionText, { color: colors.secondaryText }]}>Cancel / Re-apply</Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
+          </View>
         </View>
       </Modal>
     );
@@ -614,7 +614,7 @@ export default function HostelFormModal({ visible, onClose }) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.centerScrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.centerModalWrap}>
             <View style={[styles.gatePassCard, { backgroundColor: colors.cardBackground, borderColor: "#10B98155" }]}>
               {/* Pass Header */}
               <View style={styles.gatePassHeader}>
@@ -694,7 +694,7 @@ export default function HostelFormModal({ visible, onClose }) {
                 </TouchableOpacity>
               </View>
             </View>
-          </ScrollView>
+          </View>
         </View>
       </Modal>
     );
@@ -867,7 +867,7 @@ export default function HostelFormModal({ visible, onClose }) {
           </TouchableOpacity>
         </View>
 
-        {/* Animated Form Sheet (Even Rectangular Borders) */}
+        {/* Animated Form Sheet (Even Borders) */}
         <Animated.View
           style={[
             styles.cardFull,
@@ -1040,7 +1040,7 @@ export default function HostelFormModal({ visible, onClose }) {
               </View>
 
               <View style={styles.datePickerRow}>
-                <View style={{ flex: 1.2 }}>
+                <View style={{ flex: 1 }}>
                   <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>Out Date</Text>
                   <TouchableOpacity
                     style={[
@@ -1051,7 +1051,7 @@ export default function HostelFormModal({ visible, onClose }) {
                     activeOpacity={0.8}
                   >
                     <Icon name="calendar" size={16} color={colors.primaryAccent} />
-                    <Text style={[styles.dateSelectText, { color: colors.primaryText }]} numberOfLines={1}>
+                    <Text style={[styles.dateSelectText, { color: colors.primaryText }]}>
                       {formatDate(fromDate)}
                     </Text>
                   </TouchableOpacity>
@@ -1062,7 +1062,7 @@ export default function HostelFormModal({ visible, onClose }) {
                   <TextInput
                     style={[
                       styles.inputField,
-                      { backgroundColor: colors.cardBackground, borderColor: colors.divider, color: colors.primaryText },
+                      { backgroundColor: colors.cardBackground, borderColor: colors.divider, color: colors.primaryText, paddingVertical: 7 },
                     ]}
                     value={outTime}
                     onChangeText={setOutTime}
@@ -1074,7 +1074,7 @@ export default function HostelFormModal({ visible, onClose }) {
               </View>
 
               {/* Out Time Presets */}
-              <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+              <View style={{ flexDirection: "row", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                 {OUT_TIME_PRESETS.map((t) => (
                   <TouchableOpacity
                     key={t}
@@ -1102,7 +1102,7 @@ export default function HostelFormModal({ visible, onClose }) {
               </View>
 
               <View style={styles.datePickerRow}>
-                <View style={{ flex: 1.2 }}>
+                <View style={{ flex: 1 }}>
                   <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>In Date</Text>
                   <TouchableOpacity
                     style={[
@@ -1113,7 +1113,7 @@ export default function HostelFormModal({ visible, onClose }) {
                     activeOpacity={0.8}
                   >
                     <Icon name="calendar-check" size={16} color="#10B981" />
-                    <Text style={[styles.dateSelectText, { color: colors.primaryText }]} numberOfLines={1}>
+                    <Text style={[styles.dateSelectText, { color: colors.primaryText }]}>
                       {formatDate(toDate)}
                     </Text>
                   </TouchableOpacity>
@@ -1124,7 +1124,7 @@ export default function HostelFormModal({ visible, onClose }) {
                   <TextInput
                     style={[
                       styles.inputField,
-                      { backgroundColor: colors.cardBackground, borderColor: colors.divider, color: colors.primaryText },
+                      { backgroundColor: colors.cardBackground, borderColor: colors.divider, color: colors.primaryText, paddingVertical: 7 },
                     ]}
                     value={inTime}
                     onChangeText={setInTime}
@@ -1136,7 +1136,7 @@ export default function HostelFormModal({ visible, onClose }) {
               </View>
 
               {/* In Time Presets */}
-              <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+              <View style={{ flexDirection: "row", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                 {IN_TIME_PRESETS.map((t) => (
                   <TouchableOpacity
                     key={t}
@@ -1261,11 +1261,6 @@ const getStyles = (colors, _isDarkMode) =>
       alignItems: "center",
       backgroundColor: "rgba(0,0,0,0.6)",
     },
-    centerScrollContent: {
-      flexGrow: 1,
-      justifyContent: "center",
-      padding: 16,
-    },
     fullHeader: {
       paddingTop: 44,
       paddingBottom: 14,
@@ -1316,18 +1311,18 @@ const getStyles = (colors, _isDarkMode) =>
       gap: 8,
     },
     categoryCard: {
-      flexBasis: "48%",
-      flexGrow: 1,
+      width: "48.5%",
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
       paddingVertical: 10,
-      paddingHorizontal: 10,
+      paddingHorizontal: 12,
       borderRadius: 12,
+      borderWidth: 1,
     },
     categoryTitle: {
-      fontSize: 11.5,
-      flex: 1,
+      fontSize: 12,
+      fontWeight: "800",
     },
 
     /* Block Selection */
@@ -1340,16 +1335,15 @@ const getStyles = (colors, _isDarkMode) =>
       flex: 1,
       flexDirection: "row",
       alignItems: "center",
-      paddingHorizontal: 12,
-      paddingVertical: 10,
+      padding: 10,
       borderRadius: 12,
     },
     blockOptionTitle: {
-      fontSize: 12.5,
+      fontSize: 13,
     },
     blockOptionSub: {
       fontSize: 9.5,
-      marginTop: 2,
+      marginTop: 1,
     },
 
     /* Inputs */
@@ -1361,8 +1355,7 @@ const getStyles = (colors, _isDarkMode) =>
       borderWidth: 1,
       borderRadius: 10,
       paddingHorizontal: 12,
-      paddingVertical: 8,
-      height: 42,
+      paddingVertical: 9,
       fontSize: 13,
       fontWeight: "600",
     },
@@ -1394,14 +1387,13 @@ const getStyles = (colors, _isDarkMode) =>
       alignItems: "center",
       gap: 8,
       paddingHorizontal: 10,
-      height: 42,
+      paddingVertical: 9,
       borderRadius: 10,
       borderWidth: 1,
     },
     dateSelectText: {
       fontSize: 12,
       fontWeight: "700",
-      flex: 1,
     },
     miniTimePill: {
       paddingHorizontal: 8,
@@ -1454,6 +1446,11 @@ const getStyles = (colors, _isDarkMode) =>
     },
 
     /* Pending / Rejected Centered Wraps */
+    centerModalWrap: {
+      flex: 1,
+      padding: 16,
+      justifyContent: "center",
+    },
     statusCard: {
       borderRadius: 20,
       borderWidth: 1,
