@@ -710,6 +710,7 @@ export default function ProfileScreen({ onLogout }) {
       <ResetPasswordModal
         visible={resetModalVisible}
         onClose={() => setResetModalVisible(false)}
+        user={user}
       />
 
       {/* LOGOUT CONFIRMATION MODAL */}
