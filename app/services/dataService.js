@@ -1193,3 +1193,52 @@ export async function getAnnouncements(params = {}) {
   }
   return [];
 }
+
+// ---------------- DocSpace Real-Time MongoDB Services ----------------
+export async function getRequiredDocuments(params = {}) {
+  try {
+    const res = await api.get("/requiredDocuments", { limit: 100, ...params });
+    if (Array.isArray(res?.data) && res.data.length > 0) return res.data;
+  } catch (err) {
+    console.warn("getRequiredDocuments error:", err);
+  }
+  return [];
+}
+
+export async function getStudentDocuments(rollNo, params = {}) {
+  try {
+    const q = rollNo ? { rollNo, ...params } : params;
+    const res = await api.get("/studentDocuments", { limit: 100, ...q });
+    if (Array.isArray(res?.data) && res.data.length > 0) return res.data;
+  } catch (err) {
+    console.warn("getStudentDocuments error:", err);
+  }
+  return [];
+}
+
+export async function uploadStudentDocument(docPayload) {
+  try {
+    const res = await api.post("/studentDocuments", {
+      ...docPayload,
+      uploadedAt: docPayload.uploadedAt || new Date().toISOString(),
+      status: docPayload.status || "pending",
+    });
+    return res?.data || res;
+  } catch (err) {
+    console.warn("uploadStudentDocument error:", err);
+    throw err;
+  }
+}
+
+export async function updateStudentDocument(docId, docPayload) {
+  try {
+    const res = await api.patch(`/studentDocuments/${docId}`, {
+      ...docPayload,
+      updatedAt: new Date().toISOString(),
+    });
+    return res?.data || res;
+  } catch (err) {
+    console.warn("updateStudentDocument error:", err);
+    throw err;
+  }
+}
