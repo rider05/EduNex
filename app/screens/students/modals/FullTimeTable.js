@@ -312,24 +312,17 @@ export default function FullTimetable({ visible = true, onClose }) {
                 {
                   backgroundColor: colors.cardBackground,
                   borderColor: colors.divider,
-                  paddingHorizontal: 10,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 5,
                 },
               ]}
               onPress={() => handleShareSchedule(null)}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
               disabled={isGeneratingPdf}
-              title="Share Timetable as PDF"
+              accessibilityLabel="Share Timetable PDF"
             >
               {isGeneratingPdf ? (
-                <ActivityIndicator size="small" color="#EF4444" />
+                <ActivityIndicator size="small" color={colors.primaryAccent} />
               ) : (
-                <>
-                  <Icon name="file-pdf-box" size={20} color="#EF4444" />
-                  <Text style={{ fontSize: 11, fontWeight: "800", color: colors.primaryText }}>PDF</Text>
-                </>
+                <Icon name="share-variant-outline" size={19} color={colors.primaryText} />
               )}
             </TouchableOpacity>
           </View>
@@ -359,32 +352,11 @@ export default function FullTimetable({ visible = true, onClose }) {
               </View>
             </View>
 
-            <View style={[styles.advisorStrip, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, justifyContent: "space-between" }]}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
-                <Icon name="account-tie-outline" size={16} color={colors.primaryAccent} />
-                <Text style={[styles.advisorText, { color: colors.primaryText }]} numberOfLines={1}>
-                  Advisor: <Text style={{ fontWeight: "800" }}>{studentCohort.advisor}</Text>
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  paddingHorizontal: 8,
-                  paddingVertical: 3,
-                  borderRadius: 6,
-                  backgroundColor: "#EF444415",
-                  borderWidth: 1,
-                  borderColor: "#EF444433",
-                }}
-                onPress={() => handleShareSchedule(null)}
-                disabled={isGeneratingPdf}
-                activeOpacity={0.8}
-              >
-                <Icon name="file-pdf-box" size={14} color="#EF4444" />
-                <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#EF4444" }}>Weekly PDF</Text>
-              </TouchableOpacity>
+            <View style={[styles.advisorStrip, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+              <Icon name="account-tie-outline" size={16} color={colors.primaryAccent} />
+              <Text style={[styles.advisorText, { color: colors.primaryText, flex: 1 }]} numberOfLines={1}>
+                Class Advisor: <Text style={{ fontWeight: "800" }}>{studentCohort.advisor}</Text>
+              </Text>
             </View>
           </View>
 
@@ -578,50 +550,46 @@ export default function FullTimetable({ visible = true, onClose }) {
             </View>
           )}
 
-          {/* Share / Export PDF Action Buttons */}
+          {/* Modern Share / Export PDF Card */}
           {!loading && (
-            <View style={{ marginTop: 14, marginBottom: 8, flexDirection: "row", gap: 10 }}>
+            <View style={[styles.shareCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.shareCardHeader}>
+                <View style={[styles.shareCardIconWrap, { backgroundColor: "#EF444415" }]}>
+                  <Icon name="file-pdf-box" size={22} color="#EF4444" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.shareCardTitle, { color: colors.primaryText }]}>Official Schedule PDF</Text>
+                  <Text style={[styles.shareCardSub, { color: colors.secondaryText }]}>
+                    Generated institutional A4 landscape format with faculty and venue allocations.
+                  </Text>
+                </View>
+              </View>
+
               <TouchableOpacity
-                style={{
-                  flex: 1,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  paddingVertical: 12,
-                  borderRadius: 10,
-                  backgroundColor: colors.cardBackground,
-                  borderWidth: 1,
-                  borderColor: colors.divider,
-                }}
-                onPress={() => handleShareSchedule(selectedDay)}
+                style={[styles.primaryShareBtn, { backgroundColor: colors.primaryAccent }]}
+                onPress={() => handleShareSchedule(null)}
                 disabled={isGeneratingPdf}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
-                <Icon name="file-document-outline" size={18} color={colors.primaryAccent} />
-                <Text style={{ fontSize: 11.5, fontWeight: "700", color: colors.primaryText }}>
-                  Share {selectedDay.slice(0, 3)} PDF
-                </Text>
+                {isGeneratingPdf ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Icon name="download-box-outline" size={19} color="#FFFFFF" />
+                    <Text style={styles.primaryShareBtnText}>Export Full Week Timetable</Text>
+                  </>
+                )}
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={{
-                  flex: 1.2,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  paddingVertical: 12,
-                  borderRadius: 10,
-                  backgroundColor: colors.primaryAccent,
-                }}
-                onPress={() => handleShareSchedule(null)}
+                style={styles.secondaryShareLink}
+                onPress={() => handleShareSchedule(selectedDay)}
                 disabled={isGeneratingPdf}
-                activeOpacity={0.8}
+                activeOpacity={0.7}
               >
-                <Icon name="file-pdf-box" size={18} color="#FFFFFF" />
-                <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#FFFFFF" }}>
-                  Export Full Week PDF
+                <Icon name="share-outline" size={14} color={colors.primaryAccent} />
+                <Text style={[styles.secondaryShareLinkText, { color: colors.primaryAccent }]}>
+                  Share {selectedDay} schedule only
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1146,5 +1114,66 @@ const getStyles = (colors, _isDarkMode) =>
       color: "#FFFFFF",
       fontSize: 12.5,
       fontWeight: "800",
+    },
+
+    /* Modern Share Card */
+    shareCard: {
+      marginTop: 18,
+      borderRadius: 16,
+      borderWidth: 1,
+      padding: 16,
+      gap: 12,
+    },
+    shareCardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    shareCardIconWrap: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    shareCardTitle: {
+      fontSize: 14,
+      fontWeight: "800",
+    },
+    shareCardSub: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginTop: 2,
+      lineHeight: 15,
+    },
+    primaryShareBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingVertical: 13,
+      borderRadius: 12,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    primaryShareBtnText: {
+      fontSize: 13,
+      fontWeight: "800",
+      color: "#FFFFFF",
+      letterSpacing: 0.2,
+    },
+    secondaryShareLink: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 6,
+    },
+    secondaryShareLinkText: {
+      fontSize: 11.5,
+      fontWeight: "700",
     },
   });
