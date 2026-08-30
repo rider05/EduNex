@@ -16,138 +16,173 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../../context/ThemeContext";
-import { api } from "../../services/api";
-import { getStudentData } from "../../services/dataService";
+import {
+  getRequiredDocuments,
+  getStudentDocuments,
+  uploadStudentDocument,
+  updateStudentDocument,
+  getStudentData,
+} from "../../services/dataService";
+import { resolveIdentity } from "../../services/identityService";
 import { showToast } from "../../utils/toastService";
 
-// ---------------- Standard DocSpace Verified Dataset ----------------
-const INITIAL_DOCUMENTS = [
+// ---------------- Fallback Required Doc Definitions ----------------
+const DEFAULT_REQUIRED_DOCS = [
   {
-    id: "doc_1",
+    id: "REQ-001",
+    code: "DOC_SSLC",
     title: "Class 10th / SSLC Marks Statement",
     category: "Academic",
-    status: "verified",
-    serialNo: "SSLC-TN-849201",
+    isMandatory: true,
+    description: "Original state board or central board secondary school completion certificate.",
     issuer: "State Board of Secondary Education",
-    issuedDate: "15 May 2021",
-    verifiedBy: "Registrar Office · Anna University",
-    fileSize: "1.4 MB · Digital Verified",
     icon: "file-certificate",
     color: "#4F46E5",
-    remarks: "Original statement verified and securely archived in DigiLocker vault.",
+    instructions: "Scan clear color copy showing student name, register number, and board seal.",
   },
   {
-    id: "doc_2",
+    id: "REQ-002",
+    code: "DOC_HSC",
     title: "Class 12th / Higher Secondary Marksheet",
     category: "Academic",
-    status: "verified",
-    serialNo: "HSC-TN-992144",
+    isMandatory: true,
+    description: "Higher Secondary / Diploma final statement of marks for admission clearance.",
     issuer: "Department of Government Examinations",
-    issuedDate: "20 Jun 2023",
-    verifiedBy: "Dean of Admissions",
-    fileSize: "1.8 MB · Digital Verified",
     icon: "school",
     color: "#2563EB",
-    remarks: "Cut-off marks validated for B.Tech AI & DS admission clearance.",
+    instructions: "Ensure PCM cutoff marks and practical scores are legible.",
   },
   {
-    id: "doc_3",
+    id: "REQ-003",
+    code: "DOC_ALLOTMENT",
     title: "TNEA Engineering Allotment Order",
     category: "Academic",
-    status: "verified",
-    serialNo: "TNEA-2023-AI041",
+    isMandatory: true,
+    description: "Government quota seat allocation order issued by DOTE / TNEA.",
     issuer: "Directorate of Technical Education (DOTE)",
-    issuedDate: "12 Aug 2023",
-    verifiedBy: "Admission Office",
-    fileSize: "980 KB · Digital Verified",
     icon: "file-document-check",
     color: "#0D9488",
-    remarks: "Government quota allocation confirmed for AI & DS department.",
+    instructions: "Upload signed allotment memo with round allocation details.",
   },
   {
-    id: "doc_4",
+    id: "REQ-004",
+    code: "DOC_TC",
     title: "Transfer & Conduct Certificate (TC)",
     category: "Academic",
-    status: "verified",
-    serialNo: "TC-2023-0182",
+    isMandatory: true,
+    description: "Original TC issued by previous school / college principal.",
     issuer: "Higher Secondary School Principal",
-    issuedDate: "10 Jul 2023",
-    verifiedBy: "Student Affairs Section",
-    fileSize: "1.1 MB · Digital Verified",
     icon: "card-account-details-outline",
     color: "#7C3AED",
-    remarks: "Original TC deposited during matriculation.",
+    instructions: "Upload original scanned copy with institution seal.",
   },
   {
-    id: "doc_5",
+    id: "REQ-005",
+    code: "DOC_AADHAAR",
     title: "National Aadhaar Identity Card",
     category: "Identity",
-    status: "verified",
-    serialNo: "UIDAI-XXXX-9102",
+    isMandatory: true,
+    description: "Government of India UIDAI identity credential.",
     issuer: "Unique Identification Authority of India",
-    issuedDate: "Verified Online",
-    verifiedBy: "KYC Automated Security",
-    fileSize: "750 KB · e-KYC Verified",
     icon: "smart-card-outline",
     color: "#10B981",
-    remarks: "Biometric and demographic data matched with institutional ledger.",
+    instructions: "Upload front and back or e-Aadhaar PDF copy.",
   },
   {
-    id: "doc_6",
+    id: "REQ-006",
+    code: "DOC_COMMUNITY",
     title: "Permanent Community Certificate",
     category: "Identity",
-    status: "verified",
-    serialNo: "CC-REV-74920",
+    isMandatory: true,
+    description: "Digital community certificate issued by Revenue Department / Tahsildar.",
     issuer: "Revenue Department / Tahsildar",
-    issuedDate: "05 Mar 2021",
-    verifiedBy: "Scholarship & Welfare Section",
-    fileSize: "1.3 MB · Digital Verified",
     icon: "shield-account",
     color: "#DB2777",
-    remarks: "Welfare scheme eligibility verified.",
+    instructions: "Must have valid digital signature and QR verification code.",
   },
   {
-    id: "doc_7",
+    id: "REQ-007",
+    code: "DOC_ANTIRAGGING",
     title: "Institutional Anti-Ragging Affidavit",
     category: "Affidavits",
-    status: "pending",
-    serialNo: "AFF-2025-004",
+    isMandatory: true,
+    description: "Mandatory annual UGC anti-ragging student & parent undertaking.",
     issuer: "UGC / Anti-Ragging Cell",
-    issuedDate: "Awaiting Verification",
-    verifiedBy: "Proctorial Board",
-    fileSize: "1.2 MB · Submitted",
     icon: "gavel",
     color: "#F59E0B",
-    remarks: "Annual student undertaking uploaded for odd semester.",
+    instructions: "Sign the undertaking and upload the stamped / notarized affidavit.",
   },
   {
-    id: "doc_8",
+    id: "REQ-008",
+    code: "DOC_MEDICAL",
     title: "Medical Fitness & Blood Group Record",
     category: "Identity",
-    status: "verified",
-    serialNo: "MED-EDX-2023",
+    isMandatory: false,
+    description: "Physical fitness certificate and blood group report by certified practitioner.",
     issuer: "Campus Health Centre Medical Officer",
-    issuedDate: "01 Aug 2023",
-    verifiedBy: "Chief Medical Officer",
-    fileSize: "620 KB · Verified",
     icon: "medical-bag",
     color: "#EF4444",
-    remarks: "Blood Group: O+ve · Emergency medical profile registered.",
+    instructions: "Issued by registered medical practitioner (MBBS minimum).",
+  },
+  {
+    id: "REQ-009",
+    code: "DOC_INCOME",
+    title: "Income & Asset Certificate",
+    category: "Scholarship",
+    isMandatory: false,
+    description: "Annual family income certificate for scholarship and fee concession.",
+    issuer: "Revenue Department / Tahsildar",
+    icon: "cash-multiple",
+    color: "#059669",
+    instructions: "Valid for current financial year.",
   },
 ];
 
-const CATEGORIES = ["All", "Academic", "Identity", "Affidavits"];
+const CATEGORIES = ["All", "Academic", "Identity", "Affidavits", "Scholarship"];
+
+function getCategoryColor(cat) {
+  switch (cat) {
+    case "Academic":
+      return "#4F46E5";
+    case "Identity":
+      return "#10B981";
+    case "Affidavits":
+      return "#F59E0B";
+    case "Scholarship":
+      return "#059669";
+    default:
+      return "#6366F1";
+  }
+}
+
+function getCategoryIcon(cat) {
+  switch (cat) {
+    case "Academic":
+      return "file-certificate";
+    case "Identity":
+      return "smart-card-outline";
+    case "Affidavits":
+      return "gavel";
+    case "Scholarship":
+      return "cash-multiple";
+    default:
+      return "file-document-outline";
+  }
+}
 
 export default function DocSpaceScreen() {
   const { colors, isDarkMode } = useTheme();
   const styles = getStyles(colors, isDarkMode);
 
   const [refreshing, setRefreshing] = useState(false);
-  const [documents, setDocuments] = useState(INITIAL_DOCUMENTS);
-  const [studentName, setStudentName] = useState("Karthik Raja M");
+  const [documents, setDocuments] = useState([]);
+  const [studentName, setStudentName] = useState("Velu");
   const [studentRollNo, setStudentRollNo] = useState("25ACSE001");
+  const [studentDept, setStudentDept] = useState("Computer Science & Engineering");
+  const [studentYear, setStudentYear] = useState("II Year");
 
   // Filters & Search
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -157,24 +192,136 @@ export default function DocSpaceScreen() {
   const [selectedDocForDetail, setSelectedDocForDetail] = useState(null);
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
   const [docToUpload, setDocToUpload] = useState(null);
-  const [tempUploadedImage, setTempUploadedImage] = useState(null);
+  const [tempUploadedFile, setTempUploadedFile] = useState(null);
   const [isSubmittingDoc, setIsSubmittingDoc] = useState(false);
 
-  // Load from local storage / API
+  // Load from MongoDB backend (Required Docs + Student Uploads)
   const loadDocuments = useCallback(async () => {
     try {
-      const raw = await AsyncStorage.getItem("student_verified_documents_v3");
-      if (raw) {
-        setDocuments(JSON.parse(raw));
-      } else {
-        setDocuments(INITIAL_DOCUMENTS);
-      }
+      // 1. Resolve Student Identity
+      const identity = await resolveIdentity("student").catch(() => null);
       const student = await getStudentData().catch(() => null);
-      if (student) {
-        setStudentName(student.name || "Karthik Raja M");
-        setStudentRollNo(student.rollNo || "25ACSE001");
-      }
-    } catch {}
+
+      const roll = student?.rollNo || identity?.rollNo || "25ACSE001";
+      const name = student?.name || identity?.name || "Velu";
+      const dept = student?.department || student?.class || "Computer Science & Engineering";
+      const year = student?.year || "II Year";
+
+      setStudentRollNo(roll);
+      setStudentName(name);
+      setStudentDept(dept);
+      setStudentYear(year);
+
+      // 2. Fetch live data from MongoDB
+      const [reqDocsRes, studentDocsRes] = await Promise.all([
+        getRequiredDocuments().catch(() => []),
+        getStudentDocuments(roll).catch(() => []),
+      ]);
+
+      const reqDocs = reqDocsRes && reqDocsRes.length > 0 ? reqDocsRes : DEFAULT_REQUIRED_DOCS;
+      const uploadedDocs = Array.isArray(studentDocsRes) ? studentDocsRes : [];
+
+      // 3. Merge Required Checklist with Student Uploads
+      const mergedList = reqDocs.map((req) => {
+        const docCode = req.code || req.id;
+        const uploaded = uploadedDocs.find(
+          (u) =>
+            (u.docCode && u.docCode === docCode) ||
+            (u.title && u.title.toLowerCase().trim() === req.title.toLowerCase().trim())
+        );
+
+        if (uploaded) {
+          return {
+            id: uploaded.id || req.id,
+            mongoDocId: uploaded.id || uploaded._id,
+            docCode: docCode,
+            title: req.title || uploaded.title,
+            category: req.category || uploaded.category || "Academic",
+            status: uploaded.status || "pending",
+            serialNo: uploaded.serialNo || `EDX-${docCode.replace("DOC_", "")}-${roll.slice(-3)}`,
+            issuer: req.issuer || uploaded.issuer || "Institutional Authority",
+            issuedDate: uploaded.verifiedAt
+              ? new Date(uploaded.verifiedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+              : uploaded.uploadedAt
+              ? new Date(uploaded.uploadedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+              : "Pending Verification",
+            verifiedBy: uploaded.verifiedBy || (uploaded.status === "verified" ? "Registrar Office" : null),
+            fileSize: uploaded.fileSize || "1.4 MB · Digital Verified",
+            fileUri: uploaded.fileUri || uploaded.fileUrl || null,
+            fileName: uploaded.fileName || `${req.title}.pdf`,
+            mimeType: uploaded.mimeType || "application/pdf",
+            icon: req.icon || getCategoryIcon(req.category),
+            color: req.color || getCategoryColor(req.category),
+            remarks: uploaded.remarks || uploaded.rejectionReason || req.description,
+            rejectionReason: uploaded.rejectionReason || null,
+            isMandatory: req.isMandatory !== false,
+            instructions: req.instructions || req.description,
+            isUploaded: true,
+          };
+        }
+
+        return {
+          id: req.id || docCode,
+          mongoDocId: null,
+          docCode: docCode,
+          title: req.title,
+          category: req.category || "Academic",
+          status: "not_submitted",
+          serialNo: "NOT SUBMITTED",
+          issuer: req.issuer || "Institutional Authority",
+          issuedDate: "Upload Required",
+          verifiedBy: null,
+          fileSize: `Max ${req.maxSizeMB || 5} MB · ${req.allowedFormats?.join("/") || "PDF/PNG"}`,
+          fileUri: null,
+          fileName: null,
+          mimeType: null,
+          icon: req.icon || getCategoryIcon(req.category),
+          color: req.color || getCategoryColor(req.category),
+          remarks: req.instructions || req.description || "Mandatory document submission for institutional clearance.",
+          rejectionReason: null,
+          isMandatory: req.isMandatory !== false,
+          instructions: req.instructions || req.description,
+          isUploaded: false,
+        };
+      });
+
+      // Add any additional uploaded docs by student that weren't in the default checklist
+      uploadedDocs.forEach((u) => {
+        const alreadyMerged = mergedList.some((m) => m.mongoDocId === u.id || m.title === u.title);
+        if (!alreadyMerged) {
+          mergedList.push({
+            id: u.id,
+            mongoDocId: u.id,
+            docCode: u.docCode || u.id,
+            title: u.title || "Custom Certificate",
+            category: u.category || "Academic",
+            status: u.status || "pending",
+            serialNo: u.serialNo || u.id,
+            issuer: u.issuer || "Verified Issuer",
+            issuedDate: u.uploadedAt
+              ? new Date(u.uploadedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+              : "Recent",
+            verifiedBy: u.verifiedBy || null,
+            fileSize: u.fileSize || "1.0 MB",
+            fileUri: u.fileUri || null,
+            fileName: u.fileName || `${u.title}.pdf`,
+            mimeType: u.mimeType || "application/pdf",
+            icon: getCategoryIcon(u.category),
+            color: getCategoryColor(u.category),
+            remarks: u.remarks || u.rejectionReason || "Uploaded Document",
+            rejectionReason: u.rejectionReason || null,
+            isMandatory: false,
+            instructions: "",
+            isUploaded: true,
+          });
+        }
+      });
+
+      setDocuments(mergedList);
+      await AsyncStorage.setItem("student_verified_documents_v4", JSON.stringify(mergedList));
+    } catch (err) {
+      console.warn("DocSpace loadDocuments error:", err);
+    }
   }, []);
 
   useEffect(() => {
@@ -192,9 +339,11 @@ export default function DocSpaceScreen() {
     const total = documents.length;
     const verified = documents.filter((d) => d.status === "verified").length;
     const pending = documents.filter((d) => d.status === "pending").length;
-    const actionRequired = documents.filter((d) => d.status === "action_required" || d.status === "not_submitted").length;
+    const rejected = documents.filter((d) => d.status === "rejected").length;
+    const notSubmitted = documents.filter((d) => d.status === "not_submitted" || d.status === "action_required").length;
+    const actionRequired = rejected + notSubmitted;
     const percentage = total > 0 ? Math.round((verified / total) * 100) : 0;
-    return { total, verified, pending, actionRequired, percentage };
+    return { total, verified, pending, rejected, notSubmitted, actionRequired, percentage };
   }, [documents]);
 
   // Filtered List
@@ -214,50 +363,131 @@ export default function DocSpaceScreen() {
     });
   }, [documents, selectedCategory, searchQuery]);
 
-  // Pick Image from Library / Camera
-  const handlePickDocument = async (useCamera = false) => {
+  // Pick Document (Camera, Gallery, or PDF Files)
+  const handlePickDocument = async (method = "gallery") => {
     try {
-      let result;
-      if (useCamera) {
+      if (method === "camera") {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
         if (status !== "granted") {
           Alert.alert("Permission Required", "Camera permission is required to scan document.");
           return;
         }
-        result = await ImagePicker.launchCameraAsync({
-          quality: 0.8,
+        const result = await ImagePicker.launchCameraAsync({
+          quality: 0.7,
+          base64: true,
           allowsEditing: true,
         });
-      } else {
+
+        if (!result.canceled && result.assets && result.assets[0]) {
+          const asset = result.assets[0];
+          const base64Data = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+          setTempUploadedFile({
+            uri: asset.uri,
+            dataUrl: base64Data,
+            name: `${docToUpload?.title || "Document"}_Scan.jpg`,
+            size: `${((asset.fileSize || 800000) / (1024 * 1024)).toFixed(1)} MB`,
+            mimeType: "image/jpeg",
+          });
+        }
+      } else if (method === "gallery") {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== "granted") {
           Alert.alert("Permission Required", "Media library permission is required to select document.");
           return;
         }
-        result = await ImagePicker.launchImageLibraryAsync({
+        const result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.8,
+          quality: 0.7,
+          base64: true,
           allowsEditing: true,
         });
-      }
 
-      if (!result.canceled && result.assets && result.assets[0]?.uri) {
-        setTempUploadedImage(result.assets[0].uri);
+        if (!result.canceled && result.assets && result.assets[0]) {
+          const asset = result.assets[0];
+          const base64Data = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+          setTempUploadedFile({
+            uri: asset.uri,
+            dataUrl: base64Data,
+            name: asset.fileName || `${docToUpload?.title || "Document"}.jpg`,
+            size: `${((asset.fileSize || 950000) / (1024 * 1024)).toFixed(1)} MB`,
+            mimeType: "image/jpeg",
+          });
+        }
+      } else if (method === "file") {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: ["application/pdf", "image/*"],
+          copyToCacheDirectory: true,
+        });
+
+        if (!result.canceled && result.assets && result.assets[0]) {
+          const file = result.assets[0];
+          setTempUploadedFile({
+            uri: file.uri,
+            dataUrl: file.uri,
+            name: file.name || `${docToUpload?.title || "Document"}.pdf`,
+            size: `${((file.size || 1024000) / (1024 * 1024)).toFixed(1)} MB`,
+            mimeType: file.mimeType || "application/pdf",
+          });
+        }
       }
     } catch (err) {
-      console.log("Image picker error:", err);
-      showToast("Could not capture image", "error");
+      console.log("Document picker error:", err);
+      showToast("Could not select document file", "error");
     }
   };
 
-  // Submit Uploaded Document
+  // Submit Uploaded Document to MongoDB
   const handleConfirmUpload = async () => {
-    if (!tempUploadedImage || !docToUpload) {
-      Alert.alert("Document Required", "Please scan or select a document file to proceed.");
+    if (!tempUploadedFile || !docToUpload) {
+      Alert.alert("Document Required", "Please scan, select a photo, or choose a PDF file to proceed.");
       return;
     }
 
     setIsSubmittingDoc(true);
+    try {
+      const docPayload = {
+        studentId: studentRollNo,
+        rollNo: studentRollNo,
+        studentName: studentName,
+        department: studentDept,
+        year: studentYear,
+        docCode: docToUpload.docCode || docToUpload.code || docToUpload.id,
+        title: docToUpload.title,
+        category: docToUpload.category,
+        serialNo: docToUpload.serialNo && docToUpload.serialNo !== "NOT SUBMITTED"
+          ? docToUpload.serialNo
+          : `EDX-${(docToUpload.docCode || "DOC").replace("DOC_", "")}-${studentRollNo.slice(-3)}`,
+        issuer: docToUpload.issuer || "Institutional Authority",
+        fileUri: tempUploadedFile.dataUrl || tempUploadedFile.uri,
+        fileName: tempUploadedFile.name,
+        fileSize: tempUploadedFile.size,
+        mimeType: tempUploadedFile.mimeType,
+        status: "pending",
+        uploadedAt: new Date().toISOString(),
+        rejectionReason: null,
+        remarks: "Uploaded by student via DocSpace. Pending verification.",
+      };
+
+      if (docToUpload.mongoDocId) {
+        await updateStudentDocument(docToUpload.mongoDocId, docPayload);
+      } else {
+        await uploadStudentDocument(docPayload);
+      }
+
+      showToast("📄 Document submitted to DocSpace in MongoDB!", "success");
+      setUploadModalVisible(false);
+      setTempUploadedFile(null);
+      setDocToUpload(null);
+
+      // Re-fetch live data
+      await loadDocuments();
+    } catch (err) {
+      console.log("Upload confirm error:", err);
+      Alert.alert("Upload Error", "Could not upload document to database. Please try again.");
+    } finally {
+      setIsSubmittingDoc(false);
+    }
+  };
     try {
       const updatedList = documents.map((doc) => {
         if (doc.id === docToUpload.id) {
