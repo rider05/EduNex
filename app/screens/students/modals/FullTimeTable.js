@@ -37,43 +37,52 @@ const DEPT_CODE_MAP = {
 };
 
 
-// Normalizers for DB timetable rows: seeded docs use time/duration/subject/
-// teacher/room/isBreak and omit period/code/type, which the UI expects.
+// Normalizers for DB timetable rows: numbered 1 to 7 only (breaks not counted as periods)
 const DEFAULT_STAFF_NAME = "—";
-
-const normalizeTimetableRow = (row, i) => {
-  if (row.isBreak) {
-    return {
-      ...row,
-      period: row.period || (String(row.subject || "").toLowerCase().includes("lunch") ? "Lunch" : "Recess"),
-      time: row.time || "—",
-      duration: row.duration || "",
-      type: "Break",
-    };
-  }
-  const isLab = /lab/i.test(String(row.subject || ""));
-  const rawTeacher = row.teacher || row.faculty;
-  const teacher =
-    rawTeacher && rawTeacher !== "Faculty" && rawTeacher.trim()
-      ? rawTeacher
-      : DEFAULT_STAFF_NAME;
-
-  return {
-    ...row,
-    period: row.period || (isLab ? `Lab ${i + 1}` : `Period ${i + 1}`),
-    time: row.time || "—",
-    code: row.code || "",
-    type: row.type || (isLab ? "Lab" : "Theory"),
-    room: row.room || (isLab ? "AI & DS Lab" : "D205"),
-    teacher: teacher,
-    teacherDetails: row.teacherDetails || null,
-  };
-};
 
 const normalizeTimetable = (schedule) => {
   const out = {};
   for (const day of Object.keys(schedule || {})) {
-    out[day] = (Array.isArray(schedule[day]) ? schedule[day] : []).map(normalizeTimetableRow);
+    let academicCounter = 0;
+    out[day] = (Array.isArray(schedule[day]) ? schedule[day] : []).map((row) => {
+      const isLunch = String(row.subject || "").toLowerCase().includes("lunch");
+      const isTea = String(row.subject || "").toLowerCase().includes("tea") || String(row.subject || "").toLowerCase().includes("break");
+      const isBreak = row.isBreak || isLunch || isTea;
+
+      if (isBreak) {
+        return {
+          ...row,
+          isBreak: true,
+          period: isLunch ? "Lunch Break" : "Tea Break",
+          periodIndex: null,
+          time: row.time || "—",
+          duration: row.duration || "",
+          type: "Break",
+        };
+      }
+
+      academicCounter++;
+      const isLab = /lab/i.test(String(row.subject || row.code || ""));
+      const rawTeacher = row.teacher || row.faculty;
+      const teacher =
+        rawTeacher && rawTeacher !== "Faculty" && rawTeacher.trim()
+          ? rawTeacher
+          : DEFAULT_STAFF_NAME;
+
+      return {
+        ...row,
+        isBreak: false,
+        period: row.period && !row.period.includes("undefined") ? row.period : (isLab ? `Lab (Period ${academicCounter})` : `Period ${academicCounter}`),
+        periodIndex: academicCounter,
+        periodNumber: academicCounter,
+        time: row.time || "—",
+        code: row.code || "",
+        type: row.type || (isLab ? "Lab" : "Theory"),
+        room: row.room || (isLab ? "AI & DS Lab" : "D205"),
+        teacher: teacher,
+        teacherDetails: row.teacherDetails || null,
+      };
+    });
   }
   return out;
 };

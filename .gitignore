@@ -1,43 +1,67 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# ==============================================================================
+# EduNex Mobile App (.gitignore)
+# ==============================================================================
 
-# dependencies
+# Dependencies
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Expo
+# Expo & Metro Bundler
 .expo/
 dist/
 web-build/
 expo-env.d.ts
+.metro-health-check*
 
-# Native
+# Environment & Secrets (NEVER COMMIT SENSITIVE API KEYS)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env.*
+
+# Native Android & iOS Builds / Cache
+android/
+ios/
 .kotlin/
 *.orig.*
 *.jks
 *.p8
 *.p12
 *.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
-.DS_Store
 *.pem
+*.mobileprovision
+*.keystore
 
-# local env files
-.env*.local
+# Build Outputs & Logs
+*.log
+*.log.*
+build_log.txt
+build_output.log
+expo.log
+rebuild.log
+*.bat
 
-# typescript
+# One-off patch & scratch scripts
+patch*.js
+temp_*.ps1
+test*.js
+fix*.js
+
+# IDE & System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
 *.tsbuildinfo
+*.swp
+*.swo
 
-app-example
-
-# generated native folders
-/ios
-/android
+# Temporary folders
+tmp/
+temp/

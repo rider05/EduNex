@@ -51,10 +51,10 @@ export default function WardDetailsParent() {
           section: student.section || prev.section,
           attendance: student.attendance?.percentage || prev.attendance,
           cgpa: student.cgpa != null ? String(student.cgpa) : prev.cgpa,
-          advisor: student.advisor?.name || (typeof student.advisor === "string" ? student.advisor : prev.advisor),
-          advisorPhone: student.advisor?.phone || student.advisorPhone || prev.advisorPhone,
-          advisorEmail: student.advisor?.email || student.advisorEmail || prev.advisorEmail,
-          advisorCabin: student.advisor?.cabin || prev.advisorCabin,
+          advisor: (typeof student.advisor === "string" ? student.advisor : student.advisor?.name) || student.mentorName || student.mentor || prev.advisor || "Ms. Z. Ananth Angel",
+          advisorPhone: student.advisorPhone || student.mentorPhone || student.advisor?.phone || prev.advisorPhone || "+91 98000 10008",
+          advisorEmail: student.advisorEmail || student.mentorEmail || student.advisor?.email || prev.advisorEmail || "ananthangel@edunex.edu",
+          advisorCabin: student.advisorCabin || student.advisor?.cabin || prev.advisorCabin || "Faculty Block B, Cabin 204",
           bloodGroup: student.bloodGroup || prev.bloodGroup,
           hostel:
             typeof student.hostel === "boolean"
