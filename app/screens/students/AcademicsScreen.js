@@ -18,6 +18,7 @@ import { SkeletonKPIRow, SkeletonListItem } from "../../components/common/Skelet
 import { getStudentData, getAssignments, getStudentAttendanceSummary, getSubjects, enrichSubjectFromCatalog } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
+import { formatDeptName } from "../../utils/deptFormatter";
 
 const COURSE_TYPES = ["All Courses", "Theory", "Lab", "Project"];
 const CREDIT_TARGET = 160;
@@ -244,7 +245,7 @@ export default function AcademicsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={[styles.headerTitle, { color: colors.primaryText }]}>Academic Center</Text>
             <Text style={[styles.headerSubtitle, { color: colors.secondaryText }]} numberOfLines={1}>
-              {studentData.department} · {studentData.semester}
+              {formatDeptName(studentData.department, "short")} · {studentData.semester}
             </Text>
           </View>
 

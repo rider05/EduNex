@@ -9,7 +9,6 @@ import {
   StatusBar,
   Modal,
   TouchableWithoutFeedback,
-  Share,
   TextInput,
   Linking,
   ActivityIndicator,
@@ -21,6 +20,8 @@ import { showToast } from "../../../utils/toastService";
 import { api } from "../../../services/api";
 import { getStudentData } from "../../../services/dataService";
 import { resolveIdentity } from "../../../services/identityService";
+import { formatDeptName } from "../../../utils/deptFormatter";
+import { shareTimetableAsPdf } from "../../../utils/timetablePdfGenerator";
 
 const DEPT_CODE_MAP = {
   "AI & DS": "AIDS",
@@ -234,24 +235,23 @@ export default function FullTimetable({ visible = true, onClose }) {
     setTimeout(() => setSelectedClass(null), 300);
   };
 
-  const handleShareSchedule = async () => {
-    try {
-      const classList = filteredSchedule
-        .map(
-          (c) =>
-            `â€¢ [${c.time}] ${c.period ? `${c.period}: ` : ""}${c.subject} (${
-              c.isBreak ? "Break" : `${c.room} Â· ${c.teacher || "Faculty"}`
-            })`
-        )
-        .join("\n");
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-      await Share.share({
-        title: `EduNex Timetable - ${selectedDay} (${studentCohort.deptShort})`,
-        message: `ðŸ“… EDUNEX OFFICIAL ACADEMIC TIMETABLE\nCohort: ${studentCohort.deptShort} Â· ${studentCohort.year} (${studentCohort.section})\nDay: ${selectedDay}\n\nSchedule:\n${classList}\n\nGenerated via EduNex Campus App.`,
+  const handleShareSchedule = async (dayToShare = null) => {
+    try {
+      setIsGeneratingPdf(true);
+      showToast("📄 Generating Official Timetable PDF...", "info");
+      await shareTimetableAsPdf({
+        timetableData,
+        cohort: studentCohort,
+        selectedDay: dayToShare, // null = full week PDF
       });
-      showToast(`Shared ${selectedDay}'s schedule!`, "success");
+      showToast("✅ Timetable PDF generated & shared!", "success");
     } catch (err) {
-      console.log("Share error:", err);
+      console.log("PDF Share error:", err);
+      showToast("Could not generate PDF. Please try again.", "error");
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -287,18 +287,37 @@ export default function FullTimetable({ visible = true, onClose }) {
                 </View>
               </View>
               <Text style={[styles.headerSubtitle, { color: colors.secondaryText }]}>
-                {studentCohort.deptShort} Â· {studentCohort.year} ({studentCohort.section})
+                {studentCohort.deptShort || formatDeptName(studentCohort.department, "code")} · {studentCohort.year} ({studentCohort.section})
               </Text>
             </View>
           </View>
 
           <View style={styles.headerRightActions}>
             <TouchableOpacity
-              style={[styles.headerActionBtn, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
-              onPress={handleShareSchedule}
+              style={[
+                styles.headerActionBtn,
+                {
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.divider,
+                  paddingHorizontal: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 5,
+                },
+              ]}
+              onPress={() => handleShareSchedule(null)}
               activeOpacity={0.8}
+              disabled={isGeneratingPdf}
+              title="Share Timetable as PDF"
             >
-              <Icon name="share-variant-outline" size={19} color={colors.primaryAccent} />
+              {isGeneratingPdf ? (
+                <ActivityIndicator size="small" color="#EF4444" />
+              ) : (
+                <>
+                  <Icon name="file-pdf-box" size={20} color="#EF4444" />
+                  <Text style={{ fontSize: 11, fontWeight: "800", color: colors.primaryText }}>PDF</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -313,7 +332,7 @@ export default function FullTimetable({ visible = true, onClose }) {
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <Text style={[styles.cohortTitle, { color: colors.primaryText }]} numberOfLines={1}>
-                    {studentCohort.department}
+                    {formatDeptName(studentCohort.department || studentCohort.deptShort, "compact")}
                   </Text>
                   <View style={styles.enrolledBadge}>
                     <Icon name="check-decagram" size={11} color="#10B981" />
@@ -322,16 +341,37 @@ export default function FullTimetable({ visible = true, onClose }) {
                 </View>
 
                 <Text style={[styles.cohortSub, { color: colors.secondaryText }]}>
-                  {studentCohort.year} Â· {studentCohort.section} Â· {studentCohort.semester}
+                  {studentCohort.year} · {studentCohort.section} · {studentCohort.semester}
                 </Text>
               </View>
             </View>
 
-            <View style={[styles.advisorStrip, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
-              <Icon name="account-tie-outline" size={16} color={colors.primaryAccent} />
-              <Text style={[styles.advisorText, { color: colors.primaryText }]}>
-                Class Advisor: <Text style={{ fontWeight: "800" }}>{studentCohort.advisor}</Text>
-              </Text>
+            <View style={[styles.advisorStrip, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, justifyContent: "space-between" }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
+                <Icon name="account-tie-outline" size={16} color={colors.primaryAccent} />
+                <Text style={[styles.advisorText, { color: colors.primaryText }]} numberOfLines={1}>
+                  Advisor: <Text style={{ fontWeight: "800" }}>{studentCohort.advisor}</Text>
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 6,
+                  backgroundColor: "#EF444415",
+                  borderWidth: 1,
+                  borderColor: "#EF444433",
+                }}
+                onPress={() => handleShareSchedule(null)}
+                disabled={isGeneratingPdf}
+                activeOpacity={0.8}
+              >
+                <Icon name="file-pdf-box" size={14} color="#EF4444" />
+                <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#EF4444" }}>Weekly PDF</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -522,6 +562,55 @@ export default function FullTimetable({ visible = true, onClose }) {
                   </TouchableOpacity>
                 );
               })}
+            </View>
+          )}
+
+          {/* Share / Export PDF Action Buttons */}
+          {!loading && (
+            <View style={{ marginTop: 14, marginBottom: 8, flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  backgroundColor: colors.cardBackground,
+                  borderWidth: 1,
+                  borderColor: colors.divider,
+                }}
+                onPress={() => handleShareSchedule(selectedDay)}
+                disabled={isGeneratingPdf}
+                activeOpacity={0.8}
+              >
+                <Icon name="file-document-outline" size={18} color={colors.primaryAccent} />
+                <Text style={{ fontSize: 11.5, fontWeight: "700", color: colors.primaryText }}>
+                  Share {selectedDay.slice(0, 3)} PDF
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  flex: 1.2,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  backgroundColor: colors.primaryAccent,
+                }}
+                onPress={() => handleShareSchedule(null)}
+                disabled={isGeneratingPdf}
+                activeOpacity={0.8}
+              >
+                <Icon name="file-pdf-box" size={18} color="#FFFFFF" />
+                <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#FFFFFF" }}>
+                  Export Full Week PDF
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
 

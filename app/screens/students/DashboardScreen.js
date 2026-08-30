@@ -19,6 +19,7 @@ import { showToast } from "../../utils/toastService";
 // Data & Services
 import { getStudentData, getGradeLevels, getParentNotices, getInstitutions, getAssignments, getStudentAttendanceSummary } from "../../services/dataService";
 import { SkeletonScreenLoader } from "../../components/common/SkeletonLoader";
+import { formatDeptName } from "../../utils/deptFormatter";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
 // Modals
@@ -682,7 +683,7 @@ export default function DashboardScreen() {
                   <Text style={[styles.idCardStudentName, { color: colors.primaryText }]}>{studentData.name}</Text>
                   <Text style={[styles.idCardRoll, { color: colors.primaryAccent }]}>REG ID: {studentData.rollNo}</Text>
                   <Text style={[styles.idCardDept, { color: colors.secondaryText }]} numberOfLines={2}>
-                    {studentData.department}
+                    {formatDeptName(studentData.department, "compact")}
                   </Text>
                 </View>
               </View>

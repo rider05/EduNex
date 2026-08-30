@@ -27,6 +27,7 @@ import { getStudentData, getInstitutions } from "../../services/dataService";
 import { api } from "../../services/api";
 import { resolveIdentity } from "../../services/identityService";
 import { getRandomInterestingNickname, getDeterministicNickname } from "../../utils/nicknameGenerator";
+import { formatDeptName } from "../../utils/deptFormatter";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
 const PROFILE_IMAGE_KEY = "student_profile_image_v3";
@@ -405,7 +406,7 @@ export default function ProfileScreen({ onLogout }) {
                     )}
                   </View>
                   <Text style={[styles.idHeroProgram, { color: colors.primaryAccent }]} numberOfLines={1}>
-                    {user.program}
+                    {formatDeptName(user.program || user.department, "compact")}
                   </Text>
 
                   <View style={styles.idHeroMetaRow}>
@@ -628,7 +629,7 @@ export default function ProfileScreen({ onLogout }) {
 
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={styles.idCardCandidateName}>{user.name}</Text>
-                      <Text style={styles.idCardCandidateDept}>{user.department}</Text>
+                      <Text style={styles.idCardCandidateDept}>{formatDeptName(user.department || user.program, "short")}</Text>
                       <Text style={styles.idCardCandidateRoll}>Roll: {user.id}</Text>
                       <Text style={styles.idCardCandidateReg}>Reg: {user.regNo}</Text>
                     </View>
