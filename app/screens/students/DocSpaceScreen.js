@@ -488,45 +488,6 @@ export default function DocSpaceScreen() {
       setIsSubmittingDoc(false);
     }
   };
-    try {
-      const updatedList = documents.map((doc) => {
-        if (doc.id === docToUpload.id) {
-          return {
-            ...doc,
-            status: "pending",
-            fileUri: tempUploadedImage,
-            fileSize: "1.6 MB · Submitted Today",
-            remarks: "Uploaded by student. Pending Registrar verification.",
-          };
-        }
-        return doc;
-      });
-
-      setDocuments(updatedList);
-      await AsyncStorage.setItem("student_verified_documents_v3", JSON.stringify(updatedList));
-
-      try {
-        await api.post("/documents/verify", {
-          docId: docToUpload.id,
-          title: docToUpload.title,
-          studentName: studentName || "",
-          rollNo: studentRollNo || "",
-          status: "pending",
-          uploadedAt: new Date().toISOString(),
-        });
-      } catch {}
-
-      showToast("📄 Document submitted to DocSpace for verification!", "success");
-      setUploadModalVisible(false);
-      setTempUploadedImage(null);
-      setDocToUpload(null);
-    } catch (err) {
-      console.log("Upload confirm error:", err);
-      Alert.alert("Error", "Could not submit document.");
-    } finally {
-      setIsSubmittingDoc(false);
-    }
-  };
 
   // Share / Export Document Certificate
   const handleShareDoc = async (doc) => {
@@ -815,25 +776,60 @@ export default function DocSpaceScreen() {
                   styles.modalStatusBanner,
                   selectedDocForDetail.status === "verified"
                     ? { backgroundColor: "#10B98118", borderColor: "#10B98144" }
+                    : selectedDocForDetail.status === "rejected"
+                    ? { backgroundColor: "#EF444418", borderColor: "#EF444444" }
                     : { backgroundColor: "#F59E0B18", borderColor: "#F59E0B44" },
                 ]}
               >
                 <Icon
-                  name={selectedDocForDetail.status === "verified" ? "check-decagram" : "clock-alert-outline"}
+                  name={
+                    selectedDocForDetail.status === "verified"
+                      ? "check-decagram"
+                      : selectedDocForDetail.status === "rejected"
+                      ? "alert-octagon"
+                      : "clock-alert-outline"
+                  }
                   size={16}
-                  color={selectedDocForDetail.status === "verified" ? "#10B981" : "#F59E0B"}
+                  color={
+                    selectedDocForDetail.status === "verified"
+                      ? "#10B981"
+                      : selectedDocForDetail.status === "rejected"
+                      ? "#EF4444"
+                      : "#F59E0B"
+                  }
                 />
                 <Text
                   style={[
                     styles.modalStatusBannerText,
-                    { color: selectedDocForDetail.status === "verified" ? "#10B981" : "#D97706" },
+                    {
+                      color:
+                        selectedDocForDetail.status === "verified"
+                          ? "#10B981"
+                          : selectedDocForDetail.status === "rejected"
+                          ? "#EF4444"
+                          : "#D97706",
+                    },
                   ]}
                 >
                   {selectedDocForDetail.status === "verified"
                     ? "DIGITALLY VERIFIED CREDENTIAL"
+                    : selectedDocForDetail.status === "rejected"
+                    ? "SUBMISSION REJECTED — ACTION REQUIRED"
+                    : selectedDocForDetail.status === "not_submitted"
+                    ? "UPLOAD REQUIRED FOR VERIFICATION"
                     : "SUBMISSION PENDING VERIFICATION"}
                 </Text>
               </View>
+
+              {/* Rejection Alert Box */}
+              {selectedDocForDetail.status === "rejected" && selectedDocForDetail.rejectionReason && (
+                <View style={[styles.rejectionBox, { backgroundColor: "#EF444412", borderColor: "#EF444433" }]}>
+                  <Text style={[styles.rejectionHeader, { color: "#EF4444" }]}>⚠️ Staff Feedback / Reason:</Text>
+                  <Text style={[styles.rejectionText, { color: colors.primaryText }]}>
+                    {selectedDocForDetail.rejectionReason}
+                  </Text>
+                </View>
+              )}
 
               {/* Identity Grid */}
               <View style={[styles.modalGrid, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
@@ -866,15 +862,43 @@ export default function DocSpaceScreen() {
                 </View>
               )}
 
+              {/* Document Scan/Image Preview if available */}
+              {selectedDocForDetail.fileUri && selectedDocForDetail.fileUri.startsWith("data:image") && (
+                <View style={{ marginVertical: 8, alignItems: "center" }}>
+                  <Image
+                    source={{ uri: selectedDocForDetail.fileUri }}
+                    style={{ width: "100%", height: 140, borderRadius: 10, resizeMode: "cover" }}
+                  />
+                  <Text style={{ fontSize: 11, color: colors.secondaryText, marginTop: 4 }}>
+                    📄 {selectedDocForDetail.fileName || "Uploaded Document Scan"}
+                  </Text>
+                </View>
+              )}
+
               {/* Modal Actions */}
               <View style={styles.modalActionsRow}>
-                <TouchableOpacity
-                  style={[styles.modalShareBtn, { backgroundColor: colors.primaryAccent }]}
-                  onPress={() => handleShareDoc(selectedDocForDetail)}
-                >
-                  <Icon name="share-variant" size={16} color="#FFFFFF" />
-                  <Text style={styles.modalShareBtnText}>Share Credential</Text>
-                </TouchableOpacity>
+                {selectedDocForDetail.status === "rejected" || selectedDocForDetail.status === "not_submitted" ? (
+                  <TouchableOpacity
+                    style={[styles.modalShareBtn, { backgroundColor: colors.primaryAccent }]}
+                    onPress={() => {
+                      const doc = selectedDocForDetail;
+                      setSelectedDocForDetail(null);
+                      setDocToUpload(doc);
+                      setUploadModalVisible(true);
+                    }}
+                  >
+                    <Icon name="cloud-upload" size={16} color="#FFFFFF" />
+                    <Text style={styles.modalShareBtnText}>Upload Now</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.modalShareBtn, { backgroundColor: colors.primaryAccent }]}
+                    onPress={() => handleShareDoc(selectedDocForDetail)}
+                  >
+                    <Icon name="share-variant" size={16} color="#FFFFFF" />
+                    <Text style={styles.modalShareBtnText}>Share Credential</Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   style={[styles.modalCloseBtn, { borderColor: colors.divider }]}
@@ -911,29 +935,56 @@ export default function DocSpaceScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Picker Triggers */}
-              <View style={{ flexDirection: "row", gap: 10, marginVertical: 14 }}>
+              {/* Instructions / Allowed Formats */}
+              {docToUpload.instructions ? (
+                <View style={[styles.instructionsBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                  <Text style={[styles.instructionsText, { color: colors.secondaryText }]}>
+                    ℹ️ {docToUpload.instructions}
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Picker Triggers - 3 Source Options */}
+              <View style={{ flexDirection: "row", gap: 8, marginVertical: 14 }}>
                 <TouchableOpacity
                   style={[styles.pickMethodBtn, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
-                  onPress={() => handlePickDocument(true)}
+                  onPress={() => handlePickDocument("camera")}
                 >
-                  <Icon name="camera" size={24} color={colors.primaryAccent} />
-                  <Text style={[styles.pickMethodText, { color: colors.primaryText }]}>Take Photo</Text>
+                  <Icon name="camera" size={22} color={colors.primaryAccent} />
+                  <Text style={[styles.pickMethodText, { color: colors.primaryText }]}>Camera</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   style={[styles.pickMethodBtn, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
-                  onPress={() => handlePickDocument(false)}
+                  onPress={() => handlePickDocument("gallery")}
                 >
-                  <Icon name="image-multiple" size={24} color={colors.primaryAccent} />
-                  <Text style={[styles.pickMethodText, { color: colors.primaryText }]}>From Gallery</Text>
+                  <Icon name="image-multiple" size={22} color={colors.primaryAccent} />
+                  <Text style={[styles.pickMethodText, { color: colors.primaryText }]}>Gallery</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.pickMethodBtn, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
+                  onPress={() => handlePickDocument("file")}
+                >
+                  <Icon name="file-pdf-box" size={22} color={colors.primaryAccent} />
+                  <Text style={[styles.pickMethodText, { color: colors.primaryText }]}>PDF / File</Text>
                 </TouchableOpacity>
               </View>
 
-              {/* Preview Image */}
-              {tempUploadedImage && (
-                <View style={styles.imagePreviewWrap}>
-                  <Image source={{ uri: tempUploadedImage }} style={styles.previewImage} />
+              {/* Preview Selected File */}
+              {tempUploadedFile && (
+                <View style={[styles.imagePreviewWrap, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                  {tempUploadedFile.mimeType?.startsWith("image") && tempUploadedFile.uri ? (
+                    <Image source={{ uri: tempUploadedFile.uri }} style={styles.previewImage} />
+                  ) : (
+                    <View style={{ padding: 14, alignItems: "center", gap: 6 }}>
+                      <Icon name="file-document-check" size={36} color={colors.primaryAccent} />
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.primaryText }}>
+                        {tempUploadedFile.name}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.secondaryText }}>{tempUploadedFile.size}</Text>
+                    </View>
+                  )}
                   <Text style={[styles.imageReadyText, { color: "#10B981" }]}>✓ File ready for encryption & upload</Text>
                 </View>
               )}
@@ -943,7 +994,7 @@ export default function DocSpaceScreen() {
                 <TouchableOpacity
                   style={[styles.modalShareBtn, { backgroundColor: colors.primaryAccent }]}
                   onPress={handleConfirmUpload}
-                  disabled={isSubmittingDoc}
+                  disabled={isSubmittingDoc || !tempUploadedFile}
                 >
                   {isSubmittingDoc ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
@@ -957,7 +1008,10 @@ export default function DocSpaceScreen() {
 
                 <TouchableOpacity
                   style={[styles.modalCloseBtn, { borderColor: colors.divider }]}
-                  onPress={() => setUploadModalVisible(false)}
+                  onPress={() => {
+                    setUploadModalVisible(false);
+                    setTempUploadedFile(null);
+                  }}
                 >
                   <Text style={[styles.modalCloseBtnText, { color: colors.primaryText }]}>Cancel</Text>
                 </TouchableOpacity>
@@ -1349,5 +1403,31 @@ const getStyles = (colors, _isDarkMode) =>
       fontSize: 11,
       fontWeight: "700",
       marginTop: 6,
+    },
+    rejectionBox: {
+      padding: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginBottom: 10,
+    },
+    rejectionHeader: {
+      fontSize: 11,
+      fontWeight: "800",
+      marginBottom: 2,
+    },
+    rejectionText: {
+      fontSize: 11.5,
+      fontWeight: "600",
+    },
+    instructionsBox: {
+      padding: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginBottom: 8,
+    },
+    instructionsText: {
+      fontSize: 11,
+      fontWeight: "500",
+      lineHeight: 15,
     },
   });
