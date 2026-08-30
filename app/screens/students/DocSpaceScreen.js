@@ -11,7 +11,6 @@ import {
   Modal,
   StatusBar,
   ActivityIndicator,
-  Share,
   Alert,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -30,6 +29,7 @@ import {
 } from "../../services/dataService";
 import { resolveIdentity } from "../../services/identityService";
 import { showToast } from "../../utils/toastService";
+import { shareDocSpaceCertificatePdf } from "../../utils/pdfGenerator";
 
 // ---------------- Fallback Required Doc Definitions ----------------
 const DEFAULT_REQUIRED_DOCS = [
@@ -535,13 +535,19 @@ export default function DocSpaceScreen() {
   // Share / Export Document Certificate
   const handleShareDoc = async (doc) => {
     try {
-      await Share.share({
-        title: `DocSpace Credential - ${doc.title}`,
-        message: `🛡️ EDUNEX DOCSPACE DIGITAL CREDENTIAL\nDocument: ${doc.title}\nSerial No: ${doc.serialNo || "PENDING"}\nHolder: ${studentName} (${studentRollNo})\nCategory: ${doc.category}\nStatus: ${doc.status.toUpperCase()}\nVerified By: ${doc.verifiedBy || "Registrar Office"}\nSecured via EduNex Cryptographic Vault.`,
+      await shareDocSpaceCertificatePdf({
+        doc,
+        student: {
+          name: studentName,
+          rollNo: studentRollNo,
+          department: "Artificial Intelligence & Data Science",
+          year: "III Year",
+        },
       });
-      showToast("DocSpace credential shared!", "success");
+      showToast("Official DocSpace PDF certificate generated!", "success");
     } catch (err) {
       console.log("Share error:", err);
+      showToast("Could not generate DocSpace PDF", "error");
     }
   };
 

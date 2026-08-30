@@ -11,7 +11,6 @@ import {
   Image,
   Animated,
   RefreshControl,
-  Share,
   Alert,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -28,6 +27,7 @@ import { api } from "../../services/api";
 import { resolveIdentity } from "../../services/identityService";
 import { getRandomInterestingNickname, getDeterministicNickname } from "../../utils/nicknameGenerator";
 import { formatDeptName } from "../../utils/deptFormatter";
+import { shareStudentIdCardPdf } from "../../utils/pdfGenerator";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
 const PROFILE_IMAGE_KEY = "student_profile_image_v3";
@@ -247,13 +247,16 @@ export default function ProfileScreen({ onLogout }) {
 
   const handleShareIdCard = async () => {
     try {
-      await Share.share({
-        title: `Digital Student ID - ${user.name}`,
-        message: `🎓 EDUNEX DIGITAL STUDENT IDENTITY CARD\nName: ${user.name}\nRoll No: ${user.id} · Reg No: ${user.regNo}\nProgram: ${user.program}\nDepartment: ${user.department}\nBlood Group: ${user.bloodGroup}\nValid Upto: ${user.batch || "—"} · Status: ACTIVE & VERIFIED`,
+      await shareStudentIdCardPdf({
+        student: {
+          ...user,
+          rollNo: user.rollNo || user.id,
+        },
       });
-      showToast("Student ID credential shared!", "success");
+      showToast("Official Student ID Pass PDF generated!", "success");
     } catch (err) {
       console.log("Share error:", err);
+      showToast("Could not generate ID Pass PDF", "error");
     }
   };
 

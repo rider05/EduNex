@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   RefreshControl,
   TextInput,
-  Share,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
@@ -16,6 +15,7 @@ import PaymentModal from "../students/modals/PaymentModal";
 import { getStudentFees, getParentData, getInstitutions } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
+import { shareFeeReceiptPdf } from "../../utils/pdfGenerator";
 
 const DEFAULT_INVOICES = [];
 
@@ -117,13 +117,27 @@ export default function FeesParent() {
 
   const handleShareReceipt = async (receipt) => {
     try {
-      await Share.share({
-        title: `Fee Tax Receipt - ${receipt.receiptNo}`,
-        message: `📄 EDUNEX PARENT FEE PAYMENT RECEIPT\nWard: ${wardName || "—"} (${rollNo || "—"})\nReceipt No: ${receipt.receiptNo}\nItem: ${receipt.title}\nAmount: ₹${receipt.amount.toLocaleString("en-IN")}\nDate: ${receipt.date}\nPayment Mode: ${receipt.method}\nTransaction Ref: ${receipt.txnId}\nStatus: VERIFIED & ACCOUNTED`,
+      await shareFeeReceiptPdf({
+        receipt: {
+          id: receipt.receiptNo || receipt.id,
+          receiptNo: receipt.receiptNo,
+          date: receipt.date,
+          amount: `₹${(receipt.amount || 0).toLocaleString("en-IN")}`,
+          mode: receipt.method || "Online Bank Transfer",
+          transactionId: receipt.txnId,
+          breakdown: [
+            { item: receipt.title || "Academic Term / Tuition Fee", amount: `₹${(receipt.amount || 0).toLocaleString("en-IN")}` },
+          ],
+        },
+        student: {
+          name: wardName || "Ward",
+          rollNo: rollNo || "—",
+        },
       });
-      showToast("Payment receipt shared!", "success");
+      showToast("Official PDF receipt generated!", "success");
     } catch (err) {
       console.log("Share error:", err);
+      showToast("Could not generate PDF receipt", "error");
     }
   };
 

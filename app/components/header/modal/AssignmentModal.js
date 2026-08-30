@@ -7,12 +7,12 @@ import {
   Animated,
   TouchableOpacity,
   ScrollView,
-  Share,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../../context/ThemeContext";
 import { showToast } from "../../../utils/toastService";
 import { api } from "../../../services/api";
+import { shareAssignmentBriefPdf } from "../../../utils/pdfGenerator";
 
 export default function AssignmentModal({ visible, onClose, colors: propColors }) {
   const theme = useTheme();
@@ -77,17 +77,25 @@ export default function AssignmentModal({ visible, onClose, colors: propColors }
 
   const handleShare = async () => {
     try {
-      const summary = assignments.map(
-        (a) => `📘 ${a.course}\nTask: ${a.title}\nSubmitted: ${a.submitted} (Pending: ${a.pending})\nDue: ${a.dueDate}`
-      ).join("\n\n");
-
-      await Share.share({
-        title: "Assignment Submission Summary",
-        message: `📋 EDUNEX COURSEWORK SUBMISSION METRICS\nSubmission Rate: ${submissionRate}%\n\n${summary}`,
+      const firstAsg = assignments[0] || {
+        id: "ASG-001",
+        title: "Coursework & Laboratory Problem Sets",
+        subject: "III AI & DS Subjects",
+        dueDate: "15 Sep 2026",
+        description: assignments.map((a) => `• ${a.course}: ${a.title} (Due: ${a.dueDate})`).join("\n"),
+      };
+      await shareAssignmentBriefPdf({
+        assignment: firstAsg,
+        student: {
+          name: "III Year AI & DS Cohort",
+          department: "Artificial Intelligence & Data Science",
+          year: "III Year",
+        },
       });
-      showToast("Assignment metrics shared!", "success");
+      showToast("Official Assignment Task Brief PDF generated!", "success");
     } catch (err) {
       console.log("Share error:", err);
+      showToast("Could not generate Assignment PDF", "error");
     }
   };
 

@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
   FlatList,
   Alert,
-  Share,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -22,6 +21,7 @@ import { api } from "../../../services/api";
 import { getStudentData } from "../../../services/dataService";
 import { resolveIdentity } from "../../../services/identityService";
 import { showToast } from "../../../utils/toastService";
+import { shareLeaveGatePassPdf } from "../../../utils/pdfGenerator";
 
 // ---------------- Leave Category Theming (Applied STRICTLY to pills & category badges) ----------------
 const LEAVE_TYPE_THEMES = {
@@ -424,13 +424,28 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
     const item = leaveItem || existingLeave;
     if (!item) return;
     try {
-      await Share.share({
-        title: `EduNex Digital Gate Pass - ${item.leaveId}`,
-        message: `🛡️ EDUNEX DIGITAL CAMPUS GATE PASS\nPass ID: ${item.leaveId}\nStudent: ${item.studentName} (${item.rollNo})\nDepartment: ${item.dept} · ${item.year}\nCategory: ${item.leaveType}\nStatus: ${item.status?.toUpperCase()}\nPeriod: ${formatDate(item.fromDate)} → ${formatDate(item.toDate)}\nAuthorized via EduNex Autonomous Security.`,
+      await shareLeaveGatePassPdf({
+        leave: {
+          id: item.leaveId || item.id,
+          leaveType: item.leaveType,
+          startDate: formatDate(item.fromDate),
+          endDate: formatDate(item.toDate),
+          days: `${item.days || 1} Day(s)`,
+          reason: item.reason,
+          status: item.status?.toUpperCase() || "APPROVED",
+          approvedBy: "Ms. Z. Ananth Angel (Class Tutor)",
+        },
+        student: {
+          name: item.studentName || "Student",
+          rollNo: item.rollNo || "—",
+          department: item.dept || "Artificial Intelligence & Data Science",
+          year: item.year || "III Year",
+        },
       });
-      showToast("Gate pass shared!", "success");
+      showToast("Official Gate Pass PDF generated!", "success");
     } catch (err) {
       console.log("Share error:", err);
+      showToast("Could not generate Gate Pass PDF", "error");
     }
   };
 

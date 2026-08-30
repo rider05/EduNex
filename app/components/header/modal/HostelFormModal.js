@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
   FlatList,
   Alert,
-  Share,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -22,6 +21,7 @@ import { api } from "../../../services/api";
 import { resolveIdentity } from "../../../services/identityService";
 import { getStudentData } from "../../../services/dataService";
 import { showToast } from "../../../utils/toastService";
+import { shareLeaveGatePassPdf } from "../../../utils/pdfGenerator";
 
 // ---------------- Helpers ----------------
 const formatDate = (value) => {
@@ -394,13 +394,28 @@ export default function HostelFormModal({ visible, onClose }) {
   const handleShareGatePass = async () => {
     if (!existingLeave) return;
     try {
-      await Share.share({
-        title: `Hostel Digital Gate Pass - ${existingLeave.leaveId}`,
-        message: `🛡️ EDUNEX HOSTEL RESIDENCE GATE PASS\nPass ID: ${existingLeave.leaveId}\nResident: ${existingLeave.studentName} (${existingLeave.rollNo})\nAccommodation: ${existingLeave.hostelBlock} · Room ${existingLeave.roomNumber}\nCategory: ${existingLeave.leaveType}\nDeparture (Out): ${formatDate(existingLeave.fromDate)} @ ${existingLeave.outTime || "06:00 AM"}\nReturn (In Curfew): ${formatDate(existingLeave.toDate)} @ ${existingLeave.inTime || "08:30 PM"}\nStatus: APPROVED BY CHIEF WARDEN`,
+      await shareLeaveGatePassPdf({
+        leave: {
+          id: existingLeave.leaveId,
+          leaveType: `Hostel Outing (${existingLeave.leaveType || "Outing"})`,
+          startDate: formatDate(existingLeave.fromDate),
+          endDate: formatDate(existingLeave.toDate),
+          days: `${existingLeave.days || 1} Day(s)`,
+          reason: `Room ${existingLeave.roomNumber || "—"}, ${existingLeave.hostelBlock || "Hostel Block"}. Out: ${existingLeave.outTime || "06:00 AM"}, In: ${existingLeave.inTime || "08:30 PM"}`,
+          status: "APPROVED",
+          approvedBy: "Chief Warden / Resident Advisor",
+        },
+        student: {
+          name: existingLeave.studentName || "Resident Student",
+          rollNo: existingLeave.rollNo || "—",
+          department: "Artificial Intelligence & Data Science",
+          year: "III Year",
+        },
       });
-      showToast("Hostel pass shared!", "success");
+      showToast("Official Hostel Pass PDF generated!", "success");
     } catch (err) {
       console.log("Share error:", err);
+      showToast("Could not generate Hostel Pass PDF", "error");
     }
   };
 

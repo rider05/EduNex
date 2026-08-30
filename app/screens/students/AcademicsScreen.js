@@ -8,7 +8,6 @@ import {
   RefreshControl,
   TextInput,
   Modal,
-  Share,
   ActivityIndicator,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -19,6 +18,7 @@ import { getStudentData, getAssignments, getStudentAttendanceSummary, getSubject
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
 import { formatDeptName } from "../../utils/deptFormatter";
+import { shareCourseSyllabusPdf } from "../../utils/pdfGenerator";
 
 const COURSE_TYPES = ["All Courses", "Theory", "Lab", "Project"];
 const CREDIT_TARGET = 160;
@@ -191,13 +191,14 @@ export default function AcademicsScreen() {
 
   const handleShareSyllabus = async (course) => {
     try {
-      await Share.share({
-        title: `${course.code} - ${course.title} Syllabus & Progress`,
-        message: `📚 ${course.code}: ${course.title}\nDepartment: ${studentData.department} · ${studentData.semester}\nFaculty: ${course.faculty}\nStaff Hours Attended: ${course.staffHours}\nSyllabus Covered: ${course.syllabusCovered}% (${course.unitsCovered})\n\nUNITS:\n${course.units.join("\n")}`,
+      await shareCourseSyllabusPdf({
+        course,
+        student: studentData,
       });
-      showToast("Syllabus dossier shared!", "success");
+      showToast("Official Course Syllabus PDF generated!", "success");
     } catch (err) {
       console.log("Share error:", err);
+      showToast("Could not generate Syllabus PDF", "error");
     }
   };
 

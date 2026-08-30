@@ -9,7 +9,6 @@ import {
   Modal,
   Easing,
   RefreshControl,
-  Share,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import QRCode from "react-native-qrcode-svg";
@@ -21,6 +20,7 @@ import { getStudentData, getGradeLevels, getParentNotices, getInstitutions, getA
 import { SkeletonScreenLoader } from "../../components/common/SkeletonLoader";
 import { formatDeptName } from "../../utils/deptFormatter";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
+import { shareStudentIdCardPdf } from "../../utils/pdfGenerator";
 
 // Modals
 import FeesModal from "./modals/FeesModal";
@@ -164,13 +164,10 @@ export default function DashboardScreen() {
 
   const handleShareIdCard = async () => {
     try {
-      await Share.share({
-        title: `Digital Student ID - ${studentData.name}`,
-        message: `🎓 EDUNEX OFFICIAL STUDENT PASS\nName: ${studentData.name}\nRoll / Reg No: ${studentData.rollNo}\nDepartment: ${studentData.department}\nDate of Birth: ${studentData.dob || "—"}\nBlood Group: ${studentData.bloodGroup || "—"}\nSemester: ${studentData.semester}\nAcademic Batch: ${studentData.batch || "—"}\n\nAuthorized by University Registrar · EduNex Campus OS`,
-      });
-      showToast("ID card summary shared!", "success");
+      await shareStudentIdCardPdf({ student: studentData });
+      showToast("Official Student ID Pass PDF generated!", "success");
     } catch (_err) {
-      /* silent */
+      showToast("Could not generate ID Pass PDF", "error");
     }
   };
 

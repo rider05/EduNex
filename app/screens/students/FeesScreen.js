@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   RefreshControl,
   TextInput,
-  Share,
   Modal,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -17,6 +16,7 @@ import { SkeletonBox, SkeletonListItem } from "../../components/common/SkeletonL
 import { getStudentFees, getStudentData } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
+import { shareFeeReceiptPdf } from "../../utils/pdfGenerator";
 
 // ---------------- Fallback Fees Dataset ----------------
 const DEFAULT_INVOICES = [];
@@ -129,13 +129,24 @@ export default function FeesScreen() {
 
   const handleShareReceipt = async (receipt) => {
     try {
-      await Share.share({
-        title: `Fee Tax Receipt - ${receipt.receiptNo}`,
-        message: `📄 EDUNEX INSTITUTIONAL FEE RECEIPT\nReceipt No: ${receipt.receiptNo}\nItem: ${receipt.title}\nAmount Paid: ₹${receipt.amount.toLocaleString("en-IN")}\nDate & Time: ${receipt.date}\nPayment Mode: ${receipt.method}\nTransaction Ref: ${receipt.txnId}\nStatus: VERIFIED & CLEARED`,
+      await shareFeeReceiptPdf({
+        receipt: {
+          id: receipt.receiptNo || receipt.id,
+          receiptNo: receipt.receiptNo,
+          date: receipt.date,
+          amount: `₹${(receipt.amount || 0).toLocaleString("en-IN")}`,
+          mode: receipt.method || "EduNex NetBanking / UPI",
+          transactionId: receipt.txnId,
+          breakdown: [
+            { item: receipt.title || "Tuition & Academic Term Fee", amount: `₹${(receipt.amount || 0).toLocaleString("en-IN")}` },
+          ],
+        },
+        student: studentInfo || {},
       });
-      showToast("Receipt shared successfully!", "success");
+      showToast("Official PDF receipt generated!", "success");
     } catch (err) {
       console.log("Share receipt error:", err);
+      showToast("Could not generate PDF receipt", "error");
     }
   };
 

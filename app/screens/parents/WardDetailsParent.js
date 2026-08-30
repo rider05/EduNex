@@ -8,7 +8,6 @@ import {
   Linking,
   Alert,
   RefreshControl,
-  Share,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
@@ -16,6 +15,7 @@ import { SkeletonProfileCard, SkeletonKPIRow, SkeletonListItem } from "../../com
 import { getStudentData, getPermits, getSubjects, enrichSubjectFromCatalog } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
+import { shareStudentIdCardPdf } from "../../utils/pdfGenerator";
 
 const DEFAULT_WARD = {};
 
@@ -139,13 +139,24 @@ export default function WardDetailsParent() {
 
   const handleShareWardProfile = async () => {
     try {
-      await Share.share({
-        title: `Ward Academic Profile - ${wardInfo.name}`,
-        message: `🎓 EDUNEX WARD ACADEMIC DOSSIER\nStudent Name: ${wardInfo.name}\nRoll No: ${wardInfo.rollNo} · Reg No: ${wardInfo.regNo}\nProgram: ${wardInfo.dept} (${wardInfo.year})\nCGPA: ${wardInfo.cgpa} / 10.0 (Rank: ${wardInfo.rank})\nAttendance: ${wardInfo.attendance} (${wardInfo.attendanceDays})\nClass Counselor: ${wardInfo.advisor}\nStatus: ENROLLED & ACTIVE`,
+      await shareStudentIdCardPdf({
+        student: {
+          name: wardInfo.name,
+          rollNo: wardInfo.rollNo,
+          department: wardInfo.dept || wardInfo.department,
+          year: wardInfo.year,
+          semester: wardInfo.semester || "5th Semester",
+          batch: "2024-2028",
+          bloodGroup: "—",
+          dob: "—",
+          phone: "—",
+          parent: { name: "Guardian", phone: "—" },
+        },
       });
-      showToast("Ward profile summary shared!", "success");
+      showToast("Official Ward ID Pass PDF generated!", "success");
     } catch (err) {
       console.log("Share error:", err);
+      showToast("Could not generate Ward PDF", "error");
     }
   };
 

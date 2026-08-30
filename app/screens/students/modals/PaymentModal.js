@@ -11,7 +11,6 @@ import {
   Dimensions,
   Platform,
   ActivityIndicator,
-  Share,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
 } from "react-native";
@@ -21,6 +20,7 @@ import QRCode from "react-native-qrcode-svg";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useTheme } from "../../../context/ThemeContext";
 import { showToast } from "../../../utils/toastService";
+import { shareFeeReceiptPdf } from "../../../utils/pdfGenerator";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -221,13 +221,27 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
   const handleShareReceipt = async () => {
     if (!txnDetails) return;
     try {
-      await Share.share({
-        title: `Fee Payment Receipt - ${txnDetails.receiptNo}`,
-        message: `🎓 EDUNEX INSTITUTIONAL FEE PAYMENT RECEIPT\n━━━━━━━━━━━━━━━━━━━━\nReceipt No: ${txnDetails.receiptNo}\nInvoice: ${txnDetails.invoiceNo}\nItem: ${txnDetails.title}\nStudent: ${studentName} (Roll: ${studentRoll})\nAmount Paid: ₹${txnDetails.amount.toLocaleString("en-IN")}\nDate & Time: ${txnDetails.date}\nPayment Mode: ${txnDetails.method}\nTransaction Ref: ${txnDetails.txnId}\nBank Reference: ${txnDetails.bankRef}\nStatus: VERIFIED & CLEARED\n━━━━━━━━━━━━━━━━━━━━\nOfficial Digital Receipt Issued by EduNex Financial Ledger.`,
+      await shareFeeReceiptPdf({
+        receipt: {
+          id: txnDetails.receiptNo,
+          receiptNo: txnDetails.receiptNo,
+          date: txnDetails.date,
+          amount: `₹${(txnDetails.amount || 0).toLocaleString("en-IN")}`,
+          mode: txnDetails.method,
+          transactionId: txnDetails.txnId,
+          breakdown: [
+            { item: txnDetails.title || "Academic Term / Tuition Fee", amount: `₹${(txnDetails.amount || 0).toLocaleString("en-IN")}` },
+          ],
+        },
+        student: {
+          name: studentName,
+          rollNo: studentRoll,
+        },
       });
-      showToast("Digital tax receipt shared!", "success");
+      showToast("Official PDF receipt generated!", "success");
     } catch (err) {
       console.log("Share receipt error:", err);
+      showToast("Could not generate PDF receipt", "error");
     }
   };
 
