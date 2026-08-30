@@ -24,6 +24,9 @@ import { resolveIdentity } from "../../../services/identityService";
 
 const DEPT_CODE_MAP = {
   "AI & DS": "AIDS",
+  "AIDS": "AIDS",
+  "Artificial Intelligence & Data Science": "AIDS",
+  "B.Tech in Artificial Intelligence & Data Science": "AIDS",
   "CSE": "CSE",
   "AIML": "AIML",
   "IT": "IT",
@@ -162,13 +165,15 @@ export default function FullTimetable({ visible = true, onClose }) {
       const res = await api.get("/timetable").catch(() => null);
       const docs = res?.data || [];
       const code = DEPT_CODE_MAP[studentCohort.deptShort] || "AIDS";
-      const match = docs.find(
-        (d) =>
-          d.departmentCode === code ||
-          (d.departmentCode || "").toLowerCase() === code.toLowerCase() ||
-          d.department === studentCohort.department ||
-          d.department === studentCohort.deptShort
-      );
+      const match =
+        docs.find(
+          (d) =>
+            d.departmentCode === code ||
+            (d.departmentCode || "").toLowerCase() === code.toLowerCase() ||
+            d.department === studentCohort.department ||
+            d.department === studentCohort.deptShort ||
+            (d.departmentName && d.departmentName.toLowerCase().includes("intelligence"))
+        ) || docs[0];
 
       if (match?.schedule && Object.keys(match.schedule).length > 0) {
         setTimetableData(normalizeTimetable(match.schedule));
