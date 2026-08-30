@@ -35,15 +35,13 @@ const PROFILE_IMAGE_KEY = "student_profile_image_v3";
 const PROFILE_DATA_KEY = "student_profile_data_v3";
 const NOTIF_PREF_KEY = "student_notifications_v3";
 
-const DEFAULT_USER = {};
-
 export default function ProfileScreen({ onLogout }) {
   const { colors, isDarkMode, toggleTheme } = useTheme();
   const styles = getStyles(colors, isDarkMode);
 
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [user, setUser] = useState(DEFAULT_USER);
+  const [user, setUser] = useState({});
   const [institution, setInstitution] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
 
@@ -72,8 +70,9 @@ export default function ProfileScreen({ onLogout }) {
       const pref = await AsyncStorage.getItem(NOTIF_PREF_KEY);
       if (pref !== null) setIsNotificationsEnabled(JSON.parse(pref));
 
-      const [apiStudent, instRes] = await Promise.all([
+      const [apiStudent, identity, instRes] = await Promise.all([
         getStudentData().catch(() => null),
+        resolveIdentity().catch(() => null),
         getInstitutions().catch(() => []),
       ]);
 
@@ -86,74 +85,82 @@ export default function ProfileScreen({ onLogout }) {
         sessionUser = sessionRaw ? JSON.parse(sessionRaw) : null;
       } catch {}
 
-      if (apiStudent || sessionUser) {
-        const rollSeed = apiStudent?.rollNo || sessionUser?.rollNo || sessionUser?.username || "velu";
+      const s = apiStudent || identity?.student || sessionUser?.profile || sessionUser;
 
-        setUser((prev) => {
-          const initialNick =
-            apiStudent?.nickname ||
-            sessionUser?.nickname ||
-            prev.nickname ||
-            getDeterministicNickname(rollSeed);
+      if (s) {
+        const rollSeed = s.rollNo || s.id || sessionUser?.username || "student";
+        const initialNick =
+          s.nickname ||
+          sessionUser?.nickname ||
+          getDeterministicNickname(rollSeed);
 
-          return {
-            ...prev,
-            name: apiStudent?.name || sessionUser?.profile?.name || sessionUser?.name || prev.name || "Velu",
-            nickname: initialNick,
-            id: apiStudent?.rollNo || apiStudent?.id || prev.id || "STU-2024-AIDS01",
-            regNo: apiStudent?.regNo || prev.regNo || "718124104001",
-            email: apiStudent?.email || sessionUser?.email || prev.email || "velu@edunex.edu",
-            phone: apiStudent?.phone || sessionUser?.mobile || prev.phone || "+91 98000 10001",
-            program: apiStudent?.department || prev.program || "B.Tech - Artificial Intelligence & Data Science",
-            address: apiStudent?.parent?.address || apiStudent?.address || prev.address || "15, Gandhipuram, Coimbatore",
-            bloodGroup: apiStudent?.bloodGroup || prev.bloodGroup || "—",
-            batch: apiStudent?.batch || prev.batch || "2024–2028",
-            department: apiStudent?.department || prev.department || "Artificial Intelligence & Data Science",
-            semester: apiStudent?.semester || prev.semester || "5th Semester",
-            dob: apiStudent?.dob || prev.dob || "15 May 2004",
-            advisor:
-              (typeof apiStudent?.advisor === "string" ? apiStudent.advisor : apiStudent?.advisor?.name) ||
-              apiStudent?.mentorName ||
-              apiStudent?.mentor ||
-              sessionUser?.advisor ||
-              sessionUser?.mentor ||
-              prev.advisor ||
-              "Ms. Z. Ananth Angel",
-            mentorEmail:
-              apiStudent?.mentorEmail ||
-              apiStudent?.advisorEmail ||
-              (typeof apiStudent?.advisor === "object" ? apiStudent.advisor?.email : "") ||
-              sessionUser?.mentorEmail ||
-              prev.mentorEmail ||
-              "ananthangel@edunex.edu",
-            mentorPhone:
-              apiStudent?.mentorPhone ||
-              apiStudent?.advisorPhone ||
-              prev.mentorPhone ||
-              "+91 98000 10008",
-            residentialStatus:
-              apiStudent?.residentialStatus ||
-              (typeof apiStudent?.hostel === "boolean"
-                ? apiStudent.hostel
-                  ? "Hosteler"
-                  : "Day Scholar (Inside)"
-                : apiStudent?.hostel) ||
-              prev.residentialStatus ||
-              "Day Scholar (Inside)",
-            hostel:
-              apiStudent?.residentialStatus ||
-              (typeof apiStudent?.hostel === "boolean"
-                ? apiStudent.hostel
-                  ? "Hosteler"
-                  : "Day Scholar (Inside)"
-                : apiStudent?.hostel) ||
-              prev.hostel ||
-              "Day Scholar (Inside)",
-            fatherName: apiStudent?.parent?.name || prev.fatherName || "Kumar",
-            fatherPhone: apiStudent?.parent?.phone || apiStudent?.parent?.mobile || prev.fatherPhone || "+91 98000 10003",
-            motherName: apiStudent?.motherName || apiStudent?.parent?.motherName || prev.motherName || "Revathi",
-            emergencyContact: apiStudent?.emergencyContact || apiStudent?.parent?.phone || prev.emergencyContact || "+91 98000 10003",
-          };
+        const mentorVal =
+          (typeof s.advisor === "string" ? s.advisor : s.advisor?.name) ||
+          s.mentorName ||
+          s.mentor ||
+          sessionUser?.advisor ||
+          sessionUser?.mentor ||
+          "-";
+
+        const mentorEmailVal =
+          s.mentorEmail ||
+          s.advisorEmail ||
+          (typeof s.advisor === "object" ? s.advisor?.email : "") ||
+          sessionUser?.mentorEmail ||
+          "-";
+
+        const mentorPhoneVal =
+          s.mentorPhone ||
+          s.advisorPhone ||
+          (typeof s.advisor === "object" ? s.advisor?.phone : "") ||
+          sessionUser?.mentorPhone ||
+          "-";
+
+        const advisorDesignationVal =
+          (typeof s.advisor === "object" ? s.advisor?.designation : "") ||
+          s.advisorDesignation ||
+          "-";
+
+        setUser({
+          name: s.name || sessionUser?.name || "-",
+          nickname: initialNick,
+          id: s.rollNo || s.id || "-",
+          regNo: s.regNo || "-",
+          email: s.email || sessionUser?.email || "-",
+          phone: s.phone || s.mobile || sessionUser?.mobile || "-",
+          program: s.department || s.program || "-",
+          address: s.parent?.address || s.address || "-",
+          bloodGroup: s.bloodGroup || "-",
+          batch: s.batch || "-",
+          department: s.department || s.dept || "-",
+          semester: s.semester || "-",
+          dob: s.dob || "-",
+          advisor: mentorVal,
+          mentor: mentorVal,
+          mentorName: mentorVal,
+          mentorEmail: mentorEmailVal,
+          mentorPhone: mentorPhoneVal,
+          advisorDesignation: advisorDesignationVal,
+          residentialStatus:
+            s.residentialStatus ||
+            (typeof s.hostel === "boolean"
+              ? s.hostel
+                ? "Hosteler"
+                : "Day Scholar (Inside)"
+              : s.hostel) ||
+            "-",
+          hostel:
+            s.residentialStatus ||
+            (typeof s.hostel === "boolean"
+              ? s.hostel
+                ? "Hosteler"
+                : "Day Scholar (Inside)"
+              : s.hostel) ||
+            "-",
+          fatherName: s.parent?.name || s.fatherName || "-",
+          fatherPhone: s.parent?.phone || s.parent?.mobile || s.fatherPhone || "-",
+          motherName: s.motherName || s.parent?.motherName || "-",
+          emergencyContact: s.emergencyContact || s.parent?.phone || "-",
         });
       } else {
         const local = await AsyncStorage.getItem(PROFILE_DATA_KEY);
@@ -479,9 +486,15 @@ export default function ProfileScreen({ onLogout }) {
                   <Icon name="school-outline" size={22} color={colors.primaryAccent} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.advisorName, { color: colors.primaryText }]}>{user.advisor}</Text>
-                  <Text style={[styles.advisorEmail, { color: colors.secondaryText }]}>{user.mentorEmail}</Text>
-                  <Text style={[styles.advisorDept, { color: colors.disabledText }]}>Head Class Counselor · Office Hours: 09:00 - 16:30</Text>
+                  <Text style={[styles.advisorName, { color: colors.primaryText }]}>
+                    {user.advisor && user.advisor !== "-" ? user.advisor : user.mentorName && user.mentorName !== "-" ? user.mentorName : "-"}
+                  </Text>
+                  <Text style={[styles.advisorEmail, { color: colors.secondaryText }]}>
+                    {user.mentorEmail && user.mentorEmail !== "-" ? user.mentorEmail : "-"}
+                  </Text>
+                  <Text style={[styles.advisorDept, { color: colors.disabledText }]}>
+                    {user.advisorDesignation && user.advisorDesignation !== "-" ? user.advisorDesignation : "Designated Class Counselor"} {user.mentorPhone && user.mentorPhone !== "-" ? `· ${user.mentorPhone}` : ""}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -500,7 +513,8 @@ export default function ProfileScreen({ onLogout }) {
                 <DataRow icon="identifier" label="Roll Number" value={user.id} colors={colors} />
                 <DataRow icon="school-outline" label="Academic Batch" value={user.batch} colors={colors} />
                 <DataRow icon="domain" label="Department" value={user.department} colors={colors} />
-                <DataRow icon="home-city-outline" label="Residence Status" value={user.residentialStatus || user.hostel || "Day Scholar (Inside)"} colors={colors} />
+                <DataRow icon="account-tie-outline" label="Assigned Mentor" value={user.advisor && user.advisor !== "-" ? user.advisor : user.mentorName || "-"} colors={colors} />
+                <DataRow icon="home-city-outline" label="Residence Status" value={user.residentialStatus || user.hostel || "-"} colors={colors} />
               </View>
             </View>
 
