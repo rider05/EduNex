@@ -12,21 +12,20 @@ import { formatDeptName } from "./deptFormatter";
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const SUBJECT_CODES_MAP = {
-  ML: "Machine Learning",
-  ADT: "Applied Design Thinking",
-  BDA: "Big Data Analytics",
-  "X-AI": "Explainable AI",
-  SE: "Software Engineering",
-  FCC: "Fundamentals of Cloud Computing",
-  "ML LAB": "Machine Learning Laboratory",
-  "BDA LAB": "Big Data Analytics Laboratory",
-  "SE LAB": "Software Engineering Laboratory",
-  IOC: "Industry Oriented Course",
-  "NPTEL / LIB": "NPTEL / Library",
-  "NPTEL/LIB": "NPTEL / Library",
-  MTW: "Mentor & Tutor Ward",
-  SET: "Seminar on Emerging Trends",
-  Placement: "Placement & Training",
+  ML: { title: "Machine Learning", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  ADT: { title: "Applied Design Thinking", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  BDA: { title: "Big Data Analytics", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  "X-AI": { title: "Explainable AI", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  SE: { title: "Software Engineering", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  FCC: { title: "Fundamentals of Cloud Computing", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  "ML LAB": { title: "Machine Learning Laboratory", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  "BDA LAB": { title: "Big Data Analytics Laboratory", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  "SE LAB": { title: "Software Engineering Laboratory", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  IOC: { title: "Industry Oriented Course", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  "NPTEL/LIB": { title: "NPTEL / Library", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  MTW: { title: "Mentor & Tutor Ward", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  SET: { title: "Seminar on Emerging Trends", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  Placement: { title: "Placement & Training", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
 };
 
 /**
@@ -111,10 +110,11 @@ export function generateTimetableHtml({
   // Subject legend items
   const subjectsLegend = Object.entries(SUBJECT_CODES_MAP)
     .map(
-      ([code, title]) => `
+      ([code, item]) => `
       <div class="legend-item">
         <span class="legend-code">${code}</span>
-        <span class="legend-title">${title}</span>
+        <span class="legend-title">${item.title}</span>
+        <span class="legend-faculty" style="color: #64748b; font-size: 8px;">(${item.faculty})</span>
       </div>
     `
     )

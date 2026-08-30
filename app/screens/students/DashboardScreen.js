@@ -85,9 +85,9 @@ export default function DashboardScreen() {
           schedule: data.schedule || [],
           subjects: data.subjects || [],
           gradeLevels: gradeLevels || [],
-          bloodGroup: data.bloodGroup || "O+",
-          batch: data.batch || "2023 - 2027",
-          dob: data.dob || data.dateOfBirth || data.birthDate || "15 May 2004",
+          bloodGroup: data.bloodGroup || "—",
+          batch: data.batch || "—",
+          dob: data.dob || data.dateOfBirth || data.birthDate || "—",
         });
       }
 
@@ -166,7 +166,7 @@ export default function DashboardScreen() {
     try {
       await Share.share({
         title: `Digital Student ID - ${studentData.name}`,
-        message: `🎓 EDUNEX OFFICIAL STUDENT PASS\nName: ${studentData.name}\nRoll / Reg No: ${studentData.rollNo}\nDepartment: ${studentData.department}\nDate of Birth: ${studentData.dob || "15 May 2004"}\nBlood Group: ${studentData.bloodGroup || "O+"}\nSemester: ${studentData.semester}\nAcademic Batch: ${studentData.batch || "2023 - 2027"}\n\nAuthorized by University Registrar · EduNex Campus OS`,
+        message: `🎓 EDUNEX OFFICIAL STUDENT PASS\nName: ${studentData.name}\nRoll / Reg No: ${studentData.rollNo}\nDepartment: ${studentData.department}\nDate of Birth: ${studentData.dob || "—"}\nBlood Group: ${studentData.bloodGroup || "—"}\nSemester: ${studentData.semester}\nAcademic Batch: ${studentData.batch || "—"}\n\nAuthorized by University Registrar · EduNex Campus OS`,
       });
       showToast("ID card summary shared!", "success");
     } catch (_err) {
@@ -695,7 +695,7 @@ export default function DashboardScreen() {
                     <Icon name="calendar-account" size={13} color={colors.primaryAccent} />
                     <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Date of Birth (DOB)</Text>
                   </View>
-                  <Text style={[styles.idCellValue, { color: colors.primaryText }]}>{studentData.dob || "15 May 2004"}</Text>
+                  <Text style={[styles.idCellValue, { color: colors.primaryText }]}>{studentData.dob || "—"}</Text>
                 </View>
                 <View style={[styles.idCellDivider, { backgroundColor: colors.divider }]} />
                 <View style={styles.idDetailCell}>
@@ -703,7 +703,7 @@ export default function DashboardScreen() {
                     <Icon name="water-percent" size={13} color="#EF4444" />
                     <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Blood Group</Text>
                   </View>
-                  <Text style={[styles.idCellValue, { color: "#EF4444" }]}>{studentData.bloodGroup || "O+"}</Text>
+                  <Text style={[styles.idCellValue, { color: "#EF4444" }]}>{studentData.bloodGroup || "—"}</Text>
                 </View>
               </View>
 
@@ -714,7 +714,7 @@ export default function DashboardScreen() {
                     <Icon name="book-education-outline" size={13} color={colors.primaryAccent} />
                     <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Semester</Text>
                   </View>
-                  <Text style={[styles.idCellValue, { color: colors.primaryText }]}>{studentData.semester || "Sem V"}</Text>
+                  <Text style={[styles.idCellValue, { color: colors.primaryText }]}>{studentData.semester || "—"}</Text>
                 </View>
                 <View style={[styles.idCellDivider, { backgroundColor: colors.divider }]} />
                 <View style={styles.idDetailCell}>
@@ -722,14 +722,14 @@ export default function DashboardScreen() {
                     <Icon name="calendar-check-outline" size={13} color="#10B981" />
                     <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Academic Batch</Text>
                   </View>
-                  <Text style={[styles.idCellValue, { color: "#10B981" }]}>{studentData.batch || "2023 - 2027"}</Text>
+                  <Text style={[styles.idCellValue, { color: "#10B981" }]}>{studentData.batch || "—"}</Text>
                 </View>
               </View>
 
               {/* Dynamic QR Code */}
               <View style={[styles.qrCodeWrapper, { backgroundColor: "#FFFFFF", borderColor: colors.divider }]}>
                 <QRCode
-                  value={`EDUNEX:STUDENT|ROLL:${studentData.rollNo || "25ACSE001"}|NAME:${studentData.name || "Student"}|DOB:${studentData.dob || "15 May 2004"}|BLOOD:${studentData.bloodGroup || "O+"}|BATCH:${studentData.batch || "2023-2027"}`}
+                  value={`EDUNEX:STUDENT|ROLL:${studentData.rollNo || "—"}|NAME:${studentData.name || "—"}|DOB:${studentData.dob || "—"}|BLOOD:${studentData.bloodGroup || "—"}|BATCH:${studentData.batch || "—"}`}
                   size={120}
                   color="#0F172A"
                   backgroundColor="#FFFFFF"

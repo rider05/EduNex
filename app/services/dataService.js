@@ -171,7 +171,7 @@ export async function getStudentData() {
     name: identity.user?.profile?.name || identity.username || "Student",
     nickname: getDeterministicNickname(rollNo),
     residentialStatus: "Day Scholar (Inside)",
-    motherName: "Lakshmi M",
+    motherName: "—",
     email: `${identity.username}@edunex.edu`,
     phone: "+91 98000 00000",
     gender: "Male",

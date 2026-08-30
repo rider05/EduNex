@@ -131,7 +131,7 @@ export default function ProfileScreen({ onLogout }) {
               "Day Scholar (Inside)",
             fatherName: apiStudent?.parent?.name || prev.fatherName || "",
             fatherPhone: apiStudent?.parent?.phone || apiStudent?.parent?.mobile || prev.fatherPhone || "",
-            motherName: apiStudent?.motherName || apiStudent?.parent?.motherName || prev.motherName || "Lakshmi M",
+            motherName: apiStudent?.motherName || apiStudent?.parent?.motherName || prev.motherName || "—",
             emergencyContact: apiStudent?.emergencyContact || apiStudent?.parent?.phone || prev.emergencyContact || "",
           };
         });
