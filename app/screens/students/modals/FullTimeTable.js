@@ -39,17 +39,7 @@ const DEPT_CODE_MAP = {
 
 // Normalizers for DB timetable rows: seeded docs use time/duration/subject/
 // teacher/room/isBreak and omit period/code/type, which the UI expects.
-const DEFAULT_STAFF_NAME = "Ms. Z. Ananth Angel, AP/AI&DS";
-const DEFAULT_STAFF_DETAILS = {
-  name: "Ms. Z. Ananth Angel",
-  designation: "Assistant Professor & Class Tutor (III AI&DS-A)",
-  department: "Artificial Intelligence & Data Science",
-  departmentShort: "AI & DS",
-  email: "ananthangel@edunex.edu",
-  phone: "+91 98000 10005",
-  room: "D205",
-  cabin: "Department of AI & DS, Cabin D205",
-};
+const DEFAULT_STAFF_NAME = "—";
 
 const normalizeTimetableRow = (row, i) => {
   if (row.isBreak) {
@@ -76,7 +66,7 @@ const normalizeTimetableRow = (row, i) => {
     type: row.type || (isLab ? "Lab" : "Theory"),
     room: row.room || (isLab ? "AI & DS Lab" : "D205"),
     teacher: teacher,
-    teacherDetails: row.teacherDetails || DEFAULT_STAFF_DETAILS,
+    teacherDetails: row.teacherDetails || null,
   };
 };
 
@@ -684,9 +674,9 @@ export default function FullTimetable({ visible = true, onClose }) {
                             <Icon name="account-tie" size={24} color="#FFFFFF" />
                           </View>
                           <View style={{ flex: 1 }}>
-                            <Text style={[styles.facName, { color: colors.primaryText }]}>{selectedClass.teacher || "Ms. Z. Ananth Angel, AP/AI&DS"}</Text>
+                            <Text style={[styles.facName, { color: colors.primaryText }]}>{selectedClass.teacher || "—"}</Text>
                             <Text style={[styles.facCabin, { color: colors.secondaryText }]}>
-                              {selectedClass.teacherDetails?.cabin || "Department of AI & DS, Cabin D205"}
+                              {selectedClass.teacherDetails?.cabin || selectedClass.teacherDetails?.designation || "—"}
                             </Text>
                           </View>
                         </View>

@@ -12,20 +12,20 @@ import { formatDeptName } from "./deptFormatter";
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const SUBJECT_CODES_MAP = {
-  ML: { title: "Machine Learning", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  ADT: { title: "Applied Design Thinking", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  BDA: { title: "Big Data Analytics", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  "X-AI": { title: "Explainable AI", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  SE: { title: "Software Engineering", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  FCC: { title: "Fundamentals of Cloud Computing", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  "ML LAB": { title: "Machine Learning Laboratory", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  "BDA LAB": { title: "Big Data Analytics Laboratory", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  "SE LAB": { title: "Software Engineering Laboratory", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  IOC: { title: "Industry Oriented Course", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  "NPTEL/LIB": { title: "NPTEL / Library", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  MTW: { title: "Mentor & Tutor Ward", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  SET: { title: "Seminar on Emerging Trends", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
-  Placement: { title: "Placement & Training", faculty: "Ms. Z. Ananth Angel, AP/AI&DS" },
+  ML: { title: "Machine Learning", faculty: "Mr. S. Chandramohan" },
+  ADT: { title: "Applied Design Thinking", faculty: "Mr. B. Avinash" },
+  BDA: { title: "Big Data Analytics", faculty: "Dr. Preethi Harris" },
+  "X-AI": { title: "Explainable AI", faculty: "Ms. S. Geeviga" },
+  SE: { title: "Software Engineering", faculty: "Ms. Arul Mozhi" },
+  FCC: { title: "Fundamentals of Cloud Computing", faculty: "Ms. L. Saranya" },
+  "ML LAB": { title: "Machine Learning Laboratory", faculty: "Mr. S. Chandramohan" },
+  "BDA LAB": { title: "Big Data Analytics Laboratory", faculty: "Ms. M. Malliga" },
+  "SE LAB": { title: "Software Engineering Laboratory", faculty: "Ms. Arul Mozhi" },
+  IOC: { title: "Industry Oriented Course", faculty: "Ms. Arul Mozhi" },
+  "NPTEL/LIB": { title: "NPTEL / Library", faculty: "Ms. Z. Ananth Angel" },
+  MTW: { title: "Mentor & Tutor Ward", faculty: "Ms. Z. Ananth Angel" },
+  SET: { title: "Seminar on Emerging Trends", faculty: "Ms. Z. Ananth Angel" },
+  Placement: { title: "Placement & Training", faculty: "Ms. M. Malliga" },
 };
 
 /**
