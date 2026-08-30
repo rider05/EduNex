@@ -284,35 +284,79 @@ export async function getStudentFees() {
   let studentId = null;
   try {
     const identity = await resolveIdentity();
-    studentId = identity.studentId;
+    studentId = identity.studentId || identity.wardRollNo || identity.rollNo || identity.id || identity.username;
   } catch {}
 
   const student = (await getStudentData()) || (await getDatabase()).primaryStudent;
+  if (!studentId && student) {
+    studentId = student.id || student.rollNo;
+  }
+
+  let feesObj = {
+    total: 160000,
+    paid: 125000,
+    due: 35000,
+    dueInvoices: [],
+    history: [],
+    breakdown: [],
+    scholarship: null,
+    ...(student?.fees || {}),
+  };
 
   if (studentId) {
-    const [invoicesRes, historyRes] = await Promise.allSettled([
-      api.get(`/students/${studentId}/invoices`),
-      api.get(`/students/${studentId}/history`),
-    ]);
-    const feesObj = { ...(student?.fees || {}) };
-    if (invoicesRes.status === "fulfilled" && Array.isArray(invoicesRes.value?.data) && invoicesRes.value.data.length > 0) {
-      feesObj.dueInvoices = invoicesRes.value.data;
+    try {
+      const [studentDocRes, feesListRes] = await Promise.allSettled([
+        api.get(`/students/${studentId}`),
+        api.get(`/fees?studentId=${studentId}`),
+      ]);
+
+      if (studentDocRes.status === "fulfilled" && studentDocRes.value?.data?.fees) {
+        feesObj = { ...feesObj, ...studentDocRes.value.data.fees };
+      }
+
+      if (feesListRes.status === "fulfilled" && Array.isArray(feesListRes.value?.data) && feesListRes.value.data.length > 0) {
+        const feeRecords = feesListRes.value.data;
+        const dueItems = feeRecords.filter(f => f.status?.toLowerCase() === "pending" || f.status?.toLowerCase() === "due");
+        const paidItems = feeRecords.filter(f => f.status?.toLowerCase() === "paid" || f.status?.toLowerCase() === "completed");
+
+        if (dueItems.length > 0) {
+          feesObj.dueInvoices = dueItems.map(d => ({
+            id: d.id || d.invoiceId,
+            invoiceNo: d.invoiceId || d.invoiceNo || d.id,
+            title: d.item || d.title,
+            category: d.category || "Tuition",
+            amount: Number(d.amount) || 0,
+            dueDate: d.dueDate || "15 Sep 2026",
+            status: "due",
+            term: d.semester || "5th Semester",
+            description: d.description || `${d.semester || "5th Semester"} Tuition & Lab Fee`,
+            icon: "school-outline",
+            iconBg: "#2563EB",
+          }));
+        }
+
+        if (paidItems.length > 0) {
+          feesObj.history = paidItems.map(p => ({
+            id: p.id || p.invoiceId,
+            receiptNo: p.receiptNo || p.invoiceId || p.id,
+            title: p.item || p.title,
+            amount: Number(p.amount) || 0,
+            date: p.paymentDate || p.date || "10 Jan 2026",
+            method: p.method || "Online NetBanking / UPI",
+            txnId: p.txnId || p.transactionId || `TXN-${p.id}`,
+            status: "completed",
+          }));
+        }
+      }
+    } catch (e) {
+      console.log("Error querying live fees from backend:", e);
     }
-    if (historyRes.status === "fulfilled" && Array.isArray(historyRes.value?.data) && historyRes.value.data.length > 0) {
-      feesObj.history = historyRes.value.data;
-    }
-    // If still no invoices, use student's embedded fees
-    if (!feesObj.dueInvoices?.length && student?.fees?.dueInvoices) {
-      feesObj.dueInvoices = student.fees.dueInvoices;
-    }
-    if (!feesObj.history?.length && student?.fees?.history) {
-      feesObj.history = student.fees.history;
-    }
+
     await mergeIntoCache({ primaryStudent: { ...(student || { id: studentId }), fees: feesObj } });
     return feesObj;
   }
 
-  return student?.fees || { dueInvoices: [], history: [] };
+  return student?.fees || feesObj;
 }
 
 export async function getStudentSchedule() {
@@ -713,17 +757,29 @@ export async function getParentData() {
   if (!parent && identity.parent) parent = identity.parent;
 
   let ward = null;
-  if (parent?.wardRollNo || identity.wardRollNo) {
+  const targetRoll = parent?.wardRollNo || identity.wardRollNo || parent?.studentID;
+  if (targetRoll) {
     ward =
       (await api
-        .get("/students", { roll: parent?.wardRollNo || identity.wardRollNo, limit: 1 })
+        .get(`/students/${encodeURIComponent(targetRoll)}`)
+        .then((r) => r?.data || null)
+        .catch(() => null)) ||
+      (await api
+        .get("/students", { rollNo: targetRoll, limit: 1 })
         .then((r) => r?.data?.[0] || null)
-        .catch(() => null)) || null;
+        .catch(() => null)) ||
+      (await api
+        .get("/students", { roll: targetRoll, limit: 1 })
+        .then((r) => r?.data?.[0] || null)
+        .catch(() => null)) ||
+      (await api
+        .get("/students", { q: targetRoll, limit: 1 })
+        .then((r) => r?.data?.[0] || null)
+        .catch(() => null));
   }
 
-  if (parent && !ward && (parent.wardRollNo || identity.wardRollNo)) {
-    // Ward not found - get or create it
-    ward = await getStudentData();
+  if (parent && !ward) {
+    ward = identity.student || (await getStudentData());
   }
 
   if (!parent && !ward) {
@@ -1253,3 +1309,30 @@ export async function deleteStudentDocument(docId) {
     throw err;
   }
 }
+
+// ---------------- Bug Reports & Developer Feedback ----------------
+export async function submitBugReport(reportPayload) {
+  try {
+    const res = await api.post("/bugReports", {
+      ...reportPayload,
+      status: reportPayload.status || "open",
+      createdAt: reportPayload.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    return res?.data || res;
+  } catch (err) {
+    console.warn("submitBugReport error:", err);
+    throw err;
+  }
+}
+
+export async function getBugReports(params = {}) {
+  try {
+    const res = await api.get("/bugReports", { limit: 100, ...params });
+    return Array.isArray(res?.data) ? res.data : [];
+  } catch (err) {
+    console.warn("getBugReports error:", err);
+    return [];
+  }
+}
+

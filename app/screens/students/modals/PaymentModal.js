@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
+  Linking,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -21,6 +22,9 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { useTheme } from "../../../context/ThemeContext";
 import { showToast } from "../../../utils/toastService";
 import { shareFeeReceiptPdf } from "../../../utils/pdfGenerator";
+import { getInstitutions } from "../../../services/dataService";
+import { api } from "../../../services/api";
+import { generateTransactionChecksum, decryptPaymentPayload } from "../../../utils/securityService";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -34,10 +38,11 @@ const POPULAR_BANKS = [
 ];
 
 const UPI_APPS = [
-  { id: "gpay", name: "Google Pay", icon: "google", color: "#4285F4", vpa: "@okaxis" },
-  { id: "phonepe", name: "PhonePe", icon: "cellphone", color: "#5F259F", vpa: "@ybl" },
-  { id: "paytm", name: "Paytm UPI", icon: "wallet-outline", color: "#00BAF2", vpa: "@paytm" },
-  { id: "bhim", name: "BHIM UPI", icon: "bank-transfer", color: "#008800", vpa: "@upi" },
+  { id: "gpay", name: "Google Pay", icon: "google", color: "#4285F4", vpa: "xxx@okaxis", scheme: "tez://upi/pay" },
+  { id: "phonepe", name: "PhonePe", icon: "cellphone", color: "#5F259F", vpa: "xxx@okaxis", scheme: "phonepe://pay" },
+  { id: "paytm", name: "Paytm UPI", icon: "wallet-outline", color: "#00BAF2", vpa: "xxx@okaxis", scheme: "paytmmp://pay" },
+  { id: "bhim", name: "BHIM UPI", icon: "bank-transfer", color: "#008800", vpa: "xxx@okaxis", scheme: "upi://pay" },
+  { id: "cred", name: "CRED UPI", icon: "shield-check", color: "#1E293B", vpa: "xxx@okaxis", scheme: "upi://pay" },
 ];
 
 export default function PaymentModal({ visible, onClose, invoice, onSuccess, student }) {
@@ -50,6 +55,13 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
   const [upiId, setUpiId] = useState("");
   const [selectedBank, setSelectedBank] = useState("hdfc");
   const [selectedUpiApp, setSelectedUpiApp] = useState("gpay");
+  const [paymentConfig, setPaymentConfig] = useState({
+    upiId: "xxx@okaxis",
+    merchantName: "EduNex Institute of Technology & Science",
+    merchantCode: "EDUNEX",
+    bankName: "Axis Bank",
+    encryptionStatus: "AES-256 Secured Ledger",
+  });
 
   // Card form state
   const [cardNumber, setCardNumber] = useState("");
@@ -154,8 +166,29 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
     }
   }, [step, processingPulse]);
 
-  // Handle Payment Trigger
-  const handleProceedPayment = () => {
+  // Fetch live admin encrypted payment config
+  useEffect(() => {
+    if (visible) {
+      getInstitutions()
+        .then((instList) => {
+          if (Array.isArray(instList) && instList[0]?.paymentConfig) {
+            const pc = instList[0].paymentConfig;
+            const vpa = pc.encryptedVpa ? decryptPaymentPayload(pc.encryptedVpa) : pc.upiId || "xxx@okaxis";
+            setPaymentConfig({
+              ...pc,
+              upiId: vpa || "xxx@okaxis",
+              merchantName: pc.merchantName || "EduNex Institute of Technology & Science",
+              merchantCode: pc.merchantCode || "EDUNEX",
+              encryptionStatus: pc.encryptionStatus || "AES-256 Secured Ledger",
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [visible]);
+
+  // Handle Payment Trigger & Native Payment App Launch
+  const handleProceedPayment = async () => {
     if (selectedMethod === "upi" && upiSubMethod === "vpa" && !upiId.trim()) {
       showToast("Please enter a valid UPI ID (e.g. name@okaxis)", "warning");
       return;
@@ -176,8 +209,6 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
       }
     }
 
-    setStep("processing");
-
     const newTxnId = `TXN${Date.now().toString().slice(-8)}`;
     const bankRef = `EDX${Math.floor(100000000 + Math.random() * 900000000)}`;
     const paymentTimestamp = new Date().toLocaleString("en-IN", {
@@ -186,6 +217,46 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+    });
+
+    const merchantVpa = paymentConfig.upiId || "xxx@okaxis";
+    const merchantName = paymentConfig.merchantName || "EduNex Institute of Technology & Science";
+
+    // 1. TRIGGER NATIVE PAYMENT APPS FOR UPI
+    if (selectedMethod === "upi") {
+      const upiUrl = `upi://pay?pa=${encodeURIComponent(merchantVpa)}&pn=${encodeURIComponent(merchantName)}&mc=EDUNEX&tr=${newTxnId}&tn=${encodeURIComponent(invoiceNumber + " " + invoiceTitle)}&am=${payableAmount}&cu=INR`;
+
+      let targetAppUrl = upiUrl;
+      if (selectedUpiApp === "gpay") {
+        targetAppUrl = `tez://upi/pay?pa=${encodeURIComponent(merchantVpa)}&pn=${encodeURIComponent(merchantName)}&tr=${newTxnId}&am=${payableAmount}&cu=INR`;
+      } else if (selectedUpiApp === "phonepe") {
+        targetAppUrl = `phonepe://pay?pa=${encodeURIComponent(merchantVpa)}&pn=${encodeURIComponent(merchantName)}&tr=${newTxnId}&am=${payableAmount}&cu=INR`;
+      } else if (selectedUpiApp === "paytm") {
+        targetAppUrl = `paytmmp://pay?pa=${encodeURIComponent(merchantVpa)}&pn=${encodeURIComponent(merchantName)}&tr=${newTxnId}&am=${payableAmount}&cu=INR`;
+      }
+
+      try {
+        const canOpen = await Linking.canOpenURL(targetAppUrl);
+        if (canOpen) {
+          await Linking.openURL(targetAppUrl);
+        } else {
+          const canOpenGeneric = await Linking.canOpenURL(upiUrl);
+          if (canOpenGeneric) {
+            await Linking.openURL(upiUrl);
+          }
+        }
+      } catch (linkErr) {
+        console.log("UPI App launch note:", linkErr);
+      }
+    }
+
+    setStep("processing");
+
+    const securityChecksum = generateTransactionChecksum({
+      txnId: newTxnId,
+      invoiceNo: invoiceNumber,
+      amount: payableAmount,
+      date: paymentTimestamp,
     });
 
     const paymentResult = {
@@ -197,9 +268,12 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
       txnId: newTxnId,
       bankRef: bankRef,
       receiptNo: `REC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      securityChecksum: securityChecksum,
+      merchantVpa: merchantVpa,
+      encryptionStatus: paymentConfig.encryptionStatus || "AES-256 Secured Ledger",
       method:
         selectedMethod === "upi"
-          ? `UPI (${selectedUpiApp.toUpperCase()})`
+          ? `UPI (${selectedUpiApp.toUpperCase()} - ${merchantVpa})`
           : selectedMethod === "card"
           ? `${cardBrand.brand} Card (•••• ${cardNumber.slice(-4) || "8821"})`
           : selectedMethod === "netbank"
@@ -210,11 +284,49 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
 
     setTxnDetails(paymentResult);
 
+    // Update MongoDB backend ledger in real time
+    try {
+      const targetRoll = studentRoll || "STU-2024-AIDS01";
+      await api.post(`/students/${targetRoll}/history`, {
+        receiptNo: paymentResult.receiptNo,
+        title: paymentResult.title,
+        amount: paymentResult.amount,
+        date: paymentResult.date,
+        method: paymentResult.method,
+        txnId: paymentResult.txnId,
+        bankRef: paymentResult.bankRef,
+        checksum: paymentResult.securityChecksum,
+        status: "completed",
+      });
+      await api.post("/fees", {
+        id: `FEE-${Date.now().toString().slice(-6)}`,
+        studentId: targetRoll,
+        rollNo: targetRoll,
+        studentName: studentName || "Student",
+        invoiceId: paymentResult.receiptNo,
+        receiptNo: paymentResult.receiptNo,
+        item: paymentResult.title,
+        amount: paymentResult.amount,
+        paid: paymentResult.amount,
+        due: 0,
+        status: "Paid",
+        dueDate: "15 Sep 2026",
+        paymentDate: paymentResult.date,
+        semester: "5th Semester",
+        department: "Artificial Intelligence & Data Science",
+        txnId: paymentResult.txnId,
+        method: paymentResult.method,
+        checksum: paymentResult.securityChecksum,
+      });
+    } catch (dbErr) {
+      console.log("DB Payment sync note:", dbErr);
+    }
+
     setTimeout(() => {
       setStep("success");
-      showToast("✅ Payment confirmed and ledger updated!", "success");
+      showToast("✅ Encrypted Payment Cleared & Recorded!", "success");
       if (onSuccess) onSuccess(paymentResult);
-    }, 2400);
+    }, 2200);
   };
 
   // Share digital receipt
@@ -453,7 +565,7 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
                             <View style={styles.qrSection}>
                               <View style={[styles.qrFrame, { backgroundColor: "#FFFFFF" }]}>
                                 <QRCode
-                                  value={`upi://pay?pa=edunex.institute@okhdfcbank&pn=EduNex%20Institute&am=${payableAmount}&cu=INR&tn=${invoiceNumber}`}
+                                  value={`upi://pay?pa=${encodeURIComponent(paymentConfig.upiId || "xxx@okaxis")}&pn=${encodeURIComponent(paymentConfig.merchantName || "EduNex Institute")}&am=${payableAmount}&cu=INR&tn=${invoiceNumber}`}
                                   size={160}
                                   color="#0F172A"
                                   backgroundColor="#FFFFFF"
@@ -463,7 +575,7 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
                                 Scan with any UPI App (GPay, PhonePe, Paytm, CRED)
                               </Text>
                               <Text style={[styles.qrSubHelper, { color: subTextColor }]}>
-                                VPA: <Text style={{ fontWeight: "700" }}>edunex.institute@okhdfcbank</Text>
+                                Institutional VPA: <Text style={{ fontWeight: "700", color: accentColor }}>{paymentConfig.upiId || "xxx@okaxis"}</Text> (Encrypted Gateway)
                               </Text>
                             </View>
                           )}

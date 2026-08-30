@@ -81,7 +81,8 @@ async function resolveParentDoc(user, username) {
   const profile = user?.profile || {};
   let doc =
     (await fetchOneById("/parents", profile.parentId || profile.id)) ||
-    (await searchFirst("/parents", { wardRollNo: profile.wardRollNo || username })) ||
+    (await searchFirst("/parents", { username: username })) ||
+    (await searchFirst("/parents", { wardRollNo: profile.wardRollNo })) ||
     (await searchFirst("/parents", { q: username }));
   if (!doc && profile.name) {
     doc = await searchFirst("/parents", { q: profile.name });
@@ -147,12 +148,16 @@ export async function resolveIdentity(force = false) {
       if (parent) {
         identity.parent = parent;
         identity.parentId = parent.id || parent._id || null;
-        identity.wardRollNo = parent.wardRollNo || parent.ward_roll_no || user?.profile?.wardRollNo || null;
-        identity.student = identity.wardRollNo
-          ? (await searchFirst("/students", { roll: identity.wardRollNo })) ||
-            (await searchFirst("/students", { q: identity.wardRollNo }))
-          : null;
-        identity.studentId = identity.student?.id || identity.student?._id || null;
+        identity.wardRollNo = parent.wardRollNo || parent.studentID || parent.ward_roll_no || user?.profile?.wardRollNo || null;
+        if (identity.wardRollNo) {
+          identity.student =
+            (await fetchOneById("/students", identity.wardRollNo)) ||
+            (await searchFirst("/students", { rollNo: identity.wardRollNo })) ||
+            (await searchFirst("/students", { roll: identity.wardRollNo })) ||
+            (await searchFirst("/students", { q: identity.wardRollNo }));
+        }
+        identity.studentId = identity.student?.id || identity.student?._id || identity.wardRollNo || null;
+        identity.rollNo = identity.wardRollNo;
       }
     } else if (role === "admin") {
       const admin = await resolveAdminDoc(user, username);

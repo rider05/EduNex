@@ -20,6 +20,7 @@ import { SkeletonProfileCard, SkeletonListItem } from "../../components/common/S
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { getFacultyData } from "../../services/dataService";
 import { clearAuthSession } from "../../services/api";
+import FeedbackBugModal from "../../components/FeedbackBugModal";
 
 const DEFAULT_STAFF_DATA = {};
 
@@ -31,6 +32,7 @@ export default function ProfileStaff({ onLogout }) {
   const [refreshing, setRefreshing] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [logoutVisible, setLogoutVisible] = useState(false);
+  const [bugModalVisible, setBugModalVisible] = useState(false);
   const [staffData, setStaffData] = useState(DEFAULT_STAFF_DATA);
 
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -313,6 +315,21 @@ export default function ProfileStaff({ onLogout }) {
                   </View>
                   <Icon name="check-circle" size={18} color="#10B981" />
                 </TouchableOpacity>
+
+                {/* Bug & Developer Feedback Report */}
+                <TouchableOpacity
+                  style={[styles.securityActionRow, { borderTopWidth: 1, borderTopColor: colors.divider }]}
+                  onPress={() => setBugModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <Icon name="bug-outline" size={20} color="#EF4444" />
+                    <Text style={[styles.securityActionText, { color: "#EF4444" }]}>
+                      Report a Bug / Developer Feedback
+                    </Text>
+                  </View>
+                  <Icon name="chevron-right" size={20} color={colors.disabledText} />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -330,6 +347,13 @@ export default function ProfileStaff({ onLogout }) {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Developer Feedback Modal */}
+      <FeedbackBugModal
+        visible={bugModalVisible}
+        onClose={() => setBugModalVisible(false)}
+        initialScreen="Faculty Portal Profile"
+      />
 
       {/* LOGOUT CONFIRMATION MODAL */}
       <Modal visible={logoutVisible} transparent animationType="fade">

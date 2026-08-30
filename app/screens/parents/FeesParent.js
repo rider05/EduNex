@@ -477,7 +477,14 @@ export default function FeesParent() {
         )}
 
         {/* Payment Bottom Sheet */}
-        <PaymentModal visible={paymentVisible} onClose={() => setPaymentVisible(false)} invoice={selectedPayInvoice} />
+        <PaymentModal
+          visible={paymentVisible}
+          onClose={() => setPaymentVisible(false)}
+          invoice={selectedPayInvoice}
+          onSuccess={async () => {
+            await loadData();
+          }}
+        />
 
         <View style={{ height: 40 }} />
       </ScrollView>

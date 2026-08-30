@@ -786,3 +786,133 @@ export async function shareAssignmentBriefPdf({ assignment = {}, student = {} })
   return printAndShare(html, `Assignment_${asgId}.pdf`, `Assignment - ${title}`);
 }
 
+/**
+ * 7. OFFICIAL EXAMINATION HALL TICKET PDF
+ */
+export async function shareHallTicketPdf({ student = {}, exams = [], examSettings = {} }) {
+  const name = student.name || "Student";
+  const rollNo = student.rollNo || student.id || "STU-2024-AIDS01";
+  const regNo = student.regNo || rollNo.replace("STU-", "REG-");
+  const dept = student.department || "Artificial Intelligence & Data Science";
+  const deptShort = formatDeptName(dept, "compact");
+  const year = student.year || "III Year";
+  const sem = student.semester || "5th Semester";
+  const sessionName = examSettings.session || "Continuous Internal Assessment (CIA-2)";
+  const academicYear = examSettings.academicYear || "2026–2027 (Odd Semester)";
+  const center = examSettings.center || "Hall D205, Department of AI & DS, Main Block";
+  const coeName = examSettings.coe || "Prof. S. R. Ramachandran, Ph.D. (Controller of Examinations)";
+
+  const defaultExams = [
+    { date: "15 Sep 2026", time: "10:00 AM - 01:00 PM", code: "AD-506", subject: "Machine Learning" },
+    { date: "17 Sep 2026", time: "10:00 AM - 01:00 PM", code: "AD-502", subject: "Big Data Analytics" },
+    { date: "19 Sep 2026", time: "10:00 AM - 01:00 PM", code: "AD-501", subject: "Software Engineering" },
+    { date: "21 Sep 2026", time: "10:00 AM - 01:00 PM", code: "AD-504", subject: "Applied Design Thinking" },
+    { date: "23 Sep 2026", time: "10:00 AM - 01:00 PM", code: "AD-505", subject: "Fundamentals of Cloud Computing" },
+    { date: "25 Sep 2026", time: "10:00 AM - 01:00 PM", code: "AD-509", subject: "Explainable AI" },
+  ];
+
+  const examList = exams.length > 0 ? exams : defaultExams;
+
+  const examRows = examList
+    .map(
+      (e, i) => `
+      <tr>
+        <td style="text-align: center; font-weight: 700; width: 30px;">${i + 1}</td>
+        <td style="font-weight: 600; width: 95px;">${e.date}</td>
+        <td style="font-size: 9.5px; width: 110px;">${e.time}</td>
+        <td style="font-weight: 800; text-align: center; width: 70px;"><code>${e.code || e.subjectCode || "AD-50" + (i + 1)}</code></td>
+        <td><strong>${e.subject || e.subjectName || e.title}</strong></td>
+        <td style="width: 80px; text-align: center; color: #94a3b8; font-size: 8px;">[ Invigilator Sign ]</td>
+      </tr>
+    `
+    )
+    .join("");
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Hall Ticket - ${rollNo}</title>
+        <style>${BASE_CSS}</style>
+      </head>
+      <body>
+        <table class="header-table">
+          <tr>
+            <td>
+              <div class="inst-title">🎓 EDUNEX INSTITUTE OF TECHNOLOGY</div>
+              <div class="inst-sub">Autonomous Institution · Affiliated to Anna University · Coimbatore</div>
+              <div class="inst-sub">Office of the Controller of Examinations · Examination Cell</div>
+            </td>
+            <td style="text-align: right; vertical-align: top;">
+              <span class="doc-badge" style="background: #2563eb;">Official Hall Ticket</span>
+              <div style="font-size: 10px; font-weight: 800; color: #1e3a8a; margin-top: 4px;">${sessionName}</div>
+              <div style="font-size: 9px; color: #64748b;">Academic Year: ${academicYear}</div>
+            </td>
+          </tr>
+        </table>
+
+        <div class="section-title">Candidate & Cohort Particulars</div>
+        <table class="meta-grid">
+          <tr>
+            <td class="meta-label">Candidate Name</td>
+            <td class="meta-val"><strong>${name}</strong></td>
+            <td class="meta-label">Register Number</td>
+            <td class="meta-val"><code>${regNo}</code></td>
+          </tr>
+          <tr>
+            <td class="meta-label">Roll Number</td>
+            <td class="meta-val"><code>${rollNo}</code></td>
+            <td class="meta-label">Department / Branch</td>
+            <td class="meta-val">${deptShort}</td>
+          </tr>
+          <tr>
+            <td class="meta-label">Degree & Program</td>
+            <td class="meta-val">B.Tech in Artificial Intelligence & Data Science</td>
+            <td class="meta-label">Semester / Standing</td>
+            <td class="meta-val">${sem} (${year})</td>
+          </tr>
+          <tr>
+            <td class="meta-label">Examination Venue / Center</td>
+            <td class="meta-val" colspan="3"><strong>${center}</strong></td>
+          </tr>
+        </table>
+
+        <div class="section-title">Registered Courses & Examination Time Schedule</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="text-align: center; width: 30px;">#</th>
+              <th style="width: 95px;">Exam Date</th>
+              <th style="width: 110px;">Session Timing</th>
+              <th style="text-align: center; width: 70px;">Course Code</th>
+              <th>Course Name / Subject Title</th>
+              <th style="text-align: center; width: 80px;">Verification</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${examRows}
+          </tbody>
+        </table>
+
+        <div class="section-title" style="margin-top: 10px;">Important Instructions to Candidates</div>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; font-size: 9.5px; line-height: 1.4; color: #475569;">
+          1. Candidates must occupy their designated seats 15 minutes before the commencement of the exam.<br>
+          2. No student will be admitted into the examination hall without this official Hall Ticket and College ID Card.<br>
+          3. Possession of mobile phones, smartwatches, or programmable calculators in the exam hall is strictly prohibited.<br>
+          4. Hall Ticket must be preserved until the publication of end-semester results.
+        </div>
+
+        <div class="footer-sig" style="margin-top: 30px;">
+          <div class="sig-block">Signature of Candidate</div>
+          <div class="sig-block">Chief Superintendent<br>(Examination Center D205)</div>
+          <div class="sig-block">${coeName}<br>(Controller of Examinations)</div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return printAndShare(html, `Hall_Ticket_${rollNo}.pdf`, `Hall Ticket - ${name} (${rollNo})`);
+}
+
+

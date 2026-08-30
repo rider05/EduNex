@@ -21,6 +21,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../../../context/ThemeContext";
 import { showToast } from "../../../utils/toastService";
 import { api } from "../../../services/api";
+import FeedbackBugModal from "../../FeedbackBugModal";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const COLLAPSED_Y = SCREEN_HEIGHT * 0.24;
@@ -71,6 +72,7 @@ export default function FullSettingsModal({ visible, onClose }) {
   const [broadcastModalVisible, setBroadcastModalVisible] = useState(false);
   const [cacheModalVisible, setCacheModalVisible] = useState(false);
   const [sysInfoModalVisible, setSysInfoModalVisible] = useState(false);
+  const [bugModalVisible, setBugModalVisible] = useState(false);
 
   // Action states
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -610,7 +612,7 @@ export default function FullSettingsModal({ visible, onClose }) {
 
                 {/* Action 4: System Architecture Info */}
                 <TouchableOpacity
-                  style={[styles.actionItemBtn, { borderBottomWidth: 0 }]}
+                  style={styles.actionItemBtn}
                   onPress={() => setSysInfoModalVisible(true)}
                 >
                   <View style={[styles.actionIconBox, { backgroundColor: "#8B5CF620" }]}>
@@ -619,6 +621,21 @@ export default function FullSettingsModal({ visible, onClose }) {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.actionLabel, { color: colors.primaryText }]}>View System Architecture</Text>
                     <Text style={[styles.helperText, { color: colors.secondaryText }]}>Endpoints, TLS version & cluster info</Text>
+                  </View>
+                  <Icon name="arrow-right" size={18} color={colors.secondaryText} />
+                </TouchableOpacity>
+
+                {/* Action 5: Report a Bug / Developer Feedback */}
+                <TouchableOpacity
+                  style={[styles.actionItemBtn, { borderBottomWidth: 0 }]}
+                  onPress={() => setBugModalVisible(true)}
+                >
+                  <View style={[styles.actionIconBox, { backgroundColor: "#EF444420" }]}>
+                    <Icon name="bug-outline" size={20} color="#EF4444" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.actionLabel, { color: "#EF4444" }]}>Report Bug / Developer Feedback</Text>
+                    <Text style={[styles.helperText, { color: colors.secondaryText }]}>Send direct diagnostic log to developer suite</Text>
                   </View>
                   <Icon name="arrow-right" size={18} color={colors.secondaryText} />
                 </TouchableOpacity>
@@ -655,6 +672,13 @@ export default function FullSettingsModal({ visible, onClose }) {
           )}
         </Animated.View>
       </View>
+
+      {/* Developer Feedback & Bug Report Modal */}
+      <FeedbackBugModal
+        visible={bugModalVisible}
+        onClose={() => setBugModalVisible(false)}
+        initialScreen="App Settings & Config"
+      />
 
       {/* ===== SUB-MODAL 1: ACADEMIC PERIOD ===== */}
       <Modal visible={academicModalVisible} transparent animationType="fade">

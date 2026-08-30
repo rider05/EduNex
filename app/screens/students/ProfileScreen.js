@@ -20,6 +20,7 @@ import QRCode from "react-native-qrcode-svg";
 import { useTheme } from "../../context/ThemeContext";
 import ResetPasswordModal from "./ResetPasswordModal";
 import EditProfileModal from "./modals/EditProfileModal";
+import FeedbackBugModal from "../../components/FeedbackBugModal";
 import { showToast } from "../../utils/toastService";
 import { SkeletonProfileCard, SkeletonListItem } from "../../components/common/SkeletonLoader";
 import { getStudentData, getInstitutions } from "../../services/dataService";
@@ -53,6 +54,7 @@ export default function ProfileScreen({ onLogout }) {
   const [resetModalVisible, setResetModalVisible] = useState(false);
   const [showIdCardModal, setShowIdCardModal] = useState(false);
   const [logoutVisible, setLogoutVisible] = useState(false);
+  const [bugModalVisible, setBugModalVisible] = useState(false);
 
   // Preferences
   const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(true);
@@ -738,7 +740,8 @@ export default function ProfileScreen({ onLogout }) {
       </Modal>
 
       {/* EDIT PROFILE MODAL */}
-      <EditProfileModal
+      <FeedbackBugModal visible={bugModalVisible} onClose={() => setBugModalVisible(false)} initialScreen="Student Profile" />
+        <EditProfileModal
         visible={editModalVisible}
         onClose={() => setEditModalVisible(false)}
         user={user}
