@@ -48,8 +48,9 @@ const UPI_APPS = [
 export default function PaymentModal({ visible, onClose, invoice, onSuccess, student }) {
   const { colors = {}, isDarkMode } = useTheme() || {};
 
-  // Step: 'gateway' | 'processing' | 'success'
+  // Step: 'gateway' | 'processing' | 'cancelled' | 'success'
   const [step, setStep] = useState("gateway");
+  const processingTimerRef = useRef(null);
   const [selectedMethod, setSelectedMethod] = useState("upi"); // 'upi' | 'card' | 'netbank' | 'wallet'
   const [upiSubMethod, setUpiSubMethod] = useState("qr"); // 'qr' | 'app' | 'vpa'
   const [upiId, setUpiId] = useState("");
@@ -332,7 +333,7 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
       console.log("DB Payment sync note:", dbErr);
     }
 
-    setTimeout(() => {
+    processingTimerRef.current = setTimeout(() => {
       setStep("success");
       showToast("✅ Encrypted Payment Cleared & Recorded!", "success");
       if (onSuccess) onSuccess(paymentResult);
