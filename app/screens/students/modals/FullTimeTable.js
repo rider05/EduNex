@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -113,6 +113,8 @@ export default function FullTimetable({ visible = true, onClose }) {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [timetableData, setTimetableData] = useState({});
   const [loading, setLoading] = useState(false);
+  const timetableDataRef = useRef({});
+  timetableDataRef.current = timetableData;
 
   // Load student profile
   useEffect(() => {
@@ -160,8 +162,8 @@ export default function FullTimetable({ visible = true, onClose }) {
     loadStudentCohort();
   }, []);
 
-  const fetchTimetable = useCallback(async () => {
-    setLoading(true);
+  const fetchTimetable = useCallback(async (isInitial = false) => {
+    if (isInitial) setLoading(true);
     try {
       const res = await api.get("/timetable").catch(() => null);
       const docs = res?.data || [];
@@ -183,7 +185,7 @@ export default function FullTimetable({ visible = true, onClose }) {
             ? match.advisor
             : match.advisor?.name || "";
         if (matchAdvisor) {
-          setStudentCohort((s) => ({ ...s, advisor: matchAdvisor }));
+          setStudentCohort((s) => (s.advisor !== matchAdvisor ? { ...s, advisor: matchAdvisor } : s));
         }
       } else {
         setTimetableData({});
@@ -194,10 +196,12 @@ export default function FullTimetable({ visible = true, onClose }) {
     } finally {
       setLoading(false);
     }
-  }, [studentCohort]);
+  }, [studentCohort.deptShort, studentCohort.department]);
 
   useEffect(() => {
-    if (visible) fetchTimetable();
+    if (visible) {
+      fetchTimetable(Object.keys(timetableDataRef.current).length === 0);
+    }
   }, [visible, fetchTimetable]);
 
   const baseDaySchedule = useMemo(() => timetableData[selectedDay] || [], [timetableData, selectedDay]);
