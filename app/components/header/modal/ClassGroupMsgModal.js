@@ -89,7 +89,7 @@ export default function ClassGroupMsgModal({ visible, onClose, colors: propColor
     setActiveTab("broadcasts");
     showToast("Classroom announcement broadcasted to all students!", "success");
     api.post("/announcements", {
-      class: user?.className || user?.classTeacher || user?.role === "staff" ? (user?.classTeacher || "CSE - A") : "CSE - A",
+      class: user?.className || user?.classTeacher || user?.role === "staff" ? (user?.classTeacher || "AI & DS - A") : "AI & DS - A",
       tag: selectedTag,
       title: title.trim(),
       message: announcement.trim(),

@@ -145,11 +145,11 @@ export default function HostelFormModal({ visible, onClose }) {
           ]);
 
           const name = student?.name || identity?.name || "Karthik Raja M";
-          const roll = student?.rollNo || student?.id || identity?.rollNo || identity?.username || "25ACSE001";
+          const roll = student?.rollNo || student?.id || identity?.rollNo || identity?.username || "STU-2024-AIDS01";
           const rawBlock = student?.hostelBlock || student?.hostelDetails?.block || identity?.hostelBlock || "Block A";
           const block = rawBlock.includes("B") ? "Block B" : "Block A";
           const room = student?.roomNo || student?.roomNumber || student?.hostelDetails?.roomNo || identity?.roomNumber || "A-204";
-          const department = student?.dept || student?.department || identity?.dept || "CSE";
+          const department = student?.dept || student?.department || identity?.dept || "AI & DS";
           const yr = student?.year || identity?.year || "III Year";
           const contact = student?.parent?.phone || student?.emergencyContact || identity?.phone || "+91 98000 10003";
           const defOut = student?.hostelDetails?.defaultOutTime || "06:00 AM";

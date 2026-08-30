@@ -268,7 +268,7 @@ export default function ProfileScreen({ onLogout }) {
     try {
       const identity = await resolveIdentity().catch(() => null);
       const collection = identity?.role === "student" ? "students" : "staff";
-      const docId = identity?.id || identity?.rollNo || user.id || "25ACSE001";
+      const docId = identity?.id || identity?.rollNo || user.id || "STU-2024-AIDS01";
       if (docId) {
         await api.patch(`/${collection}/${encodeURIComponent(docId)}`, { nickname: newNick }).catch(() => null);
       }

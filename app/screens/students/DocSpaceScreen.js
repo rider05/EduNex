@@ -182,9 +182,9 @@ export default function DocSpaceScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [documents, setDocuments] = useState([]);
   const [studentName, setStudentName] = useState("Velu");
-  const [studentRollNo, setStudentRollNo] = useState("25ACSE001");
-  const [studentDept, setStudentDept] = useState("Computer Science & Engineering");
-  const [studentYear, setStudentYear] = useState("II Year");
+  const [studentRollNo, setStudentRollNo] = useState("STU-2024-AIDS01");
+  const [studentDept, setStudentDept] = useState("Artificial Intelligence & Data Science");
+  const [studentYear, setStudentYear] = useState("III Year");
 
   // Filters & Search
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -204,10 +204,10 @@ export default function DocSpaceScreen() {
       const identity = await resolveIdentity("student").catch(() => null);
       const student = await getStudentData().catch(() => null);
 
-      const roll = student?.rollNo || identity?.rollNo || "25ACSE001";
+      const roll = student?.rollNo || identity?.rollNo || "STU-2024-AIDS01";
       const name = student?.name || identity?.name || "Velu";
-      const dept = student?.department || student?.class || "Computer Science & Engineering";
-      const year = student?.year || "II Year";
+      const dept = student?.department || student?.class || "Artificial Intelligence & Data Science";
+      const year = student?.year || "III Year";
 
       setStudentRollNo(roll);
       setStudentName(name);
