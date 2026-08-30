@@ -705,25 +705,62 @@ export default function DocSpaceScreen() {
                 {/* Footer Action Strip */}
                 <View style={styles.docCardFooter}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flex: 1 }}>
-                    <Icon name="shield-check-outline" size={13} color={colors.secondaryText} />
-                    <Text style={[styles.verifiedByText, { color: colors.secondaryText }]} numberOfLines={1}>
-                      {doc.verifiedBy || doc.issuer}
+                    <Icon
+                      name={isVerified ? "shield-check" : isPending ? "clock-outline" : "information-outline"}
+                      size={13}
+                      color={isVerified ? "#10B981" : isPending ? "#F59E0B" : colors.secondaryText}
+                    />
+                    <Text
+                      style={[
+                        styles.verifiedByText,
+                        { color: isVerified ? "#10B981" : isPending ? "#D97706" : colors.secondaryText },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {isVerified
+                        ? (doc.verifiedBy || "Verified Credential")
+                        : isPending
+                        ? "Awaiting Admin Approval"
+                        : doc.status === "rejected"
+                        ? "Action Required · Rejected"
+                        : (doc.issuer || "Upload Required")}
                     </Text>
                   </View>
 
                   {isVerified ? (
                     <TouchableOpacity
-                      style={[styles.miniShareBtn, { backgroundColor: colors.primaryBackground }]}
-                      onPress={() => handleShareDoc(doc)}
+                      style={[styles.miniPreviewBtn, { backgroundColor: "#10B98115", borderColor: "#10B98144" }]}
+                      onPress={() => setSelectedDocForDetail(doc)}
                     >
-                      <Icon name="share-variant-outline" size={13} color={colors.primaryAccent} />
-                      <Text style={[styles.miniShareText, { color: colors.primaryAccent }]}>Share</Text>
+                      <Icon name="eye-check-outline" size={13} color="#10B981" />
+                      <Text style={[styles.miniPreviewText, { color: "#10B981" }]}>Preview</Text>
+                    </TouchableOpacity>
+                  ) : isPending ? (
+                    <TouchableOpacity
+                      style={[styles.miniPreviewBtn, { backgroundColor: "#F59E0B15", borderColor: "#F59E0B44" }]}
+                      onPress={() => setSelectedDocForDetail(doc)}
+                    >
+                      <Icon name="eye-outline" size={13} color="#D97706" />
+                      <Text style={[styles.miniPreviewText, { color: "#D97706" }]}>Preview</Text>
+                    </TouchableOpacity>
+                  ) : doc.status === "rejected" ? (
+                    <TouchableOpacity
+                      style={[styles.miniUploadBtn, { backgroundColor: "#EF4444" }]}
+                      onPress={() => {
+                        setDocToUpload(doc);
+                        setTempUploadedFile(null);
+                        setUploadModalVisible(true);
+                      }}
+                    >
+                      <Icon name="reload" size={13} color="#FFFFFF" />
+                      <Text style={styles.miniUploadText}>Re-Upload</Text>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
                       style={[styles.miniUploadBtn, { backgroundColor: colors.primaryAccent }]}
                       onPress={() => {
                         setDocToUpload(doc);
+                        setTempUploadedFile(null);
                         setUploadModalVisible(true);
                       }}
                     >
@@ -778,7 +815,9 @@ export default function DocSpaceScreen() {
                     ? { backgroundColor: "#10B98118", borderColor: "#10B98144" }
                     : selectedDocForDetail.status === "rejected"
                     ? { backgroundColor: "#EF444418", borderColor: "#EF444444" }
-                    : { backgroundColor: "#F59E0B18", borderColor: "#F59E0B44" },
+                    : selectedDocForDetail.status === "pending"
+                    ? { backgroundColor: "#F59E0B18", borderColor: "#F59E0B44" }
+                    : { backgroundColor: "#64748B18", borderColor: "#64748B44" },
                 ]}
               >
                 <Icon
@@ -787,7 +826,9 @@ export default function DocSpaceScreen() {
                       ? "check-decagram"
                       : selectedDocForDetail.status === "rejected"
                       ? "alert-octagon"
-                      : "clock-alert-outline"
+                      : selectedDocForDetail.status === "pending"
+                      ? "clock-alert-outline"
+                      : "information-outline"
                   }
                   size={16}
                   color={
@@ -795,7 +836,9 @@ export default function DocSpaceScreen() {
                       ? "#10B981"
                       : selectedDocForDetail.status === "rejected"
                       ? "#EF4444"
-                      : "#F59E0B"
+                      : selectedDocForDetail.status === "pending"
+                      ? "#F59E0B"
+                      : "#64748B"
                   }
                 />
                 <Text
@@ -807,7 +850,9 @@ export default function DocSpaceScreen() {
                           ? "#10B981"
                           : selectedDocForDetail.status === "rejected"
                           ? "#EF4444"
-                          : "#D97706",
+                          : selectedDocForDetail.status === "pending"
+                          ? "#D97706"
+                          : "#64748B",
                     },
                   ]}
                 >
@@ -815,11 +860,24 @@ export default function DocSpaceScreen() {
                     ? "DIGITALLY VERIFIED CREDENTIAL"
                     : selectedDocForDetail.status === "rejected"
                     ? "SUBMISSION REJECTED — ACTION REQUIRED"
-                    : selectedDocForDetail.status === "not_submitted"
-                    ? "UPLOAD REQUIRED FOR VERIFICATION"
-                    : "SUBMISSION PENDING VERIFICATION"}
+                    : selectedDocForDetail.status === "pending"
+                    ? "SUBMISSION PENDING ADMINISTRATIVE VERIFICATION"
+                    : "UPLOAD REQUIRED FOR VERIFICATION"}
                 </Text>
               </View>
+
+              {/* Locked Notice when Pending Review */}
+              {selectedDocForDetail.status === "pending" && (
+                <View style={[styles.lockedReviewBox, { backgroundColor: "#F59E0B10", borderColor: "#F59E0B33" }]}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                    <Icon name="lock" size={14} color="#D97706" />
+                    <Text style={[styles.lockedReviewHeader, { color: "#D97706" }]}>Under Review (Upload Locked)</Text>
+                  </View>
+                  <Text style={[styles.lockedReviewText, { color: colors.secondaryText }]}>
+                    This document is currently awaiting verification by institutional staff. You can view the submitted scan below. Upload is disabled until status updates.
+                  </Text>
+                </View>
+              )}
 
               {/* Rejection Alert Box */}
               {selectedDocForDetail.status === "rejected" && selectedDocForDetail.rejectionReason && (
@@ -863,7 +921,7 @@ export default function DocSpaceScreen() {
               )}
 
               {/* Document Scan/Image Preview if available */}
-              {selectedDocForDetail.fileUri && selectedDocForDetail.fileUri.startsWith("data:image") && (
+              {selectedDocForDetail.fileUri && selectedDocForDetail.fileUri.startsWith("data:image") ? (
                 <View style={{ marginVertical: 8, alignItems: "center" }}>
                   <Image
                     source={{ uri: selectedDocForDetail.fileUri }}
@@ -873,7 +931,19 @@ export default function DocSpaceScreen() {
                     📄 {selectedDocForDetail.fileName || "Uploaded Document Scan"}
                   </Text>
                 </View>
-              )}
+              ) : selectedDocForDetail.isUploaded && selectedDocForDetail.fileName ? (
+                <View style={[styles.detailPdfCard, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                  <Icon name="file-pdf-box" size={32} color="#EF4444" />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={[styles.detailPdfTitle, { color: colors.primaryText }]} numberOfLines={1}>
+                      {selectedDocForDetail.fileName}
+                    </Text>
+                    <Text style={[styles.detailPdfMeta, { color: colors.secondaryText }]}>
+                      {selectedDocForDetail.fileSize || "Secured Vault Document"}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
 
               {/* Modal Actions */}
               <View style={styles.modalActionsRow}>
@@ -884,11 +954,14 @@ export default function DocSpaceScreen() {
                       const doc = selectedDocForDetail;
                       setSelectedDocForDetail(null);
                       setDocToUpload(doc);
+                      setTempUploadedFile(null);
                       setUploadModalVisible(true);
                     }}
                   >
-                    <Icon name="cloud-upload" size={16} color="#FFFFFF" />
-                    <Text style={styles.modalShareBtnText}>Upload Now</Text>
+                    <Icon name={selectedDocForDetail.status === "rejected" ? "reload" : "cloud-upload"} size={16} color="#FFFFFF" />
+                    <Text style={styles.modalShareBtnText}>
+                      {selectedDocForDetail.status === "rejected" ? "Re-Upload Document" : "Upload Document"}
+                    </Text>
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
@@ -913,7 +986,7 @@ export default function DocSpaceScreen() {
       )}
 
       {/* ========================================================================= */}
-      {/* 6. SCAN / UPLOAD DOCUMENT MODAL                                           */}
+      {/* 6. REDESIGNED SCAN / UPLOAD DOCUMENT MODAL                                 */}
       {/* ========================================================================= */}
       {uploadModalVisible && docToUpload && (
         <Modal
@@ -923,76 +996,154 @@ export default function DocSpaceScreen() {
           onRequestClose={() => setUploadModalVisible(false)}
         >
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
-              <View style={styles.modalTopRow}>
-                <Icon name="cloud-upload" size={24} color={colors.primaryAccent} />
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={[styles.modalTitle, { color: colors.primaryText }]}>Upload to DocSpace</Text>
-                  <Text style={[styles.modalCategory, { color: colors.secondaryText }]}>{docToUpload.title}</Text>
+            <View style={[styles.modalCard, styles.uploadModalRedesign, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              {/* Modal Header */}
+              <View style={styles.uploadModalHeader}>
+                <View style={[styles.uploadIconBadge, { backgroundColor: (docToUpload.color || colors.primaryAccent) + "18" }]}>
+                  <Icon name={docToUpload.icon || "cloud-upload"} size={22} color={docToUpload.color || colors.primaryAccent} />
                 </View>
-                <TouchableOpacity onPress={() => setUploadModalVisible(false)}>
-                  <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Instructions / Allowed Formats */}
-              {docToUpload.instructions ? (
-                <View style={[styles.instructionsBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
-                  <Text style={[styles.instructionsText, { color: colors.secondaryText }]}>
-                    ℹ️ {docToUpload.instructions}
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={[styles.uploadHeaderTag, { color: docToUpload.color || colors.primaryAccent }]}>
+                      {docToUpload.category ? docToUpload.category.toUpperCase() : "CREDENTIAL"}
+                    </Text>
+                    {docToUpload.isMandatory && (
+                      <Text style={styles.uploadMandatoryBadge}>MANDATORY</Text>
+                    )}
+                  </View>
+                  <Text style={[styles.uploadModalTitle, { color: colors.primaryText }]} numberOfLines={1}>
+                    {docToUpload.title}
                   </Text>
                 </View>
-              ) : null}
-
-              {/* Picker Triggers - 3 Source Options */}
-              <View style={{ flexDirection: "row", gap: 8, marginVertical: 14 }}>
                 <TouchableOpacity
-                  style={[styles.pickMethodBtn, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
-                  onPress={() => handlePickDocument("camera")}
+                  style={styles.uploadCloseBtn}
+                  onPress={() => {
+                    setUploadModalVisible(false);
+                    setTempUploadedFile(null);
+                  }}
                 >
-                  <Icon name="camera" size={22} color={colors.primaryAccent} />
-                  <Text style={[styles.pickMethodText, { color: colors.primaryText }]}>Camera</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.pickMethodBtn, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
-                  onPress={() => handlePickDocument("gallery")}
-                >
-                  <Icon name="image-multiple" size={22} color={colors.primaryAccent} />
-                  <Text style={[styles.pickMethodText, { color: colors.primaryText }]}>Gallery</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.pickMethodBtn, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
-                  onPress={() => handlePickDocument("file")}
-                >
-                  <Icon name="file-pdf-box" size={22} color={colors.primaryAccent} />
-                  <Text style={[styles.pickMethodText, { color: colors.primaryText }]}>PDF / File</Text>
+                  <Icon name="close" size={20} color={colors.secondaryText} />
                 </TouchableOpacity>
               </View>
 
-              {/* Preview Selected File */}
-              {tempUploadedFile && (
-                <View style={[styles.imagePreviewWrap, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+              {/* Requirement & Guidelines Box */}
+              <View style={[styles.uploadGuidelinesCard, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                  <Icon name="file-check-outline" size={15} color={colors.primaryAccent} />
+                  <Text style={[styles.guidelineHeading, { color: colors.primaryText }]}>Upload Guidelines</Text>
+                  <View style={styles.guidelineFormatBadge}>
+                    <Text style={styles.guidelineFormatText}>PDF / JPG / PNG · Max 5MB</Text>
+                  </View>
+                </View>
+                {docToUpload.instructions ? (
+                  <Text style={[styles.guidelineText, { color: colors.secondaryText }]}>
+                    ℹ️ {docToUpload.instructions}
+                  </Text>
+                ) : (
+                  <Text style={[styles.guidelineText, { color: colors.secondaryText }]}>
+                    Please ensure the document name, serial number, and institutional seal are clear and legible.
+                  </Text>
+                )}
+              </View>
+
+              {/* Source Option Title */}
+              <Text style={[styles.uploadSectionTitle, { color: colors.secondaryText }]}>
+                CHOOSE UPLOAD METHOD
+              </Text>
+
+              {/* 3 Source Options Strip */}
+              <View style={styles.uploadOptionsGrid}>
+                <TouchableOpacity
+                  style={[styles.uploadTile, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
+                  onPress={() => handlePickDocument("camera")}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.tileIconCircle, { backgroundColor: "#4F46E518" }]}>
+                    <Icon name="camera" size={20} color="#4F46E5" />
+                  </View>
+                  <Text style={[styles.tileTitle, { color: colors.primaryText }]}>Camera</Text>
+                  <Text style={[styles.tileSub, { color: colors.secondaryText }]}>Scan photo</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.uploadTile, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
+                  onPress={() => handlePickDocument("gallery")}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.tileIconCircle, { backgroundColor: "#10B98118" }]}>
+                    <Icon name="image-multiple" size={20} color="#10B981" />
+                  </View>
+                  <Text style={[styles.tileTitle, { color: colors.primaryText }]}>Gallery</Text>
+                  <Text style={[styles.tileSub, { color: colors.secondaryText }]}>Photo library</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.uploadTile, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
+                  onPress={() => handlePickDocument("file")}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.tileIconCircle, { backgroundColor: "#EF444418" }]}>
+                    <Icon name="file-pdf-box" size={20} color="#EF4444" />
+                  </View>
+                  <Text style={[styles.tileTitle, { color: colors.primaryText }]}>PDF / File</Text>
+                  <Text style={[styles.tileSub, { color: colors.secondaryText }]}>E-Document</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Selected File Preview Strip */}
+              {tempUploadedFile ? (
+                <View style={[styles.selectedFileBox, { backgroundColor: colors.primaryBackground, borderColor: "#10B98155" }]}>
                   {tempUploadedFile.mimeType?.startsWith("image") && tempUploadedFile.uri ? (
-                    <Image source={{ uri: tempUploadedFile.uri }} style={styles.previewImage} />
+                    <Image source={{ uri: tempUploadedFile.uri }} style={styles.selectedFileThumbnail} />
                   ) : (
-                    <View style={{ padding: 14, alignItems: "center", gap: 6 }}>
-                      <Icon name="file-document-check" size={36} color={colors.primaryAccent} />
-                      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.primaryText }}>
-                        {tempUploadedFile.name}
-                      </Text>
-                      <Text style={{ fontSize: 11, color: colors.secondaryText }}>{tempUploadedFile.size}</Text>
+                    <View style={styles.selectedPdfThumb}>
+                      <Icon name="file-pdf-box" size={28} color="#EF4444" />
                     </View>
                   )}
-                  <Text style={[styles.imageReadyText, { color: "#10B981" }]}>✓ File ready for encryption & upload</Text>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={[styles.selectedFileName, { color: colors.primaryText }]} numberOfLines={1}>
+                      {tempUploadedFile.name}
+                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+                      <Text style={[styles.selectedFileSize, { color: colors.secondaryText }]}>
+                        {tempUploadedFile.size}
+                      </Text>
+                      <Text style={styles.readyBadge}>✓ Ready to Submit</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.changeFileBtn}
+                    onPress={() => setTempUploadedFile(null)}
+                  >
+                    <Icon name="close-circle" size={20} color={colors.secondaryText} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={[styles.emptyFileBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                  <Icon name="cloud-upload-outline" size={24} color={colors.disabledText} />
+                  <Text style={[styles.emptyFileText, { color: colors.disabledText }]}>
+                    Select a photo or PDF to preview before submitting
+                  </Text>
                 </View>
               )}
 
-              {/* Action Buttons */}
+              {/* Security Banner */}
+              <View style={styles.securityTrustRow}>
+                <Icon name="shield-lock-outline" size={13} color="#10B981" />
+                <Text style={[styles.securityTrustText, { color: colors.secondaryText }]}>
+                  Secured with 256-bit encryption · Stored in MongoDB Vault
+                </Text>
+              </View>
+
+              {/* Modal Action Buttons */}
               <View style={styles.modalActionsRow}>
                 <TouchableOpacity
-                  style={[styles.modalShareBtn, { backgroundColor: colors.primaryAccent }]}
+                  style={[
+                    styles.modalSubmitBtn,
+                    {
+                      backgroundColor: tempUploadedFile ? colors.primaryAccent : colors.disabledText,
+                    },
+                  ]}
                   onPress={handleConfirmUpload}
                   disabled={isSubmittingDoc || !tempUploadedFile}
                 >
@@ -1000,8 +1151,8 @@ export default function DocSpaceScreen() {
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
                     <>
-                      <Icon name="shield-lock" size={16} color="#FFFFFF" />
-                      <Text style={styles.modalShareBtnText}>Upload & Verify</Text>
+                      <Icon name="cloud-check" size={18} color="#FFFFFF" />
+                      <Text style={styles.modalSubmitBtnText}>Upload & Submit</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -1248,6 +1399,19 @@ const getStyles = (colors, _isDarkMode) =>
       fontSize: 11,
       fontWeight: "700",
     },
+    miniPreviewBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    miniPreviewText: {
+      fontSize: 11,
+      fontWeight: "800",
+    },
     miniUploadBtn: {
       flexDirection: "row",
       alignItems: "center",
@@ -1313,6 +1477,21 @@ const getStyles = (colors, _isDarkMode) =>
       fontWeight: "900",
       letterSpacing: 0.5,
     },
+    lockedReviewBox: {
+      padding: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      marginBottom: 12,
+    },
+    lockedReviewHeader: {
+      fontSize: 11.5,
+      fontWeight: "800",
+    },
+    lockedReviewText: {
+      fontSize: 11,
+      lineHeight: 15,
+      fontWeight: "500",
+    },
     modalGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -1337,16 +1516,33 @@ const getStyles = (colors, _isDarkMode) =>
     modalRemarksBox: {
       padding: 8,
       borderRadius: 8,
-      marginBottom: 12,
+      marginBottom: 10,
     },
     modalRemarksText: {
       fontSize: 11,
       fontWeight: "500",
       fontStyle: "italic",
     },
+    detailPdfCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      marginVertical: 8,
+    },
+    detailPdfTitle: {
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    detailPdfMeta: {
+      fontSize: 10.5,
+      marginTop: 2,
+    },
     modalActionsRow: {
       flexDirection: "row",
       gap: 10,
+      marginTop: 6,
     },
     modalShareBtn: {
       flex: 1.2,
@@ -1354,8 +1550,8 @@ const getStyles = (colors, _isDarkMode) =>
       alignItems: "center",
       justifyContent: "center",
       gap: 6,
-      paddingVertical: 10,
-      borderRadius: 10,
+      paddingVertical: 11,
+      borderRadius: 12,
     },
     modalShareBtnText: {
       color: "#FFFFFF",
@@ -1363,11 +1559,11 @@ const getStyles = (colors, _isDarkMode) =>
       fontWeight: "800",
     },
     modalCloseBtn: {
-      flex: 1,
+      flex: 0.8,
       alignItems: "center",
       justifyContent: "center",
-      paddingVertical: 10,
-      borderRadius: 10,
+      paddingVertical: 11,
+      borderRadius: 12,
       borderWidth: 1,
     },
     modalCloseBtnText: {
@@ -1375,34 +1571,190 @@ const getStyles = (colors, _isDarkMode) =>
       fontWeight: "700",
     },
 
-    /* Upload Dialog */
-    pickMethodBtn: {
+    /* ========================================================================= */
+    /* REDESIGNED UPLOAD MODAL STYLES                                            */
+    /* ========================================================================= */
+    uploadModalRedesign: {
+      padding: 16,
+      borderRadius: 22,
+    },
+    uploadModalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    uploadIconBadge: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    uploadHeaderTag: {
+      fontSize: 10,
+      fontWeight: "900",
+      letterSpacing: 0.5,
+    },
+    uploadMandatoryBadge: {
+      fontSize: 9,
+      fontWeight: "900",
+      backgroundColor: "#EF444418",
+      color: "#EF4444",
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    uploadModalTitle: {
+      fontSize: 14,
+      fontWeight: "800",
+      marginTop: 2,
+    },
+    uploadCloseBtn: {
+      padding: 6,
+    },
+    uploadGuidelinesCard: {
+      padding: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      marginBottom: 12,
+    },
+    guidelineHeading: {
+      fontSize: 11.5,
+      fontWeight: "800",
+      flex: 1,
+    },
+    guidelineFormatBadge: {
+      backgroundColor: "rgba(99, 102, 241, 0.12)",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    guidelineFormatText: {
+      fontSize: 9.5,
+      fontWeight: "800",
+      color: "#6366F1",
+    },
+    guidelineText: {
+      fontSize: 11,
+      lineHeight: 15,
+      fontWeight: "500",
+    },
+    uploadSectionTitle: {
+      fontSize: 10,
+      fontWeight: "800",
+      letterSpacing: 0.8,
+      marginBottom: 8,
+      marginLeft: 2,
+    },
+    uploadOptionsGrid: {
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 12,
+    },
+    uploadTile: {
       flex: 1,
       alignItems: "center",
       justifyContent: "center",
-      paddingVertical: 16,
+      paddingVertical: 12,
+      paddingHorizontal: 4,
       borderRadius: 12,
       borderWidth: 1,
-      gap: 6,
     },
-    pickMethodText: {
-      fontSize: 12,
-      fontWeight: "700",
-    },
-    imagePreviewWrap: {
+    tileIconCircle: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      justifyContent: "center",
       alignItems: "center",
-      marginVertical: 10,
+      marginBottom: 6,
     },
-    previewImage: {
-      width: "100%",
-      height: 160,
-      borderRadius: 10,
+    tileTitle: {
+      fontSize: 11.5,
+      fontWeight: "800",
+    },
+    tileSub: {
+      fontSize: 9.5,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+    selectedFileBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 10,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      marginBottom: 10,
+    },
+    selectedFileThumbnail: {
+      width: 44,
+      height: 44,
+      borderRadius: 8,
       resizeMode: "cover",
     },
-    imageReadyText: {
+    selectedPdfThumb: {
+      width: 44,
+      height: 44,
+      borderRadius: 8,
+      backgroundColor: "#EF444415",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    selectedFileName: {
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    selectedFileSize: {
+      fontSize: 10.5,
+      fontWeight: "500",
+    },
+    readyBadge: {
+      fontSize: 10,
+      fontWeight: "800",
+      color: "#10B981",
+    },
+    changeFileBtn: {
+      padding: 4,
+    },
+    emptyFileBox: {
+      paddingVertical: 14,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderStyle: "dashed",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      marginBottom: 10,
+    },
+    emptyFileText: {
       fontSize: 11,
-      fontWeight: "700",
-      marginTop: 6,
+      fontWeight: "600",
+      textAlign: "center",
+    },
+    securityTrustRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      marginBottom: 12,
+    },
+    securityTrustText: {
+      fontSize: 10,
+      fontWeight: "600",
+    },
+    modalSubmitBtn: {
+      flex: 1.2,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 12,
+      borderRadius: 12,
+    },
+    modalSubmitBtnText: {
+      color: "#FFFFFF",
+      fontSize: 12,
+      fontWeight: "800",
     },
     rejectionBox: {
       padding: 10,
