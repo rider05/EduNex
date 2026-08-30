@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "./api";
 import { resolveIdentity, invalidateIdentity } from "./identityService";
+import { getDeterministicNickname } from "../utils/nicknameGenerator";
 
 // Every getter here:
 //   1. resolves the logged-in user's real records via identityService
@@ -168,7 +169,7 @@ export async function getStudentData() {
   const seedDoc = {
     rollNo,
     name: identity.user?.profile?.name || identity.username || "Student",
-    nickname: "Karthi",
+    nickname: getDeterministicNickname(rollNo),
     residentialStatus: "Day Scholar (Inside)",
     motherName: "Lakshmi M",
     email: `${identity.username}@edunex.edu`,
@@ -1239,6 +1240,16 @@ export async function updateStudentDocument(docId, docPayload) {
     return res?.data || res;
   } catch (err) {
     console.warn("updateStudentDocument error:", err);
+    throw err;
+  }
+}
+
+export async function deleteStudentDocument(docId) {
+  try {
+    const res = await api.delete(`/studentDocuments/${docId}`);
+    return res?.data || res;
+  } catch (err) {
+    console.warn("deleteStudentDocument error:", err);
     throw err;
   }
 }

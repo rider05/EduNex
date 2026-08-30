@@ -17,6 +17,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
 import { resolveIdentity } from "../../../services/identityService";
 import { showToast } from "../../../utils/toastService";
+import { getRandomInterestingNickname } from "../../../utils/nicknameGenerator";
 
 function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
   const { colors } = useTheme();
@@ -145,17 +146,72 @@ function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
                 </View>
 
                 {/* 2. Nickname / Preferred Name */}
-                <Text style={[modalStyles.inputLabel, { color: colors.secondaryText }]}>Nickname / Preferred Name</Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                  <Text style={[modalStyles.inputLabel, { color: colors.secondaryText }]}>Nickname / Cool Alias</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const newNick = getRandomInterestingNickname(nickname);
+                      setNickname(newNick);
+                      showToast(`🎲 Sparked nickname: "${newNick}"`, "info");
+                    }}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 3, paddingVertical: 2, paddingHorizontal: 6 }}
+                  >
+                    <Icon name="dice-5-outline" size={14} color="#F59E0B" />
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#F59E0B" }}>Roll Random</Text>
+                  </TouchableOpacity>
+                </View>
                 <View style={[modalStyles.inputWrap, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
                   <Icon name="account-star-outline" size={20} color="#F59E0B" />
                   <TextInput
                     style={[modalStyles.textInput, { color: colors.primaryText }]}
                     value={nickname}
                     onChangeText={setNickname}
-                    placeholder="Nickname (e.g. Karthi, Leo)"
+                    placeholder="Nickname (e.g. QuantumVelo, NeuralNinja)"
                     placeholderTextColor={colors.disabledText}
                     editable={!saving}
                   />
+                  <TouchableOpacity
+                    onPress={() => {
+                      const newNick = getRandomInterestingNickname(nickname);
+                      setNickname(newNick);
+                    }}
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 6,
+                      backgroundColor: "#F59E0B18",
+                    }}
+                  >
+                    <Icon name="shuffle-variant" size={16} color="#D97706" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Nickname Quick Pick Chips */}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10, marginTop: 4 }}>
+                  {["QuantumVelo", "NeuralNinja", "ByteVoyager", "MatrixRider", "AstroVelu"].map((sug) => (
+                    <TouchableOpacity
+                      key={sug}
+                      onPress={() => setNickname(sug)}
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: nickname === sug ? "#F59E0B" : colors.divider,
+                        backgroundColor: nickname === sug ? "#F59E0B20" : colors.primaryBackground,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: nickname === sug ? "800" : "600",
+                          color: nickname === sug ? "#F59E0B" : colors.secondaryText,
+                        }}
+                      >
+                        ⚡ {sug}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
 
                 {/* 3. Mobile Phone Number */}

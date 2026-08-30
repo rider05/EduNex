@@ -24,6 +24,9 @@ import EditProfileModal from "./modals/EditProfileModal";
 import { showToast } from "../../utils/toastService";
 import { SkeletonProfileCard, SkeletonListItem } from "../../components/common/SkeletonLoader";
 import { getStudentData, getInstitutions } from "../../services/dataService";
+import { api } from "../../services/api";
+import { resolveIdentity } from "../../services/identityService";
+import { getRandomInterestingNickname, getDeterministicNickname } from "../../utils/nicknameGenerator";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
 const PROFILE_IMAGE_KEY = "student_profile_image_v3";
@@ -81,46 +84,56 @@ export default function ProfileScreen({ onLogout }) {
       } catch {}
 
       if (apiStudent || sessionUser) {
-        setUser((prev) => ({
-          ...prev,
-          name: apiStudent?.name || sessionUser?.profile?.name || sessionUser?.name || prev.name,
-          nickname: apiStudent?.nickname || sessionUser?.nickname || prev.nickname || "Karthi",
-          id: apiStudent?.rollNo || apiStudent?.id || prev.id,
-          regNo: apiStudent?.regNo || prev.regNo || "",
-          email: apiStudent?.email || sessionUser?.email || prev.email,
-          phone: apiStudent?.phone || sessionUser?.mobile || prev.phone,
-          program: apiStudent?.department || prev.program,
-          address: apiStudent?.parent?.address || apiStudent?.address || prev.address,
-          bloodGroup: apiStudent?.bloodGroup || prev.bloodGroup || "—",
-          batch: apiStudent?.batch || prev.batch || "",
-          department: apiStudent?.department || prev.department || "",
-          semester: apiStudent?.semester || prev.semester || "",
-          dob: apiStudent?.dob || prev.dob || "",
-          advisor: apiStudent?.advisor?.name || prev.advisor || "",
-          mentorEmail: apiStudent?.advisor?.email || prev.mentorEmail || "",
-          residentialStatus:
-            apiStudent?.residentialStatus ||
-            (typeof apiStudent?.hostel === "boolean"
-              ? apiStudent.hostel
-                ? "Hosteler"
-                : "Day Scholar (Inside)"
-              : apiStudent?.hostel) ||
-            prev.residentialStatus ||
-            "Day Scholar (Inside)",
-          hostel:
-            apiStudent?.residentialStatus ||
-            (typeof apiStudent?.hostel === "boolean"
-              ? apiStudent.hostel
-                ? "Hosteler"
-                : "Day Scholar (Inside)"
-              : apiStudent?.hostel) ||
-            prev.hostel ||
-            "Day Scholar (Inside)",
-          fatherName: apiStudent?.parent?.name || prev.fatherName || "",
-          fatherPhone: apiStudent?.parent?.phone || apiStudent?.parent?.mobile || prev.fatherPhone || "",
-          motherName: apiStudent?.motherName || apiStudent?.parent?.motherName || prev.motherName || "Lakshmi M",
-          emergencyContact: apiStudent?.emergencyContact || apiStudent?.parent?.phone || prev.emergencyContact || "",
-        }));
+        const rollSeed = apiStudent?.rollNo || sessionUser?.rollNo || sessionUser?.username || "velu";
+
+        setUser((prev) => {
+          const initialNick =
+            apiStudent?.nickname ||
+            sessionUser?.nickname ||
+            prev.nickname ||
+            getDeterministicNickname(rollSeed);
+
+          return {
+            ...prev,
+            name: apiStudent?.name || sessionUser?.profile?.name || sessionUser?.name || prev.name,
+            nickname: initialNick,
+            id: apiStudent?.rollNo || apiStudent?.id || prev.id,
+            regNo: apiStudent?.regNo || prev.regNo || "",
+            email: apiStudent?.email || sessionUser?.email || prev.email,
+            phone: apiStudent?.phone || sessionUser?.mobile || prev.phone,
+            program: apiStudent?.department || prev.program,
+            address: apiStudent?.parent?.address || apiStudent?.address || prev.address,
+            bloodGroup: apiStudent?.bloodGroup || prev.bloodGroup || "—",
+            batch: apiStudent?.batch || prev.batch || "",
+            department: apiStudent?.department || prev.department || "",
+            semester: apiStudent?.semester || prev.semester || "",
+            dob: apiStudent?.dob || prev.dob || "",
+            advisor: apiStudent?.advisor?.name || prev.advisor || "",
+            mentorEmail: apiStudent?.advisor?.email || prev.mentorEmail || "",
+            residentialStatus:
+              apiStudent?.residentialStatus ||
+              (typeof apiStudent?.hostel === "boolean"
+                ? apiStudent.hostel
+                  ? "Hosteler"
+                  : "Day Scholar (Inside)"
+                : apiStudent?.hostel) ||
+              prev.residentialStatus ||
+              "Day Scholar (Inside)",
+            hostel:
+              apiStudent?.residentialStatus ||
+              (typeof apiStudent?.hostel === "boolean"
+                ? apiStudent.hostel
+                  ? "Hosteler"
+                  : "Day Scholar (Inside)"
+                : apiStudent?.hostel) ||
+              prev.hostel ||
+              "Day Scholar (Inside)",
+            fatherName: apiStudent?.parent?.name || prev.fatherName || "",
+            fatherPhone: apiStudent?.parent?.phone || apiStudent?.parent?.mobile || prev.fatherPhone || "",
+            motherName: apiStudent?.motherName || apiStudent?.parent?.motherName || prev.motherName || "Lakshmi M",
+            emergencyContact: apiStudent?.emergencyContact || apiStudent?.parent?.phone || prev.emergencyContact || "",
+          };
+        });
       } else {
         const local = await AsyncStorage.getItem(PROFILE_DATA_KEY);
         if (local) setUser(JSON.parse(local));
@@ -243,6 +256,22 @@ export default function ProfileScreen({ onLogout }) {
     }
   };
 
+  const handleShuffleNickname = async () => {
+    const newNick = getRandomInterestingNickname(user.nickname);
+    setUser((prev) => ({ ...prev, nickname: newNick }));
+    try {
+      const identity = await resolveIdentity().catch(() => null);
+      const collection = identity?.role === "student" ? "students" : "staff";
+      const docId = identity?.id || identity?.rollNo || user.id || "25ACSE001";
+      if (docId) {
+        await api.patch(`/${collection}/${encodeURIComponent(docId)}`, { nickname: newNick }).catch(() => null);
+      }
+    } catch (err) {
+      console.log("Shuffle nickname patch error:", err);
+    }
+    showToast(`✨ Sparked alias: "${newNick}"`, "info");
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.primaryBackground }]}>
       <ScrollView
@@ -361,12 +390,18 @@ export default function ProfileScreen({ onLogout }) {
                       {user.name}
                     </Text>
                     {!!user.nickname && (
-                      <View style={[styles.nicknameHeroBadge, { backgroundColor: colors.primaryAccent + "18", borderColor: colors.primaryAccent + "44" }]}>
-                        <Icon name="tag-outline" size={10} color={colors.primaryAccent} />
-                        <Text style={[styles.nicknameHeroBadgeText, { color: colors.primaryAccent }]}>
+                      <TouchableOpacity
+                        onPress={handleShuffleNickname}
+                        activeOpacity={0.7}
+                        title="Tap to shuffle nickname"
+                        style={[styles.nicknameHeroBadge, { backgroundColor: "#F59E0B18", borderColor: "#F59E0B44" }]}
+                      >
+                        <Icon name="dice-5-outline" size={11} color="#D97706" />
+                        <Text style={[styles.nicknameHeroBadgeText, { color: "#D97706" }]}>
                           {`"${user.nickname}"`}
                         </Text>
-                      </View>
+                        <Icon name="shuffle-variant" size={10} color="#D97706" style={{ marginLeft: 2 }} />
+                      </TouchableOpacity>
                     )}
                   </View>
                   <Text style={[styles.idHeroProgram, { color: colors.primaryAccent }]} numberOfLines={1}>

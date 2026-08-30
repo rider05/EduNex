@@ -25,6 +25,7 @@ import {
   getStudentDocuments,
   uploadStudentDocument,
   updateStudentDocument,
+  deleteStudentDocument,
   getStudentData,
 } from "../../services/dataService";
 import { resolveIdentity } from "../../services/identityService";
@@ -502,6 +503,35 @@ export default function DocSpaceScreen() {
     }
   };
 
+  // Cancel Submission / Reset Verification
+  const handleCancelSubmission = (doc) => {
+    if (!doc) return;
+    Alert.alert(
+      "Cancel Verification / Remove",
+      `Are you sure you want to cancel the submission for "${doc.title}"? This will remove the uploaded scan from the database and allow you to re-upload.`,
+      [
+        { text: "Keep Document", style: "cancel" },
+        {
+          text: "✕ Cancel & Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              if (doc.mongoDocId) {
+                await deleteStudentDocument(doc.mongoDocId);
+              }
+              showToast("✕ Document submission cancelled", "info");
+              setSelectedDocForDetail(null);
+              await loadDocuments();
+            } catch (err) {
+              console.warn("Cancel submission error:", err);
+              Alert.alert("Error", "Could not cancel document submission. Please try again.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Share / Export Document Certificate
   const handleShareDoc = async (doc) => {
     try {
@@ -741,33 +771,63 @@ export default function DocSpaceScreen() {
                   </View>
 
                   {isVerified ? (
-                    <TouchableOpacity
-                      style={[styles.miniPreviewBtn, { backgroundColor: "#10B98115", borderColor: "#10B98144" }]}
-                      onPress={() => setSelectedDocForDetail(doc)}
-                    >
-                      <Icon name="eye-check-outline" size={13} color="#10B981" />
-                      <Text style={[styles.miniPreviewText, { color: "#10B981" }]}>Preview</Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <TouchableOpacity
+                        style={[styles.miniCancelBtn, { backgroundColor: "#EF444412", borderColor: "#EF444433" }]}
+                        onPress={() => handleCancelSubmission(doc)}
+                        title="Cancel Verification"
+                      >
+                        <Icon name="close" size={11} color="#EF4444" />
+                        <Text style={[styles.miniCancelText, { color: "#EF4444" }]}>✕ Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.miniPreviewBtn, { backgroundColor: "#10B98115", borderColor: "#10B98144" }]}
+                        onPress={() => setSelectedDocForDetail(doc)}
+                      >
+                        <Icon name="eye-check-outline" size={13} color="#10B981" />
+                        <Text style={[styles.miniPreviewText, { color: "#10B981" }]}>Preview</Text>
+                      </TouchableOpacity>
+                    </View>
                   ) : isPending ? (
-                    <TouchableOpacity
-                      style={[styles.miniPreviewBtn, { backgroundColor: "#F59E0B15", borderColor: "#F59E0B44" }]}
-                      onPress={() => setSelectedDocForDetail(doc)}
-                    >
-                      <Icon name="eye-outline" size={13} color="#D97706" />
-                      <Text style={[styles.miniPreviewText, { color: "#D97706" }]}>Preview</Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <TouchableOpacity
+                        style={[styles.miniCancelBtn, { backgroundColor: "#EF444412", borderColor: "#EF444433" }]}
+                        onPress={() => handleCancelSubmission(doc)}
+                        title="Cancel Submission"
+                      >
+                        <Icon name="close" size={11} color="#EF4444" />
+                        <Text style={[styles.miniCancelText, { color: "#EF4444" }]}>✕ Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.miniPreviewBtn, { backgroundColor: "#F59E0B15", borderColor: "#F59E0B44" }]}
+                        onPress={() => setSelectedDocForDetail(doc)}
+                      >
+                        <Icon name="eye-outline" size={13} color="#D97706" />
+                        <Text style={[styles.miniPreviewText, { color: "#D97706" }]}>Preview</Text>
+                      </TouchableOpacity>
+                    </View>
                   ) : doc.status === "rejected" ? (
-                    <TouchableOpacity
-                      style={[styles.miniUploadBtn, { backgroundColor: "#EF4444" }]}
-                      onPress={() => {
-                        setDocToUpload(doc);
-                        setTempUploadedFile(null);
-                        setUploadModalVisible(true);
-                      }}
-                    >
-                      <Icon name="reload" size={13} color="#FFFFFF" />
-                      <Text style={styles.miniUploadText}>Re-Upload</Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <TouchableOpacity
+                        style={[styles.miniCancelBtn, { backgroundColor: "#EF444412", borderColor: "#EF444433" }]}
+                        onPress={() => handleCancelSubmission(doc)}
+                        title="Remove Submission"
+                      >
+                        <Icon name="close" size={11} color="#EF4444" />
+                        <Text style={[styles.miniCancelText, { color: "#EF4444" }]}>✕ Remove</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.miniUploadBtn, { backgroundColor: "#EF4444" }]}
+                        onPress={() => {
+                          setDocToUpload(doc);
+                          setTempUploadedFile(null);
+                          setUploadModalVisible(true);
+                        }}
+                      >
+                        <Icon name="reload" size={13} color="#FFFFFF" />
+                        <Text style={styles.miniUploadText}>Re-Upload</Text>
+                      </TouchableOpacity>
+                    </View>
                   ) : (
                     <TouchableOpacity
                       style={[styles.miniUploadBtn, { backgroundColor: colors.primaryAccent }]}
@@ -960,6 +1020,19 @@ export default function DocSpaceScreen() {
 
               {/* Modal Actions */}
               <View style={styles.modalActionsRow}>
+                {selectedDocForDetail.isUploaded && (
+                  <TouchableOpacity
+                    style={[styles.modalCancelBtn, { backgroundColor: "#EF444415", borderColor: "#EF444433" }]}
+                    onPress={() => {
+                      const doc = selectedDocForDetail;
+                      handleCancelSubmission(doc);
+                    }}
+                  >
+                    <Icon name="close-circle-outline" size={15} color="#EF4444" />
+                    <Text style={[styles.modalCancelBtnText, { color: "#EF4444" }]}>✕ Cancel</Text>
+                  </TouchableOpacity>
+                )}
+
                 {selectedDocForDetail.status === "rejected" || selectedDocForDetail.status === "not_submitted" ? (
                   <TouchableOpacity
                     style={[styles.modalShareBtn, { backgroundColor: colors.primaryAccent }]}
@@ -1425,6 +1498,19 @@ const getStyles = (colors, _isDarkMode) =>
       fontSize: 11,
       fontWeight: "800",
     },
+    miniCancelBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      paddingHorizontal: 7,
+      paddingVertical: 4,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    miniCancelText: {
+      fontSize: 10.5,
+      fontWeight: "800",
+    },
     miniUploadBtn: {
       flexDirection: "row",
       alignItems: "center",
@@ -1568,6 +1654,20 @@ const getStyles = (colors, _isDarkMode) =>
     },
     modalShareBtnText: {
       color: "#FFFFFF",
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    modalCancelBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      paddingVertical: 11,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    modalCancelBtnText: {
       fontSize: 12,
       fontWeight: "800",
     },

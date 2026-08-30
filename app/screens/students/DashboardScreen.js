@@ -238,9 +238,19 @@ export default function DashboardScreen() {
 
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={[styles.studentGreeting, { color: colors.secondaryText }]}>Welcome back,</Text>
-                  <Text style={[styles.studentName, { color: colors.primaryText }]} numberOfLines={1}>
-                    {studentData.name}
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <Text style={[styles.studentName, { color: colors.primaryText }]} numberOfLines={1}>
+                      {studentData.name}
+                    </Text>
+                    {!!studentData.nickname && (
+                      <View style={[styles.nicknameHeroBadge, { backgroundColor: "#F59E0B18", borderColor: "#F59E0B44" }]}>
+                        <Icon name="tag-outline" size={10} color="#D97706" />
+                        <Text style={[styles.nicknameHeroBadgeText, { color: "#D97706" }]}>
+                          {studentData.nickname}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                   <View style={styles.studentMetaRow}>
                     <View style={[styles.rollBadge, { backgroundColor: colors.primaryAccent + "18" }]}>
                       <Text style={[styles.rollBadgeText, { color: colors.primaryAccent }]}>
@@ -799,6 +809,19 @@ const getStyles = (colors) =>
       fontSize: 17,
       fontWeight: "900",
       letterSpacing: -0.3,
+    },
+    nicknameHeroBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    nicknameHeroBadgeText: {
+      fontSize: 10,
+      fontWeight: "800",
     },
     studentMetaRow: {
       flexDirection: "row",
