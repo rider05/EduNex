@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -26,7 +26,7 @@ import { getInstitutions } from "../../../services/dataService";
 import { api } from "../../../services/api";
 import { generateTransactionChecksum, decryptPaymentPayload } from "../../../utils/securityService";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 const POPULAR_BANKS = [
   { id: "sbi", name: "State Bank of India", code: "SBI", icon: "bank", color: "#2563EB" },

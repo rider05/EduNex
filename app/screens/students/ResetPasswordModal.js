@@ -58,6 +58,23 @@ export default function ResetPasswordModal({ visible, onClose, onReset, user }) 
   const translateYAnim = useRef(new Animated.Value(20)).current;
   const stepFadeAnim = useRef(new Animated.Value(1)).current;
 
+  // Reset form inputs
+  const clearForm = useCallback(() => {
+    setCurrentStep(1);
+    setDeliveryChannel("email");
+    setGeneratedOtp("");
+    setEnteredOtp("");
+    setResendTimer(60);
+    setIsTimerRunning(false);
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowNew(false);
+    setShowConfirm(false);
+    setFocusedField(null);
+    setErrorMessage("");
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
   // Animate modal entry and exit
   useEffect(() => {
     if (visible) {
@@ -99,7 +116,7 @@ export default function ResetPasswordModal({ visible, onClose, onReset, user }) 
         clearForm();
       });
     }
-  }, [visible, backdropAnim, scaleAnim, translateYAnim]);
+  }, [visible, backdropAnim, scaleAnim, translateYAnim, clearForm]);
 
   // Countdown timer for Resend OTP
   useEffect(() => {
@@ -114,23 +131,6 @@ export default function ResetPasswordModal({ visible, onClose, onReset, user }) 
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [isTimerRunning, resendTimer]);
-
-  // Reset form inputs
-  const clearForm = useCallback(() => {
-    setCurrentStep(1);
-    setDeliveryChannel("email");
-    setGeneratedOtp("");
-    setEnteredOtp("");
-    setResendTimer(60);
-    setIsTimerRunning(false);
-    setNewPassword("");
-    setConfirmPassword("");
-    setShowNew(false);
-    setShowConfirm(false);
-    setFocusedField(null);
-    setErrorMessage("");
-    if (timerRef.current) clearTimeout(timerRef.current);
-  }, []);
 
   // Smooth transition between steps
   const animateToStep = (stepNumber) => {
@@ -170,7 +170,7 @@ export default function ResetPasswordModal({ visible, onClose, onReset, user }) 
       setEnteredOtp("");
 
       const targetDesc = deliveryChannel === "email" ? "registered email" : "registered mobile";
-      showToast(`🔑 Verification OTP: ${otp}`, "info");
+      showToast(`🔑 OTP sent to ${targetDesc}: ${otp}`, "info");
 
       animateToStep(2);
     }, 600);
