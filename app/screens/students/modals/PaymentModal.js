@@ -38,11 +38,11 @@ const POPULAR_BANKS = [
 ];
 
 const UPI_APPS = [
-  { id: "gpay", name: "Google Pay", icon: "google", color: "#4285F4", vpa: "xxx@okaxis", scheme: "tez://upi/pay" },
-  { id: "phonepe", name: "PhonePe", icon: "cellphone", color: "#5F259F", vpa: "xxx@okaxis", scheme: "phonepe://pay" },
-  { id: "paytm", name: "Paytm UPI", icon: "wallet-outline", color: "#00BAF2", vpa: "xxx@okaxis", scheme: "paytmmp://pay" },
-  { id: "bhim", name: "BHIM UPI", icon: "bank-transfer", color: "#008800", vpa: "xxx@okaxis", scheme: "upi://pay" },
-  { id: "cred", name: "CRED UPI", icon: "shield-check", color: "#1E293B", vpa: "xxx@okaxis", scheme: "upi://pay" },
+  { id: "gpay", name: "Google Pay", icon: "google", color: "#4285F4", scheme: "tez://upi/pay" },
+  { id: "phonepe", name: "PhonePe", icon: "cellphone", color: "#5F259F", scheme: "phonepe://pay" },
+  { id: "paytm", name: "Paytm UPI", icon: "wallet-outline", color: "#00BAF2", scheme: "paytmmp://pay" },
+  { id: "bhim", name: "BHIM UPI", icon: "bank-transfer", color: "#008800", scheme: "upi://pay" },
+  { id: "cred", name: "CRED UPI", icon: "shield-check", color: "#1E293B", scheme: "upi://pay" },
 ];
 
 export default function PaymentModal({ visible, onClose, invoice, onSuccess, student }) {
@@ -56,10 +56,10 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
   const [selectedBank, setSelectedBank] = useState("hdfc");
   const [selectedUpiApp, setSelectedUpiApp] = useState("gpay");
   const [paymentConfig, setPaymentConfig] = useState({
-    upiId: "xxx@okaxis",
-    merchantName: "EduNex Institute of Technology & Science",
-    merchantCode: "EDUNEX",
-    bankName: "Axis Bank",
+    upiId: "-",
+    merchantName: "-",
+    merchantCode: "-",
+    bankName: "-",
     encryptionStatus: "AES-256 Secured Ledger",
   });
 
@@ -171,14 +171,20 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
     if (visible) {
       getInstitutions()
         .then((instList) => {
-          if (Array.isArray(instList) && instList[0]?.paymentConfig) {
-            const pc = instList[0].paymentConfig;
-            const vpa = pc.encryptedVpa ? decryptPaymentPayload(pc.encryptedVpa) : pc.upiId || "xxx@okaxis";
+          const inst = Array.isArray(instList) ? instList[0] : Array.isArray(instList?.data) ? instList.data[0] : instList;
+          if (inst?.paymentConfig) {
+            const pc = inst.paymentConfig;
+            const vpa = pc.encryptedUpiId
+              ? decryptPaymentPayload(pc.encryptedUpiId)
+              : pc.encryptedVpa
+              ? decryptPaymentPayload(pc.encryptedVpa)
+              : pc.upiId || "-";
             setPaymentConfig({
               ...pc,
-              upiId: vpa || "xxx@okaxis",
-              merchantName: pc.merchantName || "EduNex Institute of Technology & Science",
-              merchantCode: pc.merchantCode || "EDUNEX",
+              upiId: vpa || "-",
+              merchantName: pc.merchantName || inst.name || "-",
+              merchantCode: pc.merchantCode || inst.code || "-",
+              bankName: pc.bankName || inst.bankName || "-",
               encryptionStatus: pc.encryptionStatus || "AES-256 Secured Ledger",
             });
           }
@@ -219,11 +225,15 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
       minute: "2-digit",
     });
 
-    const merchantVpa = paymentConfig.upiId || "xxx@okaxis";
-    const merchantName = paymentConfig.merchantName || "EduNex Institute of Technology & Science";
+    const merchantVpa = paymentConfig.upiId !== "-" ? paymentConfig.upiId : "";
+    const merchantName = paymentConfig.merchantName !== "-" ? paymentConfig.merchantName : "EduNex";
 
     // 1. TRIGGER NATIVE PAYMENT APPS FOR UPI
     if (selectedMethod === "upi") {
+      if (!merchantVpa) {
+        showToast("Institutional payment gateway is initializing. Please try again.", "warning");
+        return;
+      }
       const upiUrl = `upi://pay?pa=${encodeURIComponent(merchantVpa)}&pn=${encodeURIComponent(merchantName)}&mc=EDUNEX&tr=${newTxnId}&tn=${encodeURIComponent(invoiceNumber + " " + invoiceTitle)}&am=${payableAmount}&cu=INR`;
 
       let targetAppUrl = upiUrl;
@@ -565,7 +575,7 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
                             <View style={styles.qrSection}>
                               <View style={[styles.qrFrame, { backgroundColor: "#FFFFFF" }]}>
                                 <QRCode
-                                  value={`upi://pay?pa=${encodeURIComponent(paymentConfig.upiId || "xxx@okaxis")}&pn=${encodeURIComponent(paymentConfig.merchantName || "EduNex Institute")}&am=${payableAmount}&cu=INR&tn=${invoiceNumber}`}
+                                  value={`upi://pay?pa=${encodeURIComponent(paymentConfig.upiId !== "-" ? paymentConfig.upiId : "")}&pn=${encodeURIComponent(paymentConfig.merchantName !== "-" ? paymentConfig.merchantName : "EduNex")}&am=${payableAmount}&cu=INR&tn=${invoiceNumber}`}
                                   size={160}
                                   color="#0F172A"
                                   backgroundColor="#FFFFFF"
@@ -575,7 +585,7 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
                                 Scan with any UPI App (GPay, PhonePe, Paytm, CRED)
                               </Text>
                               <Text style={[styles.qrSubHelper, { color: subTextColor }]}>
-                                Institutional VPA: <Text style={{ fontWeight: "700", color: accentColor }}>{paymentConfig.upiId || "xxx@okaxis"}</Text> (Encrypted Gateway)
+                                Institutional VPA: <Text style={{ fontWeight: "700", color: accentColor }}>{paymentConfig.upiId}</Text> (Encrypted Gateway)
                               </Text>
                             </View>
                           )}
