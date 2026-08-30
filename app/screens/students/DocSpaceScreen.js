@@ -17,6 +17,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../../context/ThemeContext";
 import {
@@ -421,9 +422,21 @@ export default function DocSpaceScreen() {
 
         if (!result.canceled && result.assets && result.assets[0]) {
           const file = result.assets[0];
+          let base64Data = null;
+          try {
+            const b64 = await FileSystem.readAsStringAsync(file.uri, {
+              encoding: "base64",
+            });
+            const mime = file.mimeType || (file.name?.endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+            base64Data = `data:${mime};base64,${b64}`;
+          } catch (b64Err) {
+            console.warn("Base64 conversion fallback:", b64Err);
+            base64Data = file.uri;
+          }
+
           setTempUploadedFile({
             uri: file.uri,
-            dataUrl: file.uri,
+            dataUrl: base64Data,
             name: file.name || `${docToUpload?.title || "Document"}.pdf`,
             size: `${((file.size || 1024000) / (1024 * 1024)).toFixed(1)} MB`,
             mimeType: file.mimeType || "application/pdf",
