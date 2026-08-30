@@ -579,6 +579,20 @@ export default function ProfileScreen({ onLogout }) {
                   </View>
                   <Icon name="check-circle" size={18} color="#10B981" />
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.securityActionRow, { borderTopWidth: 1, borderTopColor: colors.divider }]}
+                  onPress={() => setBugModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <Icon name="bug-outline" size={20} color="#EF4444" />
+                    <Text style={[styles.securityActionText, { color: "#EF4444" }]}>
+                      Report a Bug / Developer Feedback
+                    </Text>
+                  </View>
+                  <Icon name="chevron-right" size={20} color={colors.disabledText} />
+                </TouchableOpacity>
               </View>
             </View>
 

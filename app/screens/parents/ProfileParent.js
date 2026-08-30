@@ -22,7 +22,7 @@ import { getParentData } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import FeedbackBugModal from "../../components/FeedbackBugModal";
 
-const DEFAULT_PARENT_DATA = {};
+const DEFAULT_PARENT_DATA = { ward: {} };
 
 export default function ProfileParent({ onLogout }) {
   const { colors, isDarkMode, toggleTheme } = useTheme();
@@ -130,7 +130,7 @@ export default function ProfileParent({ onLogout }) {
     try {
       await Share.share({
         title: `Guardian Profile - ${parentData.name}`,
-        message: `🛡️ EDUNEX GUARDIAN DOSSIER\nGuardian: ${parentData.name} (${parentData.relation})\nGuardian ID: ${parentData.guardianId || parentData.parentId || parentData.id}\nContact: ${parentData.phone}\nWard: ${parentData.ward.name} (${parentData.ward.rollNo})\nProgram: ${parentData.ward.class}\nStatus: VERIFIED & ACTIVE`,
+        message: `🛡️ EDUNEX GUARDIAN DOSSIER\nGuardian: ${parentData.name} (${parentData.relation})\nGuardian ID: ${parentData.guardianId || parentData.parentId || parentData.id}\nContact: ${parentData.phone}\nWard: ${parentData.ward?.name} (${parentData.ward?.rollNo})\nProgram: ${parentData.ward?.class}\nStatus: VERIFIED & ACTIVE`,
       });
       showToast("Guardian profile shared!", "success");
     } catch (err) {
@@ -238,10 +238,10 @@ export default function ProfileParent({ onLogout }) {
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={[styles.linkedWardLabel, { color: colors.secondaryText }]}>LINKED STUDENT WARD</Text>
                   <Text style={[styles.linkedWardName, { color: colors.primaryText }]}>
-                    {parentData.ward.name} ({parentData.ward.rollNo})
+                    {parentData.ward?.name} ({parentData.ward?.rollNo})
                   </Text>
                   <Text style={[styles.linkedWardClass, { color: colors.disabledText }]}>
-                    {parentData.ward.class}
+{parentData.ward?.class}
                   </Text>
                 </View>
 
@@ -278,7 +278,7 @@ export default function ProfileParent({ onLogout }) {
               <View style={styles.dataGrid}>
                 <DataRow icon="account-heart-outline" label="Secondary Guardian" value={parentData.secondaryGuardian} colors={colors} />
                 <DataRow icon="phone-outline" label="Secondary Contact" value={parentData.secondaryPhone} colors={colors} />
-                <DataRow icon="account-tie-outline" label="Ward Class Counselor" value={parentData.ward.advisor} colors={colors} />
+                <DataRow icon="account-tie-outline" label="Ward Class Counselor" value={parentData.ward?.advisor} colors={colors} />
               </View>
             </View>
 
@@ -378,7 +378,7 @@ export default function ProfileParent({ onLogout }) {
                 </View>
                 <View>
                   <Text style={[styles.modalTitle, { color: colors.primaryText }]}>Ward Academic Dossier</Text>
-                  <Text style={[styles.modalSub, { color: colors.secondaryText }]}>{parentData.ward.rollNo}</Text>
+                  <Text style={[styles.modalSub, { color: colors.secondaryText }]}>{parentData.ward?.rollNo}</Text>
                 </View>
               </View>
 
@@ -389,15 +389,15 @@ export default function ProfileParent({ onLogout }) {
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 360 }}>
               <View style={[styles.wardModalGrid, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
-                <DataRow icon="account-outline" label="Full Name" value={parentData.ward.name} colors={colors} />
-                <DataRow icon="identifier" label="Roll Number" value={parentData.ward.rollNo} colors={colors} />
-                <DataRow icon="card-account-details-outline" label="University Reg. No." value={parentData.ward.regNo} colors={colors} />
-                <DataRow icon="domain" label="Academic Program" value={parentData.ward.class} colors={colors} />
-                <DataRow icon="calendar-check" label="Aggregate Attendance" value={parentData.ward.attendance} colors={colors} />
-                <DataRow icon="trophy-outline" label="Cumulative GPA" value={parentData.ward.cgpa} colors={colors} />
-                <DataRow icon="cash-multiple" label="Fee Status" value={parentData.ward.feeStatus} colors={colors} />
-                <DataRow icon="water-outline" label="Blood Group" value={parentData.ward.bloodGroup} colors={colors} />
-                <DataRow icon="home-city-outline" label="Residence" value={parentData.ward.hostel} colors={colors} />
+                <DataRow icon="account-outline" label="Full Name" value={parentData.ward?.name} colors={colors} />
+                <DataRow icon="identifier" label="Roll Number" value={parentData.ward?.rollNo} colors={colors} />
+                <DataRow icon="card-account-details-outline" label="University Reg. No." value={parentData.ward?.regNo} colors={colors} />
+                <DataRow icon="domain" label="Academic Program" value={parentData.ward?.class} colors={colors} />
+                <DataRow icon="calendar-check" label="Aggregate Attendance" value={parentData.ward?.attendance} colors={colors} />
+                <DataRow icon="trophy-outline" label="Cumulative GPA" value={parentData.ward?.cgpa} colors={colors} />
+                <DataRow icon="cash-multiple" label="Fee Status" value={parentData.ward?.feeStatus} colors={colors} />
+                <DataRow icon="water-outline" label="Blood Group" value={parentData.ward?.bloodGroup} colors={colors} />
+                <DataRow icon="home-city-outline" label="Residence" value={parentData.ward?.hostel} colors={colors} />
               </View>
             </ScrollView>
 
