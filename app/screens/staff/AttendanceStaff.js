@@ -14,13 +14,31 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonListItem } from "../../components/common/SkeletonLoader";
-import { getFacultyRoster, submitAttendanceBatch, getStaffClassName } from "../../services/dataService";
+import {
+  getFacultyRoster,
+  submitAttendanceBatch,
+  getStaffClassName,
+  getFacultySchedule,
+  getFacultyData,
+  savePeriodAttendanceRecord,
+  getPeriodAttendanceRecords,
+  subscribeToDataChanges,
+} from "../../services/dataService";
 import { api } from "../../services/api";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
 
-const DEFAULT_STUDENTS = [];
+const DEFAULT_PERIODS = [
+  { id: "p1", number: 1, name: "Period 1", time: "08:45 AM - 09:40 AM", type: "Theory", subject: "Machine Learning (AD-506)" },
+  { id: "p2", number: 2, name: "Period 2", time: "09:40 AM - 10:35 AM", type: "Theory", subject: "Cloud Computing (AD-505)" },
+  { id: "p3", number: 3, name: "Period 3", time: "10:50 AM - 11:45 AM", type: "Theory", subject: "Explainable AI (AD-509)" },
+  { id: "p4", number: 4, name: "Period 4", time: "11:45 AM - 12:40 PM", type: "Theory", subject: "Software Engineering (AD-501)" },
+  { id: "p5", number: 5, name: "Period 5", time: "01:30 PM - 02:25 PM", type: "Practical Lab", subject: "ML Lab Practicals (AD-513)" },
+  { id: "p6", number: 6, name: "Period 6", time: "02:25 PM - 03:20 PM", type: "Practical Lab", subject: "Big Data Lab (AD-514)" },
+  { id: "p7", number: 7, name: "Period 7", time: "03:20 PM - 04:15 PM", type: "Seminar / Ward", subject: "Mentor & Tutor Ward (AD-507)" },
+];
 
+const DEFAULT_STUDENTS = [];
 const SECTIONS = [];
 
 export default function AttendanceStaff() {
@@ -33,7 +51,21 @@ export default function AttendanceStaff() {
   const [sections, setSections] = useState(SECTIONS);
   const [activeSection, setActiveSection] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isLocked, setIsLocked] = useState(false);
+
+  // Staff In-Charge identity state
+  const [staffInfo, setStaffInfo] = useState({
+    name: "Ms. Z. Ananth Angel",
+    staffId: "STF001",
+    designation: "Assistant Professor & Class Tutor",
+    department: "AI & DS",
+  });
+
+  // Period / Hour based states
+  const [periods, setPeriods] = useState(DEFAULT_PERIODS);
+  const [activePeriod, setActivePeriod] = useState(DEFAULT_PERIODS[0]);
+  const [periodAttendance, setPeriodAttendance] = useState({}); // { [periodId]: { [studentId]: 'P'|'A'|'OD' } }
+  const [periodLockState, setPeriodLockState] = useState({});   // { [periodId]: boolean }
+  const [periodAudit, setPeriodAudit] = useState({});           // { [periodId]: { staffName, staffId, markedAt, etc. } }
 
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
@@ -41,26 +73,73 @@ export default function AttendanceStaff() {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  // Active period lock status
+  const isLocked = Boolean(periodLockState[activePeriod?.id]);
+  const activeAudit = periodAudit[activePeriod?.id] || null;
+
   const loadData = useCallback(async () => {
     try {
       const cls = await getStaffClassName();
-      const [rosterRes, sectionsRes] = await Promise.allSettled([
+      const todayStr = new Date().toISOString().split("T")[0];
+      const [rosterRes, sectionsRes, scheduleRes, facultyRes, storedAuditRes] = await Promise.allSettled([
         getFacultyRoster(cls || undefined),
         api.get("/faculty/schedule", cls ? { class: cls } : undefined),
+        getFacultySchedule(),
+        getFacultyData(),
+        getPeriodAttendanceRecords(todayStr, cls || "AI & DS - Section A"),
       ]);
 
+      if (facultyRes.status === "fulfilled" && facultyRes.value) {
+        const fac = facultyRes.value;
+        setStaffInfo({
+          name: fac.name || "Ms. Z. Ananth Angel",
+          staffId: fac.staffId || fac.id || "STF001",
+          designation: fac.designation || fac.role || "Assistant Professor & Class Tutor",
+          department: fac.department || "AI & DS",
+        });
+      }
+
       const roster = rosterRes.status === "fulfilled" ? rosterRes.value : null;
+      let loadedStudents = [];
       if (roster && roster.length > 0) {
-        setStudents(
-          roster.map((s, idx) => ({
-            id: s.id || String(idx + 1),
-            name: s.name,
-            roll: s.roll || s.rollNo,
-            status: s.status || (s.present === false ? "A" : "P"),
-            termAtt: s.attendance?.percentage || s.termAtt || "—",
-            hostel: s.hostel || "Active Student",
-          }))
-        );
+        loadedStudents = roster.map((s, idx) => ({
+          id: s.id || String(idx + 1),
+          name: s.name,
+          roll: s.roll || s.rollNo,
+          status: s.status || (s.present === false ? "A" : "P"),
+          termAtt: s.attendance?.percentage || s.termAtt || "—",
+          hostel: s.hostel || "Active Student",
+          isMentee: Boolean(s.isMentee),
+        }));
+        setStudents(loadedStudents);
+      }
+
+      // Initialize default attendance per period if not yet set
+      setPeriodAttendance((prev) => {
+        const next = { ...prev };
+        DEFAULT_PERIODS.forEach((p) => {
+          if (!next[p.id] && loadedStudents.length > 0) {
+            const map = {};
+            loadedStudents.forEach((st) => {
+              map[st.id] = st.status || "P";
+            });
+            next[p.id] = map;
+          }
+        });
+        return next;
+      });
+
+      // Load stored audit logs and locks
+      if (storedAuditRes.status === "fulfilled" && storedAuditRes.value) {
+        const storedAudit = storedAuditRes.value;
+        setPeriodAudit(storedAudit);
+        const locks = {};
+        Object.keys(storedAudit).forEach((pId) => {
+          if (storedAudit[pId]?.isLocked) {
+            locks[pId] = true;
+          }
+        });
+        setPeriodLockState((prev) => ({ ...prev, ...locks }));
       }
 
       const scheduleData =
@@ -69,6 +148,7 @@ export default function AttendanceStaff() {
           : Array.isArray(sectionsRes.value)
           ? sectionsRes.value
           : [];
+
       if (scheduleData.length > 0) {
         const mapped = scheduleData.map((s, idx) => ({
           id: String(s.id ?? idx),
@@ -78,6 +158,32 @@ export default function AttendanceStaff() {
         }));
         setSections(mapped);
         setActiveSection((prev) => prev || mapped[0] || null);
+      } else {
+        const fallbackSections = [
+          { id: "sec-a", label: "AI & DS - Section A", course: "B.Tech AI & DS", time: "Odd Semester 2026" },
+          { id: "sec-b", label: "AI & DS - Section B", course: "B.Tech AI & DS", time: "Odd Semester 2026" },
+        ];
+        setSections(fallbackSections);
+        setActiveSection((prev) => prev || fallbackSections[0]);
+      }
+
+      // Sync schedule slots if available
+      const facultySched = scheduleRes.status === "fulfilled" && Array.isArray(scheduleRes.value) ? scheduleRes.value : [];
+      if (facultySched.length > 0) {
+        setPeriods((prev) =>
+          prev.map((p, idx) => {
+            const matched = facultySched[idx];
+            if (matched) {
+              return {
+                ...p,
+                subject: matched.subject || matched.course || p.subject,
+                time: matched.time || p.time,
+                room: matched.room || matched.venue || "D205",
+              };
+            }
+            return p;
+          })
+        );
       }
     } catch (err) {
       console.log("Error loading attendance roster:", err);
@@ -94,6 +200,24 @@ export default function AttendanceStaff() {
     }).start();
 
     loadData();
+
+    const unsubscribe = subscribeToDataChanges((key, data) => {
+      if (key === "roster" && Array.isArray(data)) {
+        setStudents(
+          data.map((s, idx) => ({
+            id: s.id || String(idx + 1),
+            name: s.name,
+            roll: s.roll || s.rollNo,
+            status: s.status || (s.present === false ? "A" : "P"),
+            termAtt: s.attendance?.percentage || s.termAtt || "—",
+            hostel: s.hostel || "Active Student",
+            isMentee: Boolean(s.isMentee),
+          }))
+        );
+      }
+    });
+
+    return () => unsubscribe();
   }, [fadeAnim, loadData]);
 
   useRefreshOnForeground(loadData);
@@ -104,29 +228,86 @@ export default function AttendanceStaff() {
     setRefreshing(false);
   }, [loadData]);
 
+  // Current status map for active period
+  const currentPeriodMap = useMemo(() => {
+    return periodAttendance[activePeriod?.id] || {};
+  }, [periodAttendance, activePeriod]);
+
+  // Set individual student status for active period
   const setStudentStatus = (id, newStatus) => {
     if (isLocked) {
-      showToast("Attendance is locked. Request HOD override to edit.", "warning");
+      showToast(
+        `Attendance for ${activePeriod.name} is entered by ${activeAudit?.staffName || staffInfo.name} and disabled until next hour.`,
+        "warning"
+      );
       return;
     }
-    setStudents((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: newStatus } : s))
-    );
+    setPeriodAttendance((prev) => ({
+      ...prev,
+      [activePeriod.id]: {
+        ...(prev[activePeriod.id] || {}),
+        [id]: newStatus,
+      },
+    }));
   };
 
+  // Mark all students for active period
   const markAll = (statusToSet) => {
     if (isLocked) {
-      showToast("Attendance is locked. Request HOD override to edit.", "warning");
+      showToast(
+        `Attendance for ${activePeriod.name} is entered by ${activeAudit?.staffName || staffInfo.name} and disabled until next hour.`,
+        "warning"
+      );
       return;
     }
-    setStudents((prev) => prev.map((s) => ({ ...s, status: statusToSet })));
-    showToast(`All students marked as ${statusToSet === "P" ? "Present" : "Absent"}`, "info");
+    setPeriodAttendance((prev) => {
+      const nextMap = { ...(prev[activePeriod.id] || {}) };
+      students.forEach((st) => {
+        nextMap[st.id] = statusToSet;
+      });
+      return { ...prev, [activePeriod.id]: nextMap };
+    });
+    showToast(`All students marked as ${statusToSet === "P" ? "Present" : "Absent"} for ${activePeriod.name}`, "info");
   };
 
+  // Copy attendance from previous period
+  const copyFromPreviousPeriod = () => {
+    const currentIndex = periods.findIndex((p) => p.id === activePeriod.id);
+    if (currentIndex <= 0) {
+      showToast("No previous period to copy from.", "info");
+      return;
+    }
+    const prevPeriod = periods[currentIndex - 1];
+    const prevMap = periodAttendance[prevPeriod.id];
+    if (!prevMap || Object.keys(prevMap).length === 0) {
+      showToast(`No attendance recorded in ${prevPeriod.name} to copy.`, "warning");
+      return;
+    }
+
+    setPeriodAttendance((prev) => ({
+      ...prev,
+      [activePeriod.id]: { ...prevMap },
+    }));
+    showToast(`Copied attendance roster from ${prevPeriod.name}!`, "success");
+  };
+
+  // KPI calculations for active period
+  const { presentCount, absentCount, odCount, attendanceRate } = useMemo(() => {
+    let p = 0;
+    let a = 0;
+    let od = 0;
+    students.forEach((s) => {
+      const st = currentPeriodMap[s.id] || s.status || "P";
+      if (st === "P") p++;
+      else if (st === "A") a++;
+      else if (st === "OD") od++;
+    });
+    const total = students.length;
+    const rate = total > 0 ? Math.round(((p + od) / total) * 100) : 0;
+    return { presentCount: p, absentCount: a, odCount: od, attendanceRate: rate };
+  }, [students, currentPeriodMap]);
+
   const openConfirmation = () => {
-    const presentCount = students.filter((s) => s.status === "P").length;
-    const absentCount = students.filter((s) => s.status === "A").length;
-    const odCount = students.filter((s) => s.status === "OD").length;
     setSummary({ present: presentCount, absent: absentCount, od: odCount });
     setConfirmVisible(true);
   };
@@ -134,17 +315,29 @@ export default function AttendanceStaff() {
   const handleLockAndSubmit = async () => {
     setConfirmVisible(false);
     const todayStr = new Date().toISOString().split("T")[0];
-    const attendanceDocs = students.map((s) => ({
-      studentId: s.id,
-      rollNo: s.roll,
-      roll: s.roll,
-      studentName: s.name,
-      class: activeSection?.label || "",
-      date: todayStr,
-      status: s.status === "P" ? "Present" : s.status === "OD" ? "On-Duty" : "Absent",
-      markedBy: "faculty_staff",
-      locked: true,
-    }));
+    const timeFormatted = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    const attendanceDocs = students.map((s) => {
+      const st = currentPeriodMap[s.id] || "P";
+      return {
+        studentId: s.id,
+        rollNo: s.roll,
+        roll: s.roll,
+        studentName: s.name,
+        class: activeSection?.label || "AI & DS - Section A",
+        date: todayStr,
+        period: activePeriod.number,
+        periodName: activePeriod.name,
+        timeSlot: activePeriod.time,
+        subject: activePeriod.subject || activeSection?.course || "Course Lecture",
+        status: st === "P" ? "Present" : st === "OD" ? "On-Duty" : "Absent",
+        markedBy: "faculty_staff",
+        staffName: staffInfo.name,
+        staffId: staffInfo.staffId,
+        markedAt: timeFormatted,
+        locked: true,
+      };
+    });
 
     try {
       await submitAttendanceBatch(attendanceDocs);
@@ -152,13 +345,36 @@ export default function AttendanceStaff() {
       console.log("Attendance bulk submit fallback:", err);
     }
 
-    setIsLocked(true);
+    // Prepare & save audit information
+    const auditData = {
+      staffName: staffInfo.name,
+      staffId: staffInfo.staffId,
+      staffRole: staffInfo.designation,
+      markedAt: timeFormatted,
+      date: todayStr,
+      periodNumber: activePeriod.number,
+      periodName: activePeriod.name,
+      timeSlot: activePeriod.time,
+      isLocked: true,
+      summary: { present: presentCount, absent: absentCount, od: odCount, turnout: `${attendanceRate}%` },
+    };
+
+    setPeriodAudit((prev) => ({ ...prev, [activePeriod.id]: auditData }));
+    setPeriodLockState((prev) => ({ ...prev, [activePeriod.id]: true }));
+
+    await savePeriodAttendanceRecord(
+      todayStr,
+      activeSection?.id || activeSection?.label || "AI & DS - Section A",
+      activePeriod.id,
+      auditData
+    );
+
     setTimeout(() => setSuccessVisible(true), 250);
   };
 
   const handleUnlockRequest = () => {
-    showToast("HOD override request sent for " + (activeSection?.label || ""), "info");
-    setIsLocked(false);
+    showToast(`HOD override requested for ${activePeriod.name} (${activeSection?.label || ""})`, "info");
+    setPeriodLockState((prev) => ({ ...prev, [activePeriod.id]: false }));
   };
 
   const filteredStudents = useMemo(() => {
@@ -169,16 +385,28 @@ export default function AttendanceStaff() {
     );
   }, [students, searchQuery]);
 
-  const presentCount = students.filter((s) => s.status === "P").length;
-  const absentCount = students.filter((s) => s.status === "A").length;
-  const odCount = students.filter((s) => s.status === "OD").length;
-  const attendanceRate = students.length > 0 ? Math.round(((presentCount + odCount) / students.length) * 100) : 0;
+  const currentPeriodIndex = periods.findIndex((p) => p.id === activePeriod.id);
+  const nextPeriod = currentPeriodIndex < periods.length - 1 ? periods[currentPeriodIndex + 1] : null;
 
   const handleShareRoster = async () => {
     try {
-      const summaryText = `📋 EDUNEX OFFICIAL ATTENDANCE RECORD\nStatus: ${isLocked ? "LOCKED & FROZEN" : "DRAFT"}\nCourse: ${activeSection?.course || ""}\nClass: ${activeSection?.label || ""}\nDate: ${new Date().toLocaleDateString()}\n\n✅ Present: ${presentCount}\n❌ Absent: ${absentCount}\n🟣 On-Duty (OD): ${odCount}\nTurnout Rate: ${attendanceRate}%`;
-      await Share.share({ title: "Class Attendance Record", message: summaryText });
-      showToast("Attendance summary shared!", "success");
+      const recorderText = activeAudit?.staffName
+        ? `Faculty In-Charge: ${activeAudit.staffName} (${activeAudit.staffId}) [Submitted at ${activeAudit.markedAt}]`
+        : `Faculty In-Charge: ${staffInfo.name} (${staffInfo.staffId})`;
+
+      const summaryText = `📋 EDUNEX OFFICIAL ATTENDANCE RECORD\n` +
+        `Period / Hour: ${activePeriod.name} (${activePeriod.time})\n` +
+        `Subject: ${activePeriod.subject}\n` +
+        `Class: ${activeSection?.label || ""}\n` +
+        `Status: ${isLocked ? "LOCKED & FROZEN" : "DRAFT"}\n` +
+        `${recorderText}\n` +
+        `Date: ${new Date().toLocaleDateString()}\n\n` +
+        `✅ Present: ${presentCount}\n` +
+        `❌ Absent: ${absentCount}\n` +
+        `🟣 On-Duty (OD): ${odCount}\n` +
+        `Turnout Rate: ${attendanceRate}%`;
+      await Share.share({ title: `${activePeriod.name} Attendance Record`, message: summaryText });
+      showToast("Period attendance summary shared!", "success");
     } catch (err) {
       console.log("Share error:", err);
     }
@@ -200,16 +428,16 @@ export default function AttendanceStaff() {
         }
       >
         {/* ========================================================================= */}
-        {/* 1. HEADER & LOCK STATUS BANNER                                            */}
+        {/* 1. HEADER & SHARE BUTTON                                                  */}
         {/* ========================================================================= */}
         <View style={styles.headerRow}>
           <View style={[styles.headerIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
             <Icon name="clipboard-check-outline" size={24} color={colors.primaryAccent} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.headerTitle, { color: colors.primaryText }]}>Class Attendance</Text>
+            <Text style={[styles.headerTitle, { color: colors.primaryText }]}>Period Attendance</Text>
             <Text style={[styles.headerSub, { color: colors.secondaryText }]}>
-              Digital Roll Call & Registrar Verification
+              Hour-Wise Digital Roll Call & Registrar Ledger
             </Text>
           </View>
 
@@ -223,84 +451,216 @@ export default function AttendanceStaff() {
           </TouchableOpacity>
         </View>
 
-        {/* Lock / Draft Status Indicator Banner */}
-        <View
-          style={[
-            styles.lockStatusCard,
-            {
-              backgroundColor: isLocked ? "#10B98112" : "#F59E0B12",
-              borderColor: isLocked ? "#10B98144" : "#F59E0B44",
-            },
-          ]}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
-            <Icon
-              name={isLocked ? "lock-check" : "lock-open-outline"}
-              size={20}
-              color={isLocked ? "#10B981" : "#D97706"}
-            />
-            <View style={{ flex: 1 }}>
-              <Text
-                style={[
-                  styles.lockStatusTitle,
-                  { color: isLocked ? "#10B981" : "#D97706" },
-                ]}
-              >
-                {isLocked ? "ATTENDANCE LOCKED & FROZEN" : "DRAFT ROLL CALL (UNLOCKED)"}
-              </Text>
-              <Text style={[styles.lockStatusSub, { color: colors.secondaryText }]}>
-                {isLocked
-                  ? "Record submitted to Registrar. Parent alerts active."
-                  : "Review student presence before locking this session."}
-              </Text>
-            </View>
+        {/* ========================================================================= */}
+        {/* 2. PERIOD / HOUR SELECTOR STRIP (HORIZONTAL)                              */}
+        {/* ========================================================================= */}
+        <View style={styles.periodSectionHeader}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Icon name="clock-outline" size={16} color={colors.primaryAccent} />
+            <Text style={[styles.periodSectionTitle, { color: colors.primaryText }]}>Select Hour / Period</Text>
           </View>
-
-          {isLocked ? (
-            <TouchableOpacity style={styles.unlockBtn} onPress={handleUnlockRequest}>
-              <Icon name="lock-reset" size={14} color={colors.primaryAccent} />
-              <Text style={[styles.unlockBtnText, { color: colors.primaryAccent }]}>Unlock</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={[styles.lockNowBtn, { backgroundColor: colors.primaryAccent }]} onPress={openConfirmation}>
-              <Icon name="lock" size={14} color="#FFFFFF" />
-              <Text style={styles.lockNowBtnText}>Lock Session</Text>
-            </TouchableOpacity>
-          )}
+          <Text style={[styles.periodCountBadge, { color: colors.secondaryText }]}>
+            {periods.filter((p) => periodLockState[p.id]).length} / {periods.length} Locked
+          </Text>
         </View>
 
-        {/* Section & Course Selector Pills */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, marginBottom: 12 }}
+          contentContainerStyle={styles.periodPillsContainer}
         >
-          {sections.map((sec) => {
-            const isSel = activeSection && activeSection.id === sec.id;
+          {periods.map((p) => {
+            const isSel = activePeriod?.id === p.id;
+            const pLocked = Boolean(periodLockState[p.id]);
+            const pAudit = periodAudit[p.id];
+
             return (
               <TouchableOpacity
-                key={sec.id}
+                key={p.id}
                 style={[
-                  styles.sectionPill,
+                  styles.periodPill,
                   isSel
                     ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
-                    : { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+                    : { backgroundColor: colors.cardBackground, borderColor: pLocked ? "#10B98155" : colors.divider },
                 ]}
-                onPress={() => {
-                  setActiveSection(sec);
-                  setIsLocked(false);
-                }}
+                onPress={() => setActivePeriod(p)}
+                activeOpacity={0.85}
               >
-                <Text style={[styles.sectionPillTitle, { color: isSel ? "#FFFFFF" : colors.primaryText }]}>
-                  {sec.label}
-                </Text>
-                <Text style={[styles.sectionPillSub, { color: isSel ? "rgba(255,255,255,0.85)" : colors.secondaryText }]}>
-                  {sec.time}
+                <View style={styles.periodPillTop}>
+                  <Text style={[styles.periodPillNumber, { color: isSel ? "#FFFFFF" : colors.primaryText }]}>
+                    Hour {p.number}
+                  </Text>
+                  {pLocked ? (
+                    <View style={[styles.pillBadge, { backgroundColor: isSel ? "rgba(255,255,255,0.25)" : "#10B98120" }]}>
+                      <Icon name="lock" size={10} color={isSel ? "#FFFFFF" : "#10B981"} />
+                      <Text style={[styles.pillBadgeText, { color: isSel ? "#FFFFFF" : "#10B981" }]}>
+                        {pAudit?.staffName ? pAudit.staffName.split(" ")[0] : "LOCKED"}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.pillBadge, { backgroundColor: isSel ? "rgba(255,255,255,0.2)" : "#F59E0B20" }]}>
+                      <Text style={[styles.pillBadgeText, { color: isSel ? "#FFFFFF" : "#D97706" }]}>DRAFT</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.periodPillTime, { color: isSel ? "rgba(255,255,255,0.85)" : colors.secondaryText }]} numberOfLines={1}>
+                  {p.time.split("-")[0].trim()}
                 </Text>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
+
+        {/* ========================================================================= */}
+        {/* 3. ACTIVE PERIOD DETAILS & STAFF AUDIT BANNER                             */}
+        {/* ========================================================================= */}
+        <View
+          style={[
+            styles.activePeriodCard,
+            {
+              backgroundColor: colors.cardBackground,
+              borderColor: isLocked ? "#10B98144" : colors.divider,
+            },
+          ]}
+        >
+          <View style={styles.activePeriodTop}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <View style={[styles.periodTag, { backgroundColor: colors.primaryAccent + "18" }]}>
+                  <Text style={[styles.periodTagText, { color: colors.primaryAccent }]}>
+                    {activePeriod.name.toUpperCase()} · {activePeriod.type.toUpperCase()}
+                  </Text>
+                </View>
+                {isLocked && (
+                  <View style={[styles.lockedTag, { backgroundColor: "#10B98118" }]}>
+                    <Icon name="lock-check" size={12} color="#10B981" />
+                    <Text style={styles.lockedTagText}>FROZEN & VERIFIED</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.activePeriodSubject, { color: colors.primaryText }]} numberOfLines={1}>
+                {activePeriod.subject}
+              </Text>
+              <Text style={[styles.activePeriodTime, { color: colors.secondaryText }]}>
+                ⏱ {activePeriod.time} · {activeSection?.label || "AI & DS - Section A"}
+              </Text>
+            </View>
+
+            {isLocked ? (
+              <TouchableOpacity style={[styles.unlockBtn, { borderColor: colors.primaryAccent + "44" }]} onPress={handleUnlockRequest}>
+                <Icon name="lock-reset" size={14} color={colors.primaryAccent} />
+                <Text style={[styles.unlockBtnText, { color: colors.primaryAccent }]}>HOD Unlock</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={[styles.lockNowBtn, { backgroundColor: colors.primaryAccent }]} onPress={openConfirmation}>
+                <Icon name="lock" size={14} color="#FFFFFF" />
+                <Text style={styles.lockNowBtnText}>Lock Hour {activePeriod.number}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Dedicated Staff Audit Ledger Card */}
+          <View
+            style={[
+              styles.staffAuditBox,
+              {
+                backgroundColor: isLocked ? "#10B98110" : colors.primaryBackground,
+                borderColor: isLocked ? "#10B98133" : colors.divider,
+              },
+            ]}
+          >
+            <View style={styles.staffAuditLeft}>
+              <View
+                style={[
+                  styles.staffAuditAvatar,
+                  { backgroundColor: isLocked ? "#10B98122" : colors.primaryAccent + "20" },
+                ]}
+              >
+                <Icon
+                  name={isLocked ? "shield-account" : "account-tie"}
+                  size={18}
+                  color={isLocked ? "#10B981" : colors.primaryAccent}
+                />
+              </View>
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={[styles.staffAuditTitle, { color: colors.primaryText }]} numberOfLines={1}>
+                    {isLocked
+                      ? `Recorded by: ${activeAudit?.staffName || staffInfo.name}`
+                      : `Faculty In-Charge: ${staffInfo.name}`}
+                  </Text>
+                </View>
+                <Text style={[styles.staffAuditSub, { color: colors.secondaryText }]}>
+                  {isLocked
+                    ? `Staff ID: ${activeAudit?.staffId || staffInfo.staffId} · Submitted at ${activeAudit?.markedAt || "Today"}`
+                    : `Staff ID: ${staffInfo.staffId} · ${staffInfo.designation}`}
+                </Text>
+              </View>
+            </View>
+
+            {isLocked && (
+              <View style={styles.verifiedBadge}>
+                <Icon name="check-decagram" size={14} color="#10B981" />
+                <Text style={styles.verifiedBadgeText}>VERIFIED</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Time Lock Notice / Next Period Transition */}
+          {isLocked && (
+            <View style={[styles.timeLockNotice, { backgroundColor: "#F59E0B12", borderColor: "#F59E0B33" }]}>
+              <Icon name="clock-alert-outline" size={16} color="#D97706" />
+              <View style={{ flex: 1, marginLeft: 6 }}>
+                <Text style={styles.timeLockNoticeTitle}>Attendance Frozen for this Period</Text>
+                <Text style={[styles.timeLockNoticeSub, { color: colors.secondaryText }]}>
+                  {nextPeriod
+                    ? `Editing is disabled until next hour (${nextPeriod.name} begins at ${nextPeriod.time.split("-")[0].trim()}).`
+                    : "Final period of the day is locked and signed."}
+                </Text>
+              </View>
+
+              {nextPeriod && (
+                <TouchableOpacity
+                  style={[styles.nextHourBtn, { backgroundColor: colors.primaryAccent }]}
+                  onPress={() => setActivePeriod(nextPeriod)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.nextHourBtnText}>Go to Hour {nextPeriod.number}</Text>
+                  <Icon name="arrow-right" size={13} color="#FFFFFF" />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Section Selector Pills */}
+        {sections.length > 1 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, marginBottom: 12 }}
+          >
+            {sections.map((sec) => {
+              const isSel = activeSection && activeSection.id === sec.id;
+              return (
+                <TouchableOpacity
+                  key={sec.id}
+                  style={[
+                    styles.sectionPill,
+                    isSel
+                      ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
+                      : { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+                  ]}
+                  onPress={() => setActiveSection(sec)}
+                >
+                  <Text style={[styles.sectionPillTitle, { color: isSel ? "#FFFFFF" : colors.primaryText }]}>
+                    {sec.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
 
         {isLoading ? (
           <View style={{ marginTop: 10 }}>
@@ -312,7 +672,7 @@ export default function AttendanceStaff() {
         ) : (
           <>
             {/* ========================================================================= */}
-            {/* 2. LIVE ATTENDANCE KPI STRIP                                              */}
+            {/* 4. LIVE ATTENDANCE KPI STRIP FOR ACTIVE PERIOD                            */}
             {/* ========================================================================= */}
             <View style={styles.kpiRow}>
               <View style={[styles.kpiCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
@@ -354,7 +714,7 @@ export default function AttendanceStaff() {
                 <Icon name="magnify" size={18} color={colors.secondaryText} />
                 <TextInput
                   style={[styles.searchInput, { color: colors.primaryText }]}
-                  placeholder="Search student or roll no..."
+                  placeholder={`Search in ${activePeriod.name}...`}
                   placeholderTextColor={colors.disabledText}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -367,7 +727,7 @@ export default function AttendanceStaff() {
               </View>
 
               {!isLocked && (
-                <View style={{ flexDirection: "row", gap: 6 }}>
+                <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
                   <TouchableOpacity
                     style={[styles.bulkBtn, { backgroundColor: "#10B98118", borderColor: "#10B98144" }]}
                     onPress={() => markAll("P")}
@@ -383,18 +743,31 @@ export default function AttendanceStaff() {
                     <Icon name="close-octagon-outline" size={16} color="#EF4444" />
                     <Text style={[styles.bulkBtnText, { color: "#EF4444" }]}>All Absent</Text>
                   </TouchableOpacity>
+
+                  {currentPeriodIndex > 0 && (
+                    <TouchableOpacity
+                      style={[styles.bulkBtn, { backgroundColor: colors.primaryAccent + "18", borderColor: colors.primaryAccent + "44" }]}
+                      onPress={copyFromPreviousPeriod}
+                    >
+                      <Icon name="content-copy" size={15} color={colors.primaryAccent} />
+                      <Text style={[styles.bulkBtnText, { color: colors.primaryAccent }]}>
+                        Copy Hour {periods[currentPeriodIndex - 1].number}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
             </View>
 
             {/* ========================================================================= */}
-            {/* 3. STUDENT ROSTER LIST                                                    */}
+            {/* 5. STUDENT ROSTER FOR CURRENT PERIOD                                      */}
             {/* ========================================================================= */}
             <View style={{ gap: 8 }}>
               {filteredStudents.map((student) => {
-                const isP = student.status === "P";
-                const isA = student.status === "A";
-                const isOD = student.status === "OD";
+                const currentStatus = currentPeriodMap[student.id] || "P";
+                const isP = currentStatus === "P";
+                const isA = currentStatus === "A";
+                const isOD = currentStatus === "OD";
 
                 return (
                   <View
@@ -427,19 +800,27 @@ export default function AttendanceStaff() {
                       </View>
 
                       <View style={{ flex: 1, marginLeft: 10 }}>
-                        <Text style={[styles.studentName, { color: colors.primaryText }]} numberOfLines={1}>
-                          {student.name}
-                        </Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Text style={[styles.studentName, { color: colors.primaryText }]} numberOfLines={1}>
+                            {student.name}
+                          </Text>
+                          {student.isMentee && (
+                            <View style={styles.menteeMiniBadge}>
+                              <Icon name="star" size={9} color="#F59E0B" />
+                              <Text style={styles.menteeMiniBadgeText}>MENTEE</Text>
+                            </View>
+                          )}
+                        </View>
                         <Text style={[styles.studentRoll, { color: colors.secondaryText }]}>
                           {student.roll} · {student.hostel}
                         </Text>
                         <Text style={[styles.termAttText, { color: colors.primaryAccent }]}>
-                          Term Attendance: {student.termAtt}
+                          Overall Attendance: {student.termAtt}
                         </Text>
                       </View>
                     </View>
 
-                    {/* 3-State Action Selector: P / A / OD */}
+                    {/* 3-State Action Selector: P / A / OD for Active Period */}
                     <View style={styles.statusButtonsGroup}>
                       <TouchableOpacity
                         style={[
@@ -447,6 +828,7 @@ export default function AttendanceStaff() {
                           isP
                             ? { backgroundColor: "#10B981", borderColor: "#10B981" }
                             : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                          isLocked && { opacity: isP ? 1 : 0.4 },
                         ]}
                         onPress={() => setStudentStatus(student.id, "P")}
                         disabled={isLocked}
@@ -462,6 +844,7 @@ export default function AttendanceStaff() {
                           isA
                             ? { backgroundColor: "#EF4444", borderColor: "#EF4444" }
                             : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                          isLocked && { opacity: isA ? 1 : 0.4 },
                         ]}
                         onPress={() => setStudentStatus(student.id, "A")}
                         disabled={isLocked}
@@ -477,6 +860,7 @@ export default function AttendanceStaff() {
                           isOD
                             ? { backgroundColor: "#8B5CF6", borderColor: "#8B5CF6" }
                             : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                          isLocked && { opacity: isOD ? 1 : 0.4 },
                         ]}
                         onPress={() => setStudentStatus(student.id, "OD")}
                         disabled={isLocked}
@@ -491,7 +875,7 @@ export default function AttendanceStaff() {
               })}
             </View>
 
-            {/* Bottom Action Button */}
+            {/* Bottom Lock / Locked Banner */}
             {!isLocked ? (
               <TouchableOpacity
                 style={[styles.saveBtn, { backgroundColor: colors.primaryAccent }]}
@@ -500,15 +884,33 @@ export default function AttendanceStaff() {
               >
                 <Icon name="lock-check" size={20} color="#FFFFFF" />
                 <Text style={styles.saveBtnText}>
-                  Lock & Submit Session ({presentCount} Present · {absentCount} Absent)
+                  Lock & Submit {activePeriod.name} ({presentCount} Present · {absentCount} Absent)
                 </Text>
               </TouchableOpacity>
             ) : (
-              <View style={[styles.lockedBottomBox, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
-                <Icon name="shield-check" size={22} color="#10B981" />
-                <Text style={[styles.lockedBottomText, { color: colors.primaryText }]}>
-                  This session is locked and submitted to the Registrar.
-                </Text>
+              <View style={[styles.lockedBottomBox, { backgroundColor: colors.cardBackground, borderColor: "#10B98155" }]}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                  <Icon name="shield-check" size={26} color="#10B981" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.lockedBottomTitle, { color: colors.primaryText }]}>
+                      {activePeriod.name} Recorded by {activeAudit?.staffName || staffInfo.name}
+                    </Text>
+                    <Text style={[styles.lockedBottomText, { color: colors.secondaryText }]}>
+                      Sealed with Registrar at {activeAudit?.markedAt || "Today"}. Editing is disabled until next hour.
+                    </Text>
+                  </View>
+                </View>
+
+                {nextPeriod && (
+                  <TouchableOpacity
+                    style={[styles.bottomNextBtn, { backgroundColor: colors.primaryAccent }]}
+                    onPress={() => setActivePeriod(nextPeriod)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.bottomNextBtnText}>Hour {nextPeriod.number}</Text>
+                    <Icon name="chevron-right" size={16} color="#FFFFFF" />
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </>
@@ -518,7 +920,7 @@ export default function AttendanceStaff() {
       </ScrollView>
 
       {/* ========================================================================= */}
-      {/* 4. PRE-LOCK CONFIRMATION MODAL                                            */}
+      {/* 6. PERIOD PRE-LOCK CONFIRMATION MODAL                                     */}
       {/* ========================================================================= */}
       <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => setConfirmVisible(false)}>
         <View style={styles.modalOverlay}>
@@ -527,20 +929,30 @@ export default function AttendanceStaff() {
               <Icon name="lock-alert" size={32} color="#F59E0B" />
             </View>
 
-            <Text style={[styles.modalTitle, { color: colors.primaryText }]}>Lock & Freeze Attendance?</Text>
+            <Text style={[styles.modalTitle, { color: colors.primaryText }]}>
+              Lock {activePeriod.name} Attendance?
+            </Text>
             <Text style={[styles.modalSub, { color: colors.secondaryText }]}>
-              Please verify your roll call before finalizing. Once locked, this official ledger entry will be submitted to the University Registrar and absent SMS alerts will be sent to parents.
+              Please verify the period roll call. Once locked, this official ledger entry will be submitted to the University Registrar and parent SMS notifications will be triggered for absent students.
             </Text>
 
             {/* Summary Breakdown Grid */}
             <View style={[styles.summaryBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
               <View style={styles.summaryRow}>
-                <Text style={[styles.summaryKey, { color: colors.secondaryText }]}>Lecture Course</Text>
-                <Text style={[styles.summaryVal, { color: colors.primaryText }]}>{activeSection?.course || "—"}</Text>
+                <Text style={[styles.summaryKey, { color: colors.secondaryText }]}>Period / Slot</Text>
+                <Text style={[styles.summaryVal, { color: colors.primaryText }]}>
+                  {activePeriod.name} ({activePeriod.time})
+                </Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={[styles.summaryKey, { color: colors.secondaryText }]}>Batch & Section</Text>
-                <Text style={[styles.summaryVal, { color: colors.primaryText }]}>{activeSection?.label || "—"}</Text>
+                <Text style={[styles.summaryKey, { color: colors.secondaryText }]}>Course / Subject</Text>
+                <Text style={[styles.summaryVal, { color: colors.primaryText }]} numberOfLines={1}>
+                  {activePeriod.subject}
+                </Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryKey, { color: colors.secondaryText }]}>Class & Batch</Text>
+                <Text style={[styles.summaryVal, { color: colors.primaryText }]}>{activeSection?.label || "AI & DS - Section A"}</Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={[styles.summaryKey, { color: colors.secondaryText }]}>Present Students</Text>
@@ -586,15 +998,15 @@ export default function AttendanceStaff() {
       </Modal>
 
       {/* ========================================================================= */}
-      {/* 5. SUCCESS POPUP                                                          */}
+      {/* 7. SUCCESS POPUP                                                          */}
       {/* ========================================================================= */}
       <Modal visible={successVisible} transparent animationType="fade" onRequestClose={() => setSuccessVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
             <Icon name="check-circle" size={54} color="#10B981" />
-            <Text style={[styles.modalTitle, { color: "#10B981" }]}>Attendance Locked!</Text>
+            <Text style={[styles.modalTitle, { color: "#10B981" }]}>{activePeriod.name} Locked!</Text>
             <Text style={[styles.modalSub, { color: colors.secondaryText }]}>
-              The attendance record has been finalized and synchronized with the registrar ledger. Parents of {summary.absent} absent student(s) have been notified.
+              Attendance for {activePeriod.name} ({activePeriod.subject}) has been officially registered and recorded in the academic repository.
             </Text>
 
             <TouchableOpacity
@@ -621,7 +1033,7 @@ const getStyles = (colors, isDarkMode) =>
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
-      marginBottom: 10,
+      marginBottom: 12,
     },
     headerIconWrap: {
       width: 42,
@@ -654,33 +1066,118 @@ const getStyles = (colors, isDarkMode) =>
       fontWeight: "700",
     },
 
-    /* Lock Status Card */
-    lockStatusCard: {
+    /* Period Section Header */
+    periodSectionHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 8,
+    },
+    periodSectionTitle: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    periodCountBadge: {
+      fontSize: 11,
+      fontWeight: "600",
+    },
+
+    /* Period Pills */
+    periodPillsContainer: {
+      gap: 8,
+      marginBottom: 12,
+    },
+    periodPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderRadius: 14,
+      borderWidth: 1,
+      minWidth: 105,
+    },
+    periodPillTop: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      borderRadius: 14,
-      borderWidth: 1,
-      padding: 12,
-      marginBottom: 12,
+      gap: 6,
+      marginBottom: 3,
     },
-    lockStatusTitle: {
-      fontSize: 12,
+    periodPillNumber: {
+      fontSize: 12.5,
+      fontWeight: "800",
+    },
+    pillBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 2,
+      paddingHorizontal: 5,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    pillBadgeText: {
+      fontSize: 8.5,
       fontWeight: "900",
-      letterSpacing: 0.3,
     },
-    lockStatusSub: {
-      fontSize: 10.5,
+    periodPillTime: {
+      fontSize: 10,
+      fontWeight: "600",
+    },
+
+    /* Active Period Card */
+    activePeriodCard: {
+      borderRadius: 16,
+      borderWidth: 1,
+      padding: 14,
+      marginBottom: 12,
+      elevation: 2,
+    },
+    activePeriodTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+    },
+    periodTag: {
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 5,
+      marginBottom: 4,
+    },
+    periodTagText: {
+      fontSize: 9.5,
+      fontWeight: "900",
+    },
+    lockedTag: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 5,
+      marginBottom: 4,
+    },
+    lockedTagText: {
+      color: "#10B981",
+      fontSize: 9.5,
+      fontWeight: "900",
+    },
+    activePeriodSubject: {
+      fontSize: 15,
+      fontWeight: "800",
+      marginTop: 2,
+    },
+    activePeriodTime: {
+      fontSize: 11,
       fontWeight: "500",
-      marginTop: 1,
+      marginTop: 2,
     },
     unlockBtn: {
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
       paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 8,
+      paddingVertical: 7,
+      borderRadius: 10,
+      borderWidth: 1,
     },
     unlockBtnText: {
       fontSize: 11.5,
@@ -689,10 +1186,10 @@ const getStyles = (colors, isDarkMode) =>
     lockNowBtn: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 8,
+      gap: 5,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
     },
     lockNowBtnText: {
       color: "#FFFFFF",
@@ -700,21 +1197,96 @@ const getStyles = (colors, isDarkMode) =>
       fontWeight: "800",
     },
 
+    /* Staff Audit Ledger Box */
+    staffAuditBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 10,
+      marginTop: 10,
+    },
+    staffAuditLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1,
+    },
+    staffAuditAvatar: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    staffAuditTitle: {
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    staffAuditSub: {
+      fontSize: 10,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+    verifiedBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      backgroundColor: "#10B98118",
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: 6,
+    },
+    verifiedBadgeText: {
+      color: "#10B981",
+      fontSize: 9,
+      fontWeight: "900",
+    },
+
+    /* Time Lock Notice */
+    timeLockNotice: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 10,
+      borderWidth: 1,
+      padding: 8,
+      marginTop: 8,
+      gap: 6,
+    },
+    timeLockNoticeTitle: {
+      color: "#D97706",
+      fontSize: 11,
+      fontWeight: "800",
+    },
+    timeLockNoticeSub: {
+      fontSize: 10,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+    nextHourBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+    },
+    nextHourBtnText: {
+      color: "#FFFFFF",
+      fontSize: 11,
+      fontWeight: "800",
+    },
+
     /* Section Selector */
     sectionPill: {
       paddingHorizontal: 14,
-      paddingVertical: 8,
-      borderRadius: 14,
+      paddingVertical: 6,
+      borderRadius: 12,
       borderWidth: 1,
     },
     sectionPillTitle: {
-      fontSize: 12.5,
+      fontSize: 11.5,
       fontWeight: "800",
-    },
-    sectionPillSub: {
-      fontSize: 10.5,
-      fontWeight: "500",
-      marginTop: 1,
     },
 
     /* KPI Row */
@@ -777,11 +1349,13 @@ const getStyles = (colors, isDarkMode) =>
       justifyContent: "center",
       gap: 6,
       paddingVertical: 8,
+      paddingHorizontal: 10,
       borderRadius: 10,
       borderWidth: 1,
+      minWidth: 100,
     },
     bulkBtnText: {
-      fontSize: 11.5,
+      fontSize: 11,
       fontWeight: "800",
     },
 
@@ -815,6 +1389,20 @@ const getStyles = (colors, isDarkMode) =>
     studentName: {
       fontSize: 13.5,
       fontWeight: "800",
+    },
+    menteeMiniBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 2,
+      backgroundColor: "#F59E0B18",
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+      borderRadius: 3,
+    },
+    menteeMiniBadgeText: {
+      color: "#F59E0B",
+      fontSize: 8,
+      fontWeight: "900",
     },
     studentRoll: {
       fontSize: 11,
@@ -863,16 +1451,35 @@ const getStyles = (colors, isDarkMode) =>
     lockedBottomBox: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
+      justifyContent: "space-between",
       gap: 8,
-      paddingVertical: 14,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
       borderRadius: 14,
       borderWidth: 1,
       marginTop: 14,
     },
-    lockedBottomText: {
+    lockedBottomTitle: {
       fontSize: 12.5,
-      fontWeight: "700",
+      fontWeight: "800",
+    },
+    lockedBottomText: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    bottomNextBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 10,
+    },
+    bottomNextBtnText: {
+      color: "#FFFFFF",
+      fontSize: 11.5,
+      fontWeight: "800",
     },
 
     /* Modals */

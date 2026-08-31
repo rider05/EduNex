@@ -13,7 +13,7 @@ import {
   Alert,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { secureGet, secureSet } from "../../services/secureStorage";
 import { useTheme } from "../../context/ThemeContext";
 import { showToast } from "../../utils/toastService";
 import { SkeletonProfileCard, SkeletonListItem } from "../../components/common/SkeletonLoader";
@@ -41,13 +41,12 @@ export default function ProfileParent({ onLogout }) {
 
   const loadPreferences = useCallback(async () => {
     try {
-      const savedPref = await AsyncStorage.getItem("parentNotifications");
+      const savedPref = await secureGet("parentNotifications");
       if (savedPref !== null) {
-        setNotifications(JSON.parse(savedPref));
+        setNotifications(Boolean(savedPref));
       }
 
-      const storedUserRaw = await AsyncStorage.getItem("userData");
-      const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : null;
+      const storedUser = await secureGet("userData");
 
       const data = await getParentData();
       if (data || storedUser) {
@@ -104,7 +103,7 @@ export default function ProfileParent({ onLogout }) {
     const newValue = !notifications;
     setNotifications(newValue);
     try {
-      await AsyncStorage.setItem("parentNotifications", JSON.stringify(newValue));
+      await secureSet("parentNotifications", newValue);
       showToast(
         newValue ? "🔔 Push Notifications Enabled" : "🔕 Notifications Muted",
         newValue ? "success" : "warning"

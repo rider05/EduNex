@@ -1,14 +1,51 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { secureGet, secureSet, secureClearEduNex } from "./secureStorage";
 import { api } from "./api";
 import { resolveIdentity, invalidateIdentity } from "./identityService";
 import { getDeterministicNickname } from "../utils/nicknameGenerator";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔐 SECURE DELTA SYNCHRONIZATION & EVENT EMITTER
+// ─────────────────────────────────────────────────────────────────────────────
+
+const syncListeners = new Set();
+const syncWatermarks = new Map(); // entityKey -> timestamp
+
+/**
+ * Subscribe to background delta updates
+ */
+export function subscribeToDataChanges(callback) {
+  syncListeners.add(callback);
+  return () => syncListeners.delete(callback);
+}
+
+function notifyDataSubscribers(entityKey, updatedData) {
+  syncListeners.forEach((cb) => {
+    try {
+      cb(entityKey, updatedData);
+    } catch (e) {
+      console.warn("Error in data sync subscriber:", e);
+    }
+  });
+}
+
+/**
+ * Checks if an entity needs delta synchronization based on TTL
+ */
+function shouldSyncDelta(entityKey, ttlSeconds = 30) {
+  const last = syncWatermarks.get(entityKey) || 0;
+  const now = Date.now();
+  if (now - last > ttlSeconds * 1000) {
+    syncWatermarks.set(entityKey, now);
+    return true;
+  }
+  return false;
+}
+
 // Every getter here:
 //   1. resolves the logged-in user's real records via identityService
-//   2. fetches LIVE data from the backend (MongoDB)
-//   3. if empty/null → auto-seeds a valid document via POST, re-fetches, and returns it
-//   4. mirrors every response into a per-user local cache (edunex_db_<username>)
-// No bundled default dataset is ever used for display — seeds go to MongoDB.
+//   2. checks local encrypted cache & returns immediately (0ms instant render)
+//   3. in the background, only queries new/missing delta records from backend
+//   4. mirrors every response into per-user encrypted local cache (edunex_db_<username>)
 
 function emptyDatabase() {
   return {
@@ -30,9 +67,9 @@ function cacheKeyFor(username) {
 
 export async function getDatabase() {
   try {
-    const user = await AsyncStorage.getItem("loggedInUser");
-    const raw = await AsyncStorage.getItem(cacheKeyFor(user));
-    return raw ? JSON.parse(raw) : emptyDatabase();
+    const user = await secureGet("loggedInUser");
+    const cached = await secureGet(cacheKeyFor(user));
+    return cached && typeof cached === "object" ? cached : emptyDatabase();
   } catch (err) {
     console.warn("dataService getDatabase error:", err);
     return emptyDatabase();
@@ -41,8 +78,8 @@ export async function getDatabase() {
 
 export async function saveDatabase(db) {
   try {
-    const user = await AsyncStorage.getItem("loggedInUser");
-    await AsyncStorage.setItem(cacheKeyFor(user), JSON.stringify(db));
+    const user = await secureGet("loggedInUser");
+    await secureSet(cacheKeyFor(user), db);
     return true;
   } catch (err) {
     console.warn("dataService saveDatabase error:", err);
@@ -52,11 +89,8 @@ export async function saveDatabase(db) {
 
 export async function clearLocalSync() {
   try {
-    const keys = await AsyncStorage.getAllKeys();
-    const stale = keys.filter(
-      (k) => k.startsWith("edunex_db_") || k === "edunex_unified_database_v1"
-    );
-    if (stale.length > 0) await AsyncStorage.multiRemove(stale);
+    syncWatermarks.clear();
+    await secureClearEduNex();
   } catch (err) {
     console.warn("clearLocalSync error:", err);
   }
@@ -64,7 +98,7 @@ export async function clearLocalSync() {
 
 export async function syncAfterLogin() {
   invalidateIdentity();
-  await clearLocalSync();
+  syncWatermarks.clear();
   try {
     const identity = await resolveIdentity(true);
     if (identity.role === "staff") await getFacultyData();
@@ -158,6 +192,26 @@ async function fetchStudentDoc() {
 }
 
 export async function getStudentData() {
+  const db = await getDatabase();
+  const cached = db.primaryStudent;
+
+  // Background delta sync check
+  if (shouldSyncDelta("primaryStudent", 25)) {
+    (async () => {
+      try {
+        const { doc } = await fetchStudentDoc();
+        if (doc) {
+          await mergeIntoCache({ primaryStudent: doc });
+          notifyDataSubscribers("primaryStudent", doc);
+        }
+      } catch (e) {
+        console.warn("Background delta sync error for student:", e?.message);
+      }
+    })();
+  }
+
+  if (cached) return cached;
+
   const { doc, identity } = await fetchStudentDoc();
   if (doc) {
     await mergeIntoCache({ primaryStudent: doc });
@@ -639,6 +693,34 @@ export function enrichSubjectFromCatalog(subject, catalog) {
 // –––––––––––––––––––––––––––––––––––––––––––––
 
 export async function getFacultyData() {
+  const db = await getDatabase();
+  const cached = db.primaryFaculty;
+
+  // Background delta sync check
+  if (shouldSyncDelta("primaryFaculty", 25)) {
+    (async () => {
+      try {
+        const identity = await resolveIdentity();
+        let doc = null;
+        if (identity.staffId) {
+          doc = await api
+            .get(`/staff/${encodeURIComponent(identity.staffId)}`)
+            .then((r) => r?.data || null)
+            .catch(() => null);
+        }
+        if (!doc && identity.staff) doc = identity.staff;
+        if (doc) {
+          await mergeIntoCache({ primaryFaculty: doc });
+          notifyDataSubscribers("primaryFaculty", doc);
+        }
+      } catch (e) {
+        console.warn("Background delta sync error for faculty:", e?.message);
+      }
+    })();
+  }
+
+  if (cached) return cached;
+
   const identity = await resolveIdentity();
   let doc = null;
   if (identity.staffId) {
@@ -707,22 +789,133 @@ export async function getFacultyData() {
   return seedDoc;
 }
 
+export async function getFacultyMenteeIds() {
+  try {
+    const user = await secureGet("loggedInUser");
+    const key = `edunex_mentee_wards_${user || "staff"}`;
+    const raw = await secureGet(key);
+    return Array.isArray(raw) ? raw : null;
+  } catch (err) {
+    console.warn("getFacultyMenteeIds error:", err);
+    return null;
+  }
+}
+
+export async function saveFacultyMenteeIds(menteeIds) {
+  try {
+    const user = await secureGet("loggedInUser");
+    const key = `edunex_mentee_wards_${user || "staff"}`;
+    await secureSet(key, menteeIds);
+    return true;
+  } catch (err) {
+    console.warn("saveFacultyMenteeIds error:", err);
+    return false;
+  }
+}
+
+export async function addStudentToMenteeWard(studentId) {
+  if (!studentId) return false;
+  const current = (await getFacultyMenteeIds()) || [];
+  const sId = String(studentId);
+  if (!current.includes(sId)) {
+    const updated = [...current, sId];
+    await saveFacultyMenteeIds(updated);
+    return updated;
+  }
+  return current;
+}
+
+export async function removeStudentFromMenteeWard(studentId) {
+  if (!studentId) return false;
+  const current = (await getFacultyMenteeIds()) || [];
+  const sId = String(studentId);
+  const updated = current.filter((id) => id !== sId);
+  await saveFacultyMenteeIds(updated);
+  return updated;
+}
+
+export async function toggleStudentMenteeStatus(studentId) {
+  if (!studentId) return false;
+  const current = (await getFacultyMenteeIds()) || [];
+  const sId = String(studentId);
+  let updated;
+  if (current.includes(sId)) {
+    updated = current.filter((id) => id !== sId);
+  } else {
+    updated = [...current, sId];
+  }
+  await saveFacultyMenteeIds(updated);
+  return { menteeIds: updated, isMentee: updated.includes(sId) };
+}
+
 export async function getFacultyRoster(className) {
   const identity = await resolveIdentity();
   const targetClass = className || identity.className || "";
-  let roster = [];
+  const storedMentees = (await getFacultyMenteeIds()) || [];
+
+  // 1. Instant Cache Return (0ms latency from encrypted store)
+  const db = await getDatabase();
+  const cachedRoster = Array.isArray(db.studentsRoster) ? db.studentsRoster : [];
+  let formattedCached = [];
+
+  if (cachedRoster.length > 0) {
+    formattedCached = cachedRoster.map((s) => {
+      const sId = String(s.id || s._id || s.rollNo || s.roll || "");
+      const isMenteeFlag = storedMentees.includes(sId) || storedMentees.includes(String(s.rollNo || s.roll)) || Boolean(s.isMentee);
+      return {
+        ...s,
+        isMentee: isMenteeFlag,
+        __class: s.__class || s.class || s.section || targetClass,
+      };
+    });
+  }
+
+  // 2. Background Delta Sync (Fetch only missing / updated students)
+  if (shouldSyncDelta(`roster_${targetClass}`, 20)) {
+    (async () => {
+      try {
+        const params = targetClass ? { class: targetClass } : {};
+        const res = await api.get("/students", { ...params, sort: "rollNo", limit: 200 });
+        const liveRoster = Array.isArray(res?.data) ? res.data : [];
+        if (liveRoster.length > 0) {
+          const existingMap = new Map();
+          cachedRoster.forEach((s) => existingMap.set(String(s.id || s.rollNo || s.roll), s));
+          liveRoster.forEach((s) => {
+            const key = String(s.id || s.rollNo || s.roll);
+            existingMap.set(key, { ...(existingMap.get(key) || {}), ...s });
+          });
+          const mergedList = Array.from(existingMap.values());
+          await mergeIntoCache({ studentsRoster: mergedList });
+          notifyDataSubscribers("roster", mergedList);
+        }
+      } catch (e) {
+        console.warn("Background delta sync error for roster:", e?.message);
+      }
+    })();
+  }
+
+  if (formattedCached.length > 0) return formattedCached;
+
+  // Cold cache initial fetch
   try {
     const params = targetClass ? { class: targetClass } : {};
     const res = await api.get("/students", { ...params, sort: "rollNo", limit: 200 });
-    roster = Array.isArray(res?.data) ? res.data : [];
+    const roster = Array.isArray(res?.data) ? res.data : [];
+    if (roster.length > 0) {
+      await mergeIntoCache({ studentsRoster: roster });
+      return roster.map((s) => {
+        const sId = String(s.id || s._id || s.rollNo || s.roll || "");
+        const isMenteeFlag = storedMentees.includes(sId) || storedMentees.includes(String(s.rollNo || s.roll)) || Boolean(s.isMentee);
+        return {
+          ...s,
+          isMentee: isMenteeFlag,
+          __class: s.class || s.section || targetClass,
+        };
+      });
+    }
   } catch {}
 
-  if (roster.length > 0) {
-    await mergeIntoCache({ studentsRoster: roster });
-    return roster.map((s) => ({ ...s, __class: s.class || s.section || targetClass }));
-  }
-  const db = await getDatabase();
-  return (db.studentsRoster || []).map((s) => ({ ...s, __class: s.__class || s.class || s.section || targetClass }));
+  return [];
 }
 
 export async function getStaffClassName() {
@@ -733,6 +926,40 @@ export async function getStaffClassName() {
 export async function getFacultySchedule() {
   const faculty = (await getFacultyData()) || (await getDatabase()).primaryFaculty;
   return Array.isArray(faculty?.todaySchedule) ? faculty.todaySchedule : [];
+}
+
+export async function getPeriodAttendanceRecords(date, classId) {
+  try {
+    const dStr = date || new Date().toISOString().split("T")[0];
+    const cId = classId || "default";
+    const key = `edunex_period_att_${dStr}_${cId}`;
+    const raw = await secureGet(key);
+    return raw && typeof raw === "object" ? raw : {};
+  } catch (err) {
+    console.warn("getPeriodAttendanceRecords error:", err);
+    return {};
+  }
+}
+
+export async function savePeriodAttendanceRecord(date, classId, periodId, record) {
+  try {
+    const dStr = date || new Date().toISOString().split("T")[0];
+    const cId = classId || "default";
+    const key = `edunex_period_att_${dStr}_${cId}`;
+    const current = await getPeriodAttendanceRecords(dStr, cId);
+    const updated = {
+      ...current,
+      [periodId]: {
+        ...record,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    await secureSet(key, updated);
+    return updated;
+  } catch (err) {
+    console.warn("savePeriodAttendanceRecord error:", err);
+    return null;
+  }
 }
 
 export async function submitAttendanceBatch(attendanceDocs) {
@@ -761,9 +988,46 @@ export async function updateStudentAttendance(rollNo, isPresent) {
 // ─────────────────────────────────────────────
 
 export async function getParentData() {
+  const db = await getDatabase();
+  const cachedParent = db.primaryParent;
+  const cachedWard = db.primaryStudent;
+
+  // Background delta sync check
+  if (shouldSyncDelta("primaryParent", 25)) {
+    (async () => {
+      try {
+        const identity = await resolveIdentity();
+        let parent = null;
+        if (identity.parentId) {
+          parent = await api
+            .get(`/parents/${encodeURIComponent(identity.parentId)}`)
+            .then((r) => r?.data || null)
+            .catch(() => null);
+        }
+        if (!parent && identity.parent) parent = identity.parent;
+        let ward = null;
+        const targetRoll = parent?.wardRollNo || identity.wardRollNo || parent?.studentID;
+        if (targetRoll) {
+          ward =
+            (await api
+              .get(`/students/${encodeURIComponent(targetRoll)}`)
+              .then((r) => r?.data || null)
+              .catch(() => null)) || null;
+        }
+        if (parent || ward) {
+          await mergeIntoCache({
+            ...(parent ? { primaryParent: parent } : {}),
+            ...(ward ? { primaryStudent: ward } : {}),
+          });
+          notifyDataSubscribers("parentData", { parent, ward });
+        }
+      } catch (_e) {}
+    })();
+  }
+
   const identity = await resolveIdentity();
-  let parent = null;
-  if (identity.parentId) {
+  let parent = cachedParent || null;
+  if (!parent && identity.parentId) {
     parent = await api
       .get(`/parents/${encodeURIComponent(identity.parentId)}`)
       .then((r) => r?.data || null)
@@ -771,9 +1035,9 @@ export async function getParentData() {
   }
   if (!parent && identity.parent) parent = identity.parent;
 
-  let ward = null;
+  let ward = cachedWard || null;
   const targetRoll = parent?.wardRollNo || identity.wardRollNo || parent?.studentID;
-  if (targetRoll) {
+  if (!ward && targetRoll) {
     ward =
       (await api
         .get(`/students/${encodeURIComponent(targetRoll)}`)
@@ -887,6 +1151,33 @@ export async function getParentData() {
 }
 
 export async function getParentNotices() {
+  const db = await getDatabase();
+  const cached = Array.isArray(db.notices) && db.notices.length > 0 ? db.notices : null;
+
+  if (shouldSyncDelta("notices", 30)) {
+    (async () => {
+      try {
+        const list = await ensureCollection("/notices", [
+          {
+            subject: "Mid-Semester Exam Schedule",
+            message: "The mid-semester examinations for Odd Semester 2026 will commence from 15th September. Students are advised to prepare well and carry their ID cards.",
+            sender: "Ms. Z. Ananth Angel (Class Tutor)",
+            senderRole: "staff",
+            date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+            isNew: true,
+          },
+        ]);
+        const clean = normalizeNotices(list);
+        await mergeIntoCache({ notices: clean });
+        notifyDataSubscribers("notices", clean);
+      } catch (e) {
+        console.warn("Background delta sync error for notices:", e?.message);
+      }
+    })();
+  }
+
+  if (cached) return cached;
+
   const list = await ensureCollection("/notices", [
     {
       subject: "Mid-Semester Exam Schedule",
@@ -932,6 +1223,27 @@ function normalizeNotices(list) {
 
 /** Alias so admin/staff notice feeds can import one consistent getter. */
 export async function getNoticesList(params = {}) {
+  const db = await getDatabase();
+  const cached = Array.isArray(db.notices) && db.notices.length > 0 ? db.notices : null;
+
+  if (shouldSyncDelta("notices_list", 30)) {
+    (async () => {
+      try {
+        const list = await ensureCollection("/notices", {});
+        const clean = normalizeNotices(list);
+        await mergeIntoCache({ notices: clean });
+        notifyDataSubscribers("notices", clean);
+      } catch (_e) {}
+    })();
+  }
+
+  if (cached) {
+    if (params.senderRole) {
+      return normalizeNotices(cached.filter((n) => n.senderRole === params.senderRole));
+    }
+    return normalizeNotices(cached);
+  }
+
   const list = await ensureCollection("/notices", {});
   if (params.senderRole) {
     return normalizeNotices(list.filter((n) => n.senderRole === params.senderRole));
@@ -944,6 +1256,29 @@ export async function getNoticesList(params = {}) {
 // ─────────────────────────────────────────────
 
 export async function getAdminData() {
+  const db = await getDatabase();
+  const cachedAdmin = db.primaryAdmin;
+  const cachedInst = db.institution;
+  const cachedDepts = db.departments;
+
+  if (cachedInst && Array.isArray(cachedDepts) && cachedDepts.length > 0) {
+    if (shouldSyncDelta("adminData", 30)) {
+      (async () => {
+        try {
+          const [instList, deptList] = await Promise.all([
+            ensureCollection("/institutions", {}),
+            ensureCollection("/departments", []),
+          ]);
+          if (instList.length > 0) {
+            await mergeIntoCache({ institution: instList[0], departments: deptList });
+            notifyDataSubscribers("adminData", { institution: instList[0], departments: deptList });
+          }
+        } catch (_e) {}
+      })();
+    }
+    return { ...(cachedAdmin || {}), institution: cachedInst, departments: cachedDepts };
+  }
+
   let institution = null;
   let departments = [];
 

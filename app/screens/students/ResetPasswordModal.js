@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { secureGet } from "../../services/secureStorage";
 import { useTheme } from "../../context/ThemeContext";
 import { showToast } from "../../utils/toastService";
 import { api } from "../../services/api";
@@ -261,8 +261,7 @@ export default function ResetPasswordModal({ visible, onClose, onReset, user }) 
     try {
       // 1. Attempt API update if backend endpoint is supported
       try {
-        const storedUserData = await AsyncStorage.getItem("userData");
-        const parsed = storedUserData ? JSON.parse(storedUserData) : null;
+        const parsed = await secureGet("userData");
         const studentId = user?.id || parsed?.rollNo || parsed?.id || parsed?.username;
 
         if (studentId) {

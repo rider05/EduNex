@@ -17,7 +17,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { secureGet, secureSet } from "../../services/secureStorage";
 import { useTheme } from "../../context/ThemeContext";
 import {
   getRequiredDocuments,
@@ -39,11 +39,9 @@ const DEFAULT_REQUIRED_DOCS = [
     title: "Class 10th / SSLC Marks Statement",
     category: "Academic",
     isMandatory: true,
-    description: "Original state board or central board secondary school completion certificate.",
-    issuer: "State Board of Secondary Education",
-    icon: "file-certificate",
-    color: "#4F46E5",
-    instructions: "Scan clear color copy showing student name, register number, and board seal.",
+    maxSizeMB: 5,
+    allowedFormats: ["PDF", "PNG", "JPEG"],
+    instructions: "Original government issued SSLC mark card or attested copy with seal.",
   },
   {
     id: "REQ-002",
@@ -200,10 +198,14 @@ export default function DocSpaceScreen() {
   // Load from MongoDB backend (Required Docs + Student Uploads)
   const loadDocuments = useCallback(async () => {
     try {
-      // 1. Resolve Student Identity
-      const identity = await resolveIdentity("student").catch(() => null);
-      const student = await getStudentData().catch(() => null);
+      const cached = await secureGet("student_verified_documents_v4");
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        setDocuments(cached);
+      }
 
+      // 1. Resolve student identity
+      const identity = await resolveIdentity().catch(() => null);
+      const student = await getStudentData().catch(() => null);
       const roll = student?.rollNo || identity?.rollNo || "STU-2024-AIDS01";
       const name = student?.name || identity?.name || "Velu";
       const dept = student?.department || student?.class || "Artificial Intelligence & Data Science";
@@ -320,7 +322,7 @@ export default function DocSpaceScreen() {
       });
 
       setDocuments(mergedList);
-      await AsyncStorage.setItem("student_verified_documents_v4", JSON.stringify(mergedList));
+      await secureSet("student_verified_documents_v4", mergedList);
     } catch (err) {
       console.warn("DocSpace loadDocuments error:", err);
     }

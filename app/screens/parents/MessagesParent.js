@@ -13,7 +13,7 @@ import {
   Share,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { secureGet, secureSet } from "../../services/secureStorage";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonListItem } from "../../components/common/SkeletonLoader";
 import { getParentData, getParentNotices } from "../../services/dataService";
@@ -105,9 +105,9 @@ export default function MessagesParent() {
         console.warn("MessagesParent notices load error:", e?.message || e);
       }
 
-      const savedChat = await AsyncStorage.getItem("parent_advisor_chat_v1");
-      if (savedChat) {
-        setChatMessages(JSON.parse(savedChat));
+      const savedChat = await secureGet("parent_advisor_chat_v1");
+      if (savedChat && Array.isArray(savedChat)) {
+        setChatMessages(savedChat);
       }
     } catch (err) {
       console.warn("MessagesParent load error:", err?.message || err);
@@ -144,7 +144,7 @@ export default function MessagesParent() {
     const updated = [...chatMessages, msg];
     setChatMessages(updated);
     setNewMsgText("");
-    await AsyncStorage.setItem("parent_advisor_chat_v1", JSON.stringify(updated));
+    await secureSet("parent_advisor_chat_v1", updated);
     showToast("Message sent to Class Counselor!", "success");
   };
 

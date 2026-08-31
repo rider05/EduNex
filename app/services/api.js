@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { secureGet, secureSet, secureRemove, secureClearEduNex } from "./secureStorage";
 
 export const BASE_URL = "https://edunex-backend-rmvx.onrender.com/api/v1";
 const TIMEOUT_MS = 15000;
@@ -26,7 +26,7 @@ function notifyUnauthorized() {
  */
 export async function getAuthToken() {
   try {
-    return await AsyncStorage.getItem("authToken");
+    return await secureGet("authToken");
   } catch (err) {
     console.warn("getAuthToken error:", err);
     return null;
@@ -39,16 +39,16 @@ export async function getAuthToken() {
 export async function setAuthSession(token, user) {
   try {
     if (token) {
-      await AsyncStorage.setItem("authToken", token);
+      await secureSet("authToken", token);
     }
     if (user) {
-      await AsyncStorage.setItem("userData", JSON.stringify(user));
+      await secureSet("userData", user);
       const rawRole = (user?.role || user?.data?.role || user?.user?.role || "student").toString();
       const role = rawRole.toLowerCase();
       const mappedRole =
         role === "stud" ? "student" : ["admin", "staff", "parent", "student"].includes(role) ? role : "student";
-      await AsyncStorage.setItem("userRole", mappedRole);
-      await AsyncStorage.setItem("loggedInUser", user?.username || user?.name || "");
+      await secureSet("userRole", mappedRole);
+      await secureSet("loggedInUser", user?.username || user?.name || "");
     }
     return true;
   } catch (err) {
@@ -62,10 +62,11 @@ export async function setAuthSession(token, user) {
  */
 export async function clearAuthSession() {
   try {
-    await AsyncStorage.removeItem("authToken");
-    await AsyncStorage.removeItem("userData");
-    await AsyncStorage.removeItem("userRole");
-    await AsyncStorage.removeItem("loggedInUser");
+    await secureRemove("authToken");
+    await secureRemove("userData");
+    await secureRemove("userRole");
+    await secureRemove("loggedInUser");
+    await secureClearEduNex();
     notifyUnauthorized();
   } catch (err) {
     console.warn("clearAuthSession error:", err);
@@ -95,7 +96,7 @@ async function request(endpoint, options = {}) {
 
   // Build headers
   const token = await getAuthToken();
-  const apiKey = await AsyncStorage.getItem("xApiKey");
+  const apiKey = await secureGet("xApiKey");
 
   const headers = {
     Accept: "application/json",

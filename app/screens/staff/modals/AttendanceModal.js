@@ -34,6 +34,8 @@ export default function AttendanceModal({ visible, onClose, colors: propColors }
       );
       const mapped = todaySlots.map((s, idx) => ({
         id: s.id || String(idx + 1),
+        period: s.period || idx + 1,
+        periodName: s.periodName || `Period ${idx + 1}`,
         time: s.time || s.slot || "—",
         name: s.subject || s.course || s.name || "Class",
         venue: s.venue || s.room || s.location || "—",
@@ -110,7 +112,10 @@ export default function AttendanceModal({ visible, onClose, colors: propColors }
                 >
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Text style={[styles.timeText, { color: colors.primaryAccent }]}>{item.time}</Text>
+                      <View style={{ backgroundColor: colors.primaryAccent + "18", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ color: colors.primaryAccent, fontSize: 9.5, fontWeight: "900" }}>{item.periodName.toUpperCase()}</Text>
+                      </View>
+                      <Text style={[styles.timeText, { color: colors.secondaryText }]}>{item.time}</Text>
                       {item.status === "In Session" && (
                         <View style={styles.liveTag}>
                           <View style={styles.liveDot} />

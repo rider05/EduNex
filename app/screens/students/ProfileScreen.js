@@ -14,7 +14,7 @@ import {
   Alert,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { secureGet, secureSet, secureRemove } from "../../services/secureStorage";
 import * as ImagePicker from "expo-image-picker";
 import QRCode from "react-native-qrcode-svg";
 import { useTheme } from "../../context/ThemeContext";
@@ -24,7 +24,7 @@ import FeedbackBugModal from "../../components/FeedbackBugModal";
 import { showToast } from "../../utils/toastService";
 import { SkeletonProfileCard, SkeletonListItem } from "../../components/common/SkeletonLoader";
 import { getStudentData, getInstitutions } from "../../services/dataService";
-import { api } from "../../services/api";
+import { api, clearAuthSession } from "../../services/api";
 import { resolveIdentity } from "../../services/identityService";
 import { getRandomInterestingNickname, getDeterministicNickname } from "../../utils/nicknameGenerator";
 import { formatDeptName } from "../../utils/deptFormatter";
@@ -64,11 +64,11 @@ export default function ProfileScreen({ onLogout }) {
 
   const loadData = useCallback(async () => {
     try {
-      const img = await AsyncStorage.getItem(PROFILE_IMAGE_KEY);
+      const img = await secureGet(PROFILE_IMAGE_KEY);
       if (img) setProfileImage(img);
 
-      const pref = await AsyncStorage.getItem(NOTIF_PREF_KEY);
-      if (pref !== null) setIsNotificationsEnabled(JSON.parse(pref));
+      const pref = await secureGet(NOTIF_PREF_KEY);
+      if (pref !== null) setIsNotificationsEnabled(Boolean(pref));
 
       const [apiStudent, identity, instRes] = await Promise.all([
         getStudentData().catch(() => null),
@@ -79,11 +79,7 @@ export default function ProfileScreen({ onLogout }) {
       const inst = Array.isArray(instRes) && instRes.length > 0 ? instRes[0] : null;
       if (inst) setInstitution(inst);
 
-      const sessionRaw = await AsyncStorage.getItem("userData");
-      let sessionUser = null;
-      try {
-        sessionUser = sessionRaw ? JSON.parse(sessionRaw) : null;
-      } catch {}
+      const sessionUser = await secureGet("userData");
 
       const s = apiStudent || identity?.student || sessionUser?.profile || sessionUser;
 
@@ -163,8 +159,8 @@ export default function ProfileScreen({ onLogout }) {
           emergencyContact: s.emergencyContact || s.parent?.phone || "-",
         });
       } else {
-        const local = await AsyncStorage.getItem(PROFILE_DATA_KEY);
-        if (local) setUser(JSON.parse(local));
+        const local = await secureGet(PROFILE_DATA_KEY);
+        if (local) setUser(local);
       }
     } catch (_e) {
       console.warn("Profile load error:", _e);
@@ -194,7 +190,7 @@ export default function ProfileScreen({ onLogout }) {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert("Permission Required", "Media library access is needed to select a profile photo.");
+        Alert.alert("Permission Required", "Photo library access is needed to choose a profile photo.");
         return;
       }
 
@@ -207,7 +203,7 @@ export default function ProfileScreen({ onLogout }) {
       if (!res.canceled && res.assets && res.assets[0]?.uri) {
         const uri = res.assets[0].uri;
         setProfileImage(uri);
-        await AsyncStorage.setItem(PROFILE_IMAGE_KEY, uri);
+        await secureSet(PROFILE_IMAGE_KEY, uri);
         setPhotoOptionsVisible(false);
         showToast("Profile photo updated!", "success");
       }
@@ -233,7 +229,7 @@ export default function ProfileScreen({ onLogout }) {
       if (!res.canceled && res.assets && res.assets[0]?.uri) {
         const uri = res.assets[0].uri;
         setProfileImage(uri);
-        await AsyncStorage.setItem(PROFILE_IMAGE_KEY, uri);
+        await secureSet(PROFILE_IMAGE_KEY, uri);
         setPhotoOptionsVisible(false);
         showToast("Profile photo captured!", "success");
       }
@@ -244,7 +240,7 @@ export default function ProfileScreen({ onLogout }) {
 
   const removePhoto = async () => {
     setProfileImage(null);
-    await AsyncStorage.removeItem(PROFILE_IMAGE_KEY);
+    await secureRemove(PROFILE_IMAGE_KEY);
     setPhotoOptionsVisible(false);
     showToast("Profile photo reset", "info");
   };
@@ -252,22 +248,21 @@ export default function ProfileScreen({ onLogout }) {
   const toggleNotifications = async () => {
     const nv = !isNotificationsEnabled;
     setIsNotificationsEnabled(nv);
-    await AsyncStorage.setItem(NOTIF_PREF_KEY, JSON.stringify(nv));
+    await secureSet(NOTIF_PREF_KEY, nv);
     showToast(nv ? "🔔 Push Notifications Enabled" : "🔕 Notifications Muted", nv ? "success" : "warning");
   };
 
   const handleProfileUpdate = async (newData) => {
     const updated = { ...user, ...newData };
     setUser(updated);
-    await AsyncStorage.setItem(PROFILE_DATA_KEY, JSON.stringify(updated));
+    await secureSet(PROFILE_DATA_KEY, updated);
     setEditModalVisible(false);
     showToast("Profile details saved successfully!", "success");
   };
 
   const handleLogout = async () => {
     setLogoutVisible(false);
-    await AsyncStorage.removeItem("userRole");
-    await AsyncStorage.removeItem("userData");
+    await clearAuthSession();
     showToast("Logged out successfully", "info");
     if (onLogout) onLogout();
   };

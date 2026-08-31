@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { secureGet } from "../../../services/secureStorage";
 import { useTheme } from "../../../context/ThemeContext";
 import { showToast } from "../../../utils/toastService";
 import { api } from "../../../services/api";
@@ -138,13 +138,11 @@ export default function FullTimetable({ visible = true, onClose }) {
   useEffect(() => {
     async function loadStudentCohort() {
       try {
-        const [student, identity, raw] = await Promise.all([
+        const [student, identity, rawUser] = await Promise.all([
           getStudentData().catch(() => null),
           resolveIdentity().catch(() => null),
-          AsyncStorage.getItem("userData").catch(() => null),
+          secureGet("userData").catch(() => null),
         ]);
-
-        const rawUser = raw ? JSON.parse(raw) : null;
         const dept =
           student?.department ||
           identity?.department ||

@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { secureGet } from "./secureStorage";
 import { api } from "./api";
 
 // Resolves the logged-in user's real records (student / staff / parent / admin)
@@ -16,8 +16,7 @@ function norm(v) {
 
 export async function getSessionUser() {
   try {
-    const raw = await AsyncStorage.getItem("userData");
-    return raw ? JSON.parse(raw) : null;
+    return await secureGet("userData");
   } catch {
     return null;
   }
@@ -107,7 +106,7 @@ async function resolveAdminDoc(user, username) {
  */
 export async function resolveIdentity(force = false) {
   const user = await getSessionUser();
-  let role = norm(await AsyncStorage.getItem("userRole"));
+  let role = norm(await secureGet("userRole"));
   if (!role || role === "guest") role = norm(user?.role);
   const username = norm(user?.username || user?.name || "");
   const key = `${role}:${username}`;

@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { secureSet } from "../services/secureStorage";
 
 export default function SkipScreen({ onLogout, setShowModal }) {
   const [refreshing, setRefreshing] = useState(false);
@@ -24,12 +24,9 @@ export default function SkipScreen({ onLogout, setShowModal }) {
   }, []);
 
   const handleGuestSignIn = async () => {
-    await AsyncStorage.setItem("loggedInUser", "guest");
-    await AsyncStorage.setItem("userRole", "guest");
-    await AsyncStorage.setItem(
-      "userData",
-      JSON.stringify({ role: "guest", id: "guest", name: "Guest User" })
-    );
+    await secureSet("loggedInUser", "guest");
+    await secureSet("userRole", "guest");
+    await secureSet("userData", { role: "guest", id: "guest", name: "Guest User" });
 
     setShowModal?.(true);
   };

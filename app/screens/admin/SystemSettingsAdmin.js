@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { secureGet, secureSet } from "../../services/secureStorage";
 import { useTheme } from "../../context/ThemeContext";
 import { showToast } from "../../utils/toastService";
 import { clearAuthSession, api } from "../../services/api";
@@ -80,13 +80,13 @@ export default function SystemSettingsAdmin({ onLogout }) {
 
   const loadSettings = useCallback(async () => {
     try {
-      const stored = await AsyncStorage.getItem("adminSettings");
+      const stored = await secureGet("adminSettings");
       let merged = {};
-      if (stored) {
-        merged = { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+      if (stored && typeof stored === "object") {
+        merged = { ...DEFAULT_SETTINGS, ...stored };
         setSettings(merged);
       }
-      const storedBackupTime = await AsyncStorage.getItem("lastBackupTime");
+      const storedBackupTime = await secureGet("lastBackupTime");
       if (storedBackupTime) {
         setLastBackupTime(storedBackupTime);
       }
@@ -130,12 +130,12 @@ export default function SystemSettingsAdmin({ onLogout }) {
     }, 500);
   }, [loadSettings]);
 
-  // 🔹 Save full settings state to AsyncStorage
+  // 🔹 Save full settings state to secureStorage
   const saveSettingsToStorage = async (newSettings) => {
     try {
-      await AsyncStorage.setItem("adminSettings", JSON.stringify(newSettings));
-      await AsyncStorage.setItem("signupEnabled", JSON.stringify(newSettings.signupEnabled));
-      await AsyncStorage.setItem("notificationsEnabled", JSON.stringify(newSettings.notifications));
+      await secureSet("adminSettings", newSettings);
+      await secureSet("signupEnabled", newSettings.signupEnabled);
+      await secureSet("notificationsEnabled", newSettings.notifications);
 
       showToast("All system settings saved successfully!", "success");
     } catch (e) {
@@ -150,13 +150,13 @@ export default function SystemSettingsAdmin({ onLogout }) {
     setSettings(updated);
 
     try {
-      await AsyncStorage.setItem("adminSettings", JSON.stringify(updated));
+      await secureSet("adminSettings", updated);
 
       if (key === "signupEnabled") {
-        await AsyncStorage.setItem("signupEnabled", JSON.stringify(updated[key]));
+        await secureSet("signupEnabled", updated[key]);
       }
       if (key === "notifications") {
-        await AsyncStorage.setItem("notificationsEnabled", JSON.stringify(updated[key]));
+        await secureSet("notificationsEnabled", updated[key]);
       }
 
       const formattedName = key
@@ -176,7 +176,7 @@ export default function SystemSettingsAdmin({ onLogout }) {
   const handleUpdateValue = async (key, value) => {
     const updated = { ...settings, [key]: value };
     setSettings(updated);
-    await AsyncStorage.setItem("adminSettings", JSON.stringify(updated));
+    await secureSet("adminSettings", updated);
     showToast(`Updated ${key}: ${value}`, "info");
   };
 
@@ -189,7 +189,7 @@ export default function SystemSettingsAdmin({ onLogout }) {
       const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       const fullDateStr = `Today, ${timeStr}`;
       setLastBackupTime(fullDateStr);
-      await AsyncStorage.setItem("lastBackupTime", fullDateStr);
+      await secureSet("lastBackupTime", fullDateStr);
 
       showToast("📦 Database Snapshot & Backup Created Successfully!", "success");
     } catch (e) {

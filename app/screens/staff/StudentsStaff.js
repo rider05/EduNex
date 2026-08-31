@@ -15,13 +15,13 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonListItem } from "../../components/common/SkeletonLoader";
-import { getFacultyRoster, getStaffClassName } from "../../services/dataService";
+import { getFacultyRoster, getStaffClassName, toggleStudentMenteeStatus, subscribeToDataChanges } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
 
 const DEFAULT_STUDENTS = [];
 
-const FILTER_TABS = ["All Students", "Section A", "Section B", "Mentee Wards", "Critical Attendance"];
+const FILTER_TABS = ["All Students", "Mentee Wards", "Section A", "Section B", "Critical Attendance"];
 
 export default function StudentsStaff() {
   const { colors, isDarkMode } = useTheme();
@@ -39,55 +39,70 @@ export default function StudentsStaff() {
   const [callConfirmVisible, setCallConfirmVisible] = useState(false);
   const [callTarget, setCallTarget] = useState({ name: "", phone: "", role: "" });
 
+  // Mentee Management Modal
+  const [assignModalVisible, setAssignModalVisible] = useState(false);
+  const [assignSearchText, setAssignSearchText] = useState("");
+  const [assignFilterSection, setAssignFilterSection] = useState("All");
+
+  const mapRosterToStudents = useCallback((roster) => {
+    return (roster || []).map((s, idx) => {
+      const sec = s.section || s.class || "";
+      const marks = Array.isArray(s.subjects) ? s.subjects.map((x) => Number(x.marks)).filter((m) => !isNaN(m)) : [];
+      const avgCia = marks.length > 0 ? Math.round(marks.reduce((a, b) => a + b, 0) / marks.length) : null;
+      return {
+        id: s.id || String(idx + 1),
+        name: s.name || `Student ${idx + 1}`,
+        roll: s.roll || s.rollNo || "—",
+        regNo: s.regNo || s.rollNo || "—",
+        section: sec || "—",
+        cgpa: s.cgpa != null ? String(s.cgpa) : "—",
+        attendance: s.attendance?.percentage || (s.attendance ? String(s.attendance) : "—"),
+        attendanceStatus: s.attendance?.percentage && parseFloat(s.attendance.percentage) < 75 ? "Critical (<75%)" : "Safe",
+        phone: s.phone || "—",
+        parentName: s.parentName || s.parent?.name || "Parent / Guardian",
+        parentPhone: s.parentPhone || s.parent?.phone || "—",
+        email: s.email || `${s.name?.toLowerCase().replace(/\s+/g, ".")}@edunex.edu.in`,
+        hostel:
+          typeof s.hostel === "boolean"
+            ? s.hostel
+              ? "Residential"
+              : "Day Scholar"
+            : s.hostel || "—",
+        bloodGroup: s.bloodGroup || "—",
+        ciaScore: avgCia != null ? String(avgCia) : (s.ciaScore || "—"),
+        department: s.department || s.deptShort || s.dept || "",
+        rollNo: s.rollNo || s.roll || "",
+        mentorStatus: s.mentorStatus || s.mentorWard || "Regular Student",
+        isMentee: Boolean(s.isMentee),
+      };
+    });
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       const cls = await getStaffClassName();
       const roster = await getFacultyRoster(cls || undefined);
       if (roster && roster.length > 0) {
-        setStudents(
-          roster.map((s, idx) => {
-            const sec = s.section || s.class || "";
-            const marks = Array.isArray(s.subjects) ? s.subjects.map((x) => Number(x.marks)).filter((m) => !isNaN(m)) : [];
-            const avgCia = marks.length > 0 ? Math.round(marks.reduce((a, b) => a + b, 0) / marks.length) : null;
-            return {
-            id: s.id || String(idx + 1),
-            name: s.name || `Student ${idx + 1}`,
-            roll: s.roll || s.rollNo || "—",
-            regNo: s.regNo || s.rollNo || "—",
-            section: sec || "—",
-            cgpa: s.cgpa != null ? String(s.cgpa) : "—",
-            attendance: s.attendance?.percentage || (s.attendance ? String(s.attendance) : "—"),
-            attendanceStatus: s.attendance?.percentage && parseFloat(s.attendance.percentage) < 75 ? "Critical (<75%)" : "Safe",
-            phone: s.phone || "—",
-            parentName: s.parentName || s.parent?.name || "Parent / Guardian",
-            parentPhone: s.parentPhone || s.parent?.phone || "—",
-            email: s.email || `${s.name?.toLowerCase().replace(/\s+/g, ".")}@edunex.edu.in`,
-            hostel:
-              typeof s.hostel === "boolean"
-                ? s.hostel
-                  ? "Residential"
-                  : "Day Scholar"
-                : s.hostel || "—",
-            bloodGroup: s.bloodGroup || "—",
-            ciaScore: avgCia != null ? String(avgCia) : (s.ciaScore || "—"),
-            department: s.department || s.deptShort || s.dept || "",
-            rollNo: s.rollNo || s.roll || "",
-            mentorStatus: s.mentorStatus || s.mentorWard || "Regular Student",
-            isMentee: s.isMentee || s.mentorWard === "Mentee Ward" || false,
-            };
-          })
-        );
+        setStudents(mapRosterToStudents(roster));
+        setIsLoading(false);
       }
     } catch (err) {
       console.log("Error loading students directory:", err);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [mapRosterToStudents]);
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+    // Subscribe to background delta updates seamlessly
+    const unsubscribe = subscribeToDataChanges((key, data) => {
+      if (key === "roster" && Array.isArray(data)) {
+        setStudents(mapRosterToStudents(data));
+      }
+    });
+    return () => unsubscribe();
+  }, [loadData, mapRosterToStudents]);
 
   useRefreshOnForeground(loadData);
 
@@ -97,6 +112,75 @@ export default function StudentsStaff() {
     await loadData();
     setRefreshing(false);
   }, [loadData]);
+
+  // Toggle student mentee ward status
+  const handleToggleMentee = async (student) => {
+    const nextStatus = !student.isMentee;
+    const targetId = student.id || student.roll || student.rollNo;
+
+    // Optimistically update students list
+    setStudents((prev) =>
+      prev.map((s) => (s.id === student.id ? { ...s, isMentee: nextStatus } : s))
+    );
+
+    // If currently inspecting in modal, update that as well
+    if (selectedStudent && selectedStudent.id === student.id) {
+      setSelectedStudent((prev) => ({ ...prev, isMentee: nextStatus }));
+    }
+
+    try {
+      await toggleStudentMenteeStatus(targetId);
+      if (nextStatus) {
+        showToast(`Added ${student.name} to your Mentee Ward special list ★`, "success");
+      } else {
+        showToast(`Removed ${student.name} from Mentee Ward list`, "info");
+      }
+    } catch (err) {
+      console.log("Error toggling mentee status:", err);
+      // Revert on failure
+      setStudents((prev) =>
+        prev.map((s) => (s.id === student.id ? { ...s, isMentee: !nextStatus } : s))
+      );
+    }
+  };
+
+  const menteeStudents = useMemo(() => {
+    return students.filter((s) => s.isMentee);
+  }, [students]);
+
+  // Mentee Ward KPI Analytics
+  const menteeStats = useMemo(() => {
+    const count = menteeStudents.length;
+    if (count === 0) return { count: 0, avgAtt: "—", avgCgpa: "—", atRiskCount: 0 };
+
+    let attSum = 0;
+    let attCount = 0;
+    let cgpaSum = 0;
+    let cgpaCount = 0;
+    let atRisk = 0;
+
+    menteeStudents.forEach((s) => {
+      const attNum = parseFloat(String(s.attendance).replace("%", ""));
+      if (!isNaN(attNum)) {
+        attSum += attNum;
+        attCount++;
+        if (attNum < 75) atRisk++;
+      }
+      const cgpaNum = parseFloat(s.cgpa);
+      if (!isNaN(cgpaNum)) {
+        cgpaSum += cgpaNum;
+        cgpaCount++;
+        if (cgpaNum < 6.0 && (!attNum || attNum >= 75)) atRisk++;
+      }
+    });
+
+    return {
+      count,
+      avgAtt: attCount > 0 ? `${Math.round(attSum / attCount)}%` : "94%",
+      avgCgpa: cgpaCount > 0 ? (cgpaSum / cgpaCount).toFixed(2) : "8.5",
+      atRiskCount: atRisk,
+    };
+  }, [menteeStudents]);
 
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
@@ -117,6 +201,24 @@ export default function StudentsStaff() {
       return true;
     });
   }, [students, selectedFilter, searchText]);
+
+  // Students for the Assign Mentee Modal
+  const assignModalStudents = useMemo(() => {
+    return students.filter((s) => {
+      if (assignFilterSection === "Section A" && !/Section A|A$/i.test(s.section.replace(/\s*-\s*/g, " "))) return false;
+      if (assignFilterSection === "Section B" && !/Section B|B$/i.test(s.section.replace(/\s*-\s*/g, " "))) return false;
+      if (assignFilterSection === "Assigned" && !s.isMentee) return false;
+      if (assignFilterSection === "Unassigned" && s.isMentee) return false;
+
+      if (assignSearchText.trim()) {
+        const q = assignSearchText.toLowerCase().trim();
+        const matchName = s.name.toLowerCase().includes(q);
+        const matchRoll = s.roll.toLowerCase().includes(q);
+        if (!matchName && !matchRoll) return false;
+      }
+      return true;
+    });
+  }, [students, assignFilterSection, assignSearchText]);
 
   const handleOpenDetails = (student) => {
     setSelectedStudent(student);
@@ -144,9 +246,22 @@ export default function StudentsStaff() {
     try {
       await Share.share({
         title: `Student Dossier - ${student.name}`,
-        message: `🎓 EDUNEX STUDENT ACADEMIC DOSSIER\nStudent: ${student.name} (${student.roll})\nReg No: ${student.regNo}\nClass: ${student.section} · ${student.department || student.program || "B.Tech"}\nCGPA: ${student.cgpa} / 10.0\nAttendance: ${student.attendance} (${student.attendanceStatus})\nCIA-1 Score: ${student.ciaScore}\nGuardian: ${student.parentName} (${student.parentPhone})\nStatus: ACTIVE & ENROLLED`,
+        message: `🎓 EDUNEX STUDENT ACADEMIC DOSSIER\nStudent: ${student.name} (${student.roll})\nReg No: ${student.regNo}\nClass: ${student.section} · ${student.department || student.program || "B.Tech"}\nCGPA: ${student.cgpa} / 10.0\nAttendance: ${student.attendance} (${student.attendanceStatus})\nCIA-1 Score: ${student.ciaScore}\nGuardian: ${student.parentName} (${student.parentPhone})\nMentee Status: ${student.isMentee ? "★ ASSIGNED MENTEE WARD" : "REGULAR STUDENT"}\nStatus: ACTIVE & ENROLLED`,
       });
       showToast("Student dossier shared!", "success");
+    } catch (err) {
+      console.log("Share error:", err);
+    }
+  };
+
+  const handleShareMenteeList = async () => {
+    try {
+      const menteeListText = menteeStudents
+        .map((s, idx) => `${idx + 1}. ${s.name} (${s.roll}) - Att: ${s.attendance} | CGPA: ${s.cgpa}`)
+        .join("\n");
+      const summaryText = `⭐ EDUNEX MENTEE WARD OFFICIAL ROSTER\nFaculty Mentor / Advisor\nTotal Assigned Mentees: ${menteeStats.count}\nAvg Attendance: ${menteeStats.avgAtt}\nAvg CGPA: ${menteeStats.avgCgpa}\nAt-Risk Mentees: ${menteeStats.atRiskCount}\n\n${menteeListText}`;
+      await Share.share({ title: "Mentee Ward Special List", message: summaryText });
+      showToast("Mentee Ward roster shared!", "success");
     } catch (err) {
       console.log("Share error:", err);
     }
@@ -180,6 +295,15 @@ export default function StudentsStaff() {
               Department Mentorship Roster & Academic Files
             </Text>
           </View>
+
+          <TouchableOpacity
+            style={[styles.assignTopBtn, { backgroundColor: colors.primaryAccent }]}
+            onPress={() => setAssignModalVisible(true)}
+            activeOpacity={0.85}
+          >
+            <Icon name="star-plus-outline" size={16} color="#FFFFFF" />
+            <Text style={styles.assignTopBtnText}>Mentee Ward</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Filter Pills */}
@@ -190,6 +314,7 @@ export default function StudentsStaff() {
         >
           {FILTER_TABS.map((tab) => {
             const isSel = selectedFilter === tab;
+            const isMenteeTab = tab === "Mentee Wards";
             return (
               <TouchableOpacity
                 key={tab}
@@ -197,24 +322,108 @@ export default function StudentsStaff() {
                   styles.filterPill,
                   isSel
                     ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
-                    : { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+                    : { backgroundColor: colors.cardBackground, borderColor: isMenteeTab ? "#F59E0B55" : colors.divider },
                 ]}
                 onPress={() => setSelectedFilter(tab)}
               >
-                <Text style={[styles.filterPillText, { color: isSel ? "#FFFFFF" : colors.primaryText }]}>
-                  {tab}
-                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  {isMenteeTab && (
+                    <Icon name="star" size={12} color={isSel ? "#FFFFFF" : "#F59E0B"} />
+                  )}
+                  <Text style={[styles.filterPillText, { color: isSel ? "#FFFFFF" : colors.primaryText }]}>
+                    {tab}
+                    {isMenteeTab && ` (${menteeStudents.length})`}
+                  </Text>
+                </View>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
+
+        {/* ========================================================================= */}
+        {/* 2. DEDICATED MENTEE WARD DASHBOARD BANNER (WHEN MENTEE TAB SELECTED)     */}
+        {/* ========================================================================= */}
+        {selectedFilter === "Mentee Wards" && (
+          <View style={[styles.menteeHeaderCard, { backgroundColor: colors.cardBackground, borderColor: "#F59E0B44" }]}>
+            <View style={styles.menteeHeaderTop}>
+              <View style={[styles.menteeIconCircle, { backgroundColor: "#F59E0B18" }]}>
+                <Icon name="shield-star" size={24} color="#F59E0B" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={[styles.menteeHeaderTitle, { color: colors.primaryText }]}>
+                    Mentorship Ward Special List
+                  </Text>
+                  <View style={styles.menteeActivePill}>
+                    <Text style={styles.menteeActivePillText}>COUNSELOR</Text>
+                  </View>
+                </View>
+                <Text style={[styles.menteeHeaderSub, { color: colors.secondaryText }]}>
+                  Personal academic monitoring & parent liaison roster
+                </Text>
+              </View>
+            </View>
+
+            {/* 4-Metric Mentee KPI Strip */}
+            <View style={styles.menteeKpiRow}>
+              <View style={[styles.menteeKpiBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                <Text style={[styles.menteeKpiVal, { color: colors.primaryText }]}>{menteeStats.count}</Text>
+                <Text style={[styles.menteeKpiLabel, { color: colors.secondaryText }]}>Mentees</Text>
+              </View>
+
+              <View style={[styles.menteeKpiBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                <Text style={[styles.menteeKpiVal, { color: "#10B981" }]}>{menteeStats.avgAtt}</Text>
+                <Text style={[styles.menteeKpiLabel, { color: colors.secondaryText }]}>Avg Att.</Text>
+              </View>
+
+              <View style={[styles.menteeKpiBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                <Text style={[styles.menteeKpiVal, { color: "#4F46E5" }]}>{menteeStats.avgCgpa}</Text>
+                <Text style={[styles.menteeKpiLabel, { color: colors.secondaryText }]}>Avg CGPA</Text>
+              </View>
+
+              <View style={[styles.menteeKpiBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                <Text style={[styles.menteeKpiVal, { color: menteeStats.atRiskCount > 0 ? "#EF4444" : "#10B981" }]}>
+                  {menteeStats.atRiskCount}
+                </Text>
+                <Text style={[styles.menteeKpiLabel, { color: colors.secondaryText }]}>At-Risk</Text>
+              </View>
+            </View>
+
+            {/* Quick Mentee Actions */}
+            <View style={styles.menteeActionsRow}>
+              <TouchableOpacity
+                style={[styles.addMenteeActionBtn, { backgroundColor: colors.primaryAccent }]}
+                onPress={() => setAssignModalVisible(true)}
+                activeOpacity={0.85}
+              >
+                <Icon name="account-plus-outline" size={15} color="#FFFFFF" />
+                <Text style={styles.addMenteeActionBtnText}>+ Assign / Manage Mentees</Text>
+              </TouchableOpacity>
+
+              {menteeStudents.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.shareMenteeBtn, { borderColor: colors.divider }]}
+                  onPress={handleShareMenteeList}
+                  activeOpacity={0.8}
+                >
+                  <Icon name="share-variant-outline" size={15} color={colors.primaryAccent} />
+                  <Text style={[styles.shareMenteeBtnText, { color: colors.primaryAccent }]}>Share Roster</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* Search Bar */}
         <View style={[styles.searchBar, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
           <Icon name="magnify" size={20} color={colors.secondaryText} />
           <TextInput
             style={[styles.searchInput, { color: colors.primaryText }]}
-            placeholder="Search by student name, roll or reg no..."
+            placeholder={
+              selectedFilter === "Mentee Wards"
+                ? "Search among your assigned mentees..."
+                : "Search by student name, roll or reg no..."
+            }
             placeholderTextColor={colors.disabledText}
             value={searchText}
             onChangeText={setSearchText}
@@ -241,8 +450,26 @@ export default function StudentsStaff() {
               </Text>
             </View>
 
+            {/* Empty state for mentee wards */}
+            {selectedFilter === "Mentee Wards" && filteredStudents.length === 0 && (
+              <View style={[styles.emptyMenteeBox, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+                <Icon name="star-off-outline" size={48} color="#F59E0B" />
+                <Text style={[styles.emptyMenteeTitle, { color: colors.primaryText }]}>No Mentees in Special List</Text>
+                <Text style={[styles.emptyMenteeSub, { color: colors.secondaryText }]}>
+                  You have not assigned any students to your Mentee Ward yet. Tap below to select students from your class.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.emptyAddBtn, { backgroundColor: colors.primaryAccent }]}
+                  onPress={() => setAssignModalVisible(true)}
+                >
+                  <Icon name="account-plus" size={16} color="#FFFFFF" />
+                  <Text style={styles.emptyAddBtnText}>Add Students to Mentee Ward</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* ========================================================================= */}
-            {/* 2. STUDENT CARDS LIST                                                     */}
+            {/* 3. STUDENT CARDS LIST                                                     */}
             {/* ========================================================================= */}
             <View style={{ gap: 10 }}>
               {filteredStudents.map((student) => {
@@ -254,7 +481,7 @@ export default function StudentsStaff() {
                       styles.studentCard,
                       {
                         backgroundColor: colors.cardBackground,
-                        borderColor: isCritical ? "#EF444455" : colors.divider,
+                        borderColor: student.isMentee ? "#F59E0B55" : isCritical ? "#EF444455" : colors.divider,
                       },
                     ]}
                   >
@@ -279,12 +506,33 @@ export default function StudentsStaff() {
                           <Text style={[styles.studentName, { color: colors.primaryText }]} numberOfLines={1}>
                             {student.name}
                           </Text>
-                          {student.isMentee && (
-                            <View style={styles.menteeBadge}>
-                              <Icon name="star" size={10} color="#F59E0B" />
-                              <Text style={styles.menteeBadgeText}>MENTEE</Text>
-                            </View>
-                          )}
+
+                          {/* Quick 1-tap Mentee Ward Star Toggle */}
+                          <TouchableOpacity
+                            style={[
+                              styles.menteeToggleBadge,
+                              {
+                                backgroundColor: student.isMentee ? "#F59E0B18" : colors.primaryBackground,
+                                borderColor: student.isMentee ? "#F59E0B44" : colors.divider,
+                              },
+                            ]}
+                            onPress={() => handleToggleMentee(student)}
+                            activeOpacity={0.75}
+                          >
+                            <Icon
+                              name={student.isMentee ? "star" : "star-outline"}
+                              size={12}
+                              color={student.isMentee ? "#D97706" : colors.secondaryText}
+                            />
+                            <Text
+                              style={[
+                                styles.menteeBadgeText,
+                                { color: student.isMentee ? "#D97706" : colors.secondaryText },
+                              ]}
+                            >
+                              {student.isMentee ? "MENTEE" : "+ MENTEE"}
+                            </Text>
+                          </TouchableOpacity>
                         </View>
 
                         <Text style={[styles.studentRoll, { color: colors.secondaryText }]}>
@@ -322,6 +570,25 @@ export default function StudentsStaff() {
                       </View>
 
                       <View style={styles.actionsGroup}>
+                        {/* 1-Tap Mentee Star Quick Action */}
+                        <TouchableOpacity
+                          style={[
+                            styles.actionIconBtn,
+                            {
+                              backgroundColor: student.isMentee ? "#F59E0B18" : colors.primaryBackground,
+                              borderColor: student.isMentee ? "#F59E0B55" : colors.divider,
+                            },
+                          ]}
+                          onPress={() => handleToggleMentee(student)}
+                          activeOpacity={0.8}
+                        >
+                          <Icon
+                            name={student.isMentee ? "star" : "star-outline"}
+                            size={16}
+                            color={student.isMentee ? "#D97706" : colors.secondaryText}
+                          />
+                        </TouchableOpacity>
+
                         <TouchableOpacity
                           style={[styles.actionIconBtn, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
                           onPress={() => handleInitiateCall(student.name, student.phone, "Student")}
@@ -359,7 +626,7 @@ export default function StudentsStaff() {
       </ScrollView>
 
       {/* ========================================================================= */}
-      {/* 3. STUDENT ACADEMIC DOSSIER MODAL                                         */}
+      {/* 4. STUDENT ACADEMIC DOSSIER MODAL                                         */}
       {/* ========================================================================= */}
       {selectedStudent && (
         <Modal
@@ -396,7 +663,67 @@ export default function StudentsStaff() {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 360 }}>
+              {/* Mentee Status Interactive Bar in Dossier */}
+              <View
+                style={[
+                  styles.dossierMenteeBanner,
+                  {
+                    backgroundColor: selectedStudent.isMentee ? "#F59E0B14" : colors.primaryBackground,
+                    borderColor: selectedStudent.isMentee ? "#F59E0B44" : colors.divider,
+                  },
+                ]}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                  <Icon
+                    name={selectedStudent.isMentee ? "shield-star" : "shield-account-outline"}
+                    size={20}
+                    color={selectedStudent.isMentee ? "#D97706" : colors.secondaryText}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.dossierMenteeTitle,
+                        { color: selectedStudent.isMentee ? "#D97706" : colors.primaryText },
+                      ]}
+                    >
+                      {selectedStudent.isMentee ? "ASSIGNED MENTEE WARD" : "REGULAR STUDENT"}
+                    </Text>
+                    <Text style={[styles.dossierMenteeSub, { color: colors.secondaryText }]}>
+                      {selectedStudent.isMentee
+                        ? "Under your personal academic guardianship & mentorship."
+                        : "Not assigned to your personal Mentee Ward list."}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.dossierMenteeToggleBtn,
+                    {
+                      backgroundColor: selectedStudent.isMentee ? "#EF444418" : colors.primaryAccent,
+                      borderColor: selectedStudent.isMentee ? "#EF444444" : "transparent",
+                    },
+                  ]}
+                  onPress={() => handleToggleMentee(selectedStudent)}
+                  activeOpacity={0.85}
+                >
+                  <Icon
+                    name={selectedStudent.isMentee ? "account-minus" : "star-plus"}
+                    size={14}
+                    color={selectedStudent.isMentee ? "#EF4444" : "#FFFFFF"}
+                  />
+                  <Text
+                    style={[
+                      styles.dossierMenteeToggleBtnText,
+                      { color: selectedStudent.isMentee ? "#EF4444" : "#FFFFFF" },
+                    ]}
+                  >
+                    {selectedStudent.isMentee ? "Remove" : "+ Add Mentee"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 300 }}>
                 <View style={[styles.dossierGrid, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
                   <DossierRow icon="domain" label="Class & Program" value={`${selectedStudent.section} · ${selectedStudent.department || selectedStudent.program || "B.Tech"}`} colors={colors} />
                   <DossierRow icon="trophy-outline" label="Cumulative GPA" value={`${selectedStudent.cgpa} / 10.0`} colors={colors} />
@@ -433,7 +760,162 @@ export default function StudentsStaff() {
       )}
 
       {/* ========================================================================= */}
-      {/* 4. CALL CONFIRMATION MODAL                                                */}
+      {/* 5. ASSIGN / MANAGE MENTEE WARDS MODAL                                     */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={assignModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAssignModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.assignModalCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                <View style={[styles.iconWrapRound, { backgroundColor: "#F59E0B18" }]}>
+                  <Icon name="account-multiple-plus" size={22} color="#F59E0B" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.modalStudentName, { color: colors.primaryText }]}>
+                    Manage Mentee Ward Special List
+                  </Text>
+                  <Text style={[styles.modalStudentSub, { color: colors.secondaryText }]}>
+                    {menteeStudents.length} student{menteeStudents.length === 1 ? "" : "s"} currently assigned as your mentees
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity onPress={() => setAssignModalVisible(false)}>
+                <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Input inside modal */}
+            <View style={[styles.searchBar, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, marginBottom: 8 }]}>
+              <Icon name="magnify" size={18} color={colors.secondaryText} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.primaryText }]}
+                placeholder="Search by student name or roll..."
+                placeholderTextColor={colors.disabledText}
+                value={assignSearchText}
+                onChangeText={setAssignSearchText}
+              />
+              {assignSearchText.length > 0 && (
+                <TouchableOpacity onPress={() => setAssignSearchText("")}>
+                  <Icon name="close-circle" size={16} color={colors.secondaryText} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Filter pills inside modal */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 6, marginBottom: 10 }}
+            >
+              {["All", "Assigned", "Unassigned", "Section A", "Section B"].map((sec) => {
+                const isSel = assignFilterSection === sec;
+                return (
+                  <TouchableOpacity
+                    key={sec}
+                    style={[
+                      styles.filterPill,
+                      isSel
+                        ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
+                        : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                    ]}
+                    onPress={() => setAssignFilterSection(sec)}
+                  >
+                    <Text style={[styles.filterPillText, { color: isSel ? "#FFFFFF" : colors.primaryText }]}>
+                      {sec}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Student List with 1-tap Add/Remove */}
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }}>
+              <View style={{ gap: 8 }}>
+                {assignModalStudents.map((st) => (
+                  <View
+                    key={st.id}
+                    style={[
+                      styles.assignStudentRow,
+                      {
+                        backgroundColor: colors.primaryBackground,
+                        borderColor: st.isMentee ? "#F59E0B55" : colors.divider,
+                      },
+                    ]}
+                  >
+                    <View style={styles.assignRowLeft}>
+                      <View
+                        style={[
+                          styles.avatarCircleSmall,
+                          { backgroundColor: st.isMentee ? "#F59E0B" : colors.primaryAccent },
+                        ]}
+                      >
+                        <Text style={styles.avatarSmallText}>
+                          {st.name
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                            .slice(0, 2)}
+                        </Text>
+                      </View>
+
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={[styles.assignStudentName, { color: colors.primaryText }]} numberOfLines={1}>
+                          {st.name}
+                        </Text>
+                        <Text style={[styles.assignStudentSub, { color: colors.secondaryText }]}>
+                          {st.roll} · {st.section} · Att: {st.attendance}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.assignToggleBtn,
+                        st.isMentee
+                          ? { backgroundColor: "#EF444418", borderColor: "#EF444444" }
+                          : { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent },
+                      ]}
+                      onPress={() => handleToggleMentee(st)}
+                      activeOpacity={0.8}
+                    >
+                      <Icon
+                        name={st.isMentee ? "close-circle-outline" : "star-plus"}
+                        size={14}
+                        color={st.isMentee ? "#EF4444" : "#FFFFFF"}
+                      />
+                      <Text
+                        style={[
+                          styles.assignToggleBtnText,
+                          { color: st.isMentee ? "#EF4444" : "#FFFFFF" },
+                        ]}
+                      >
+                        {st.isMentee ? "Remove" : "+ Assign"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.doneBtn, { backgroundColor: colors.primaryAccent }]}
+              onPress={() => setAssignModalVisible(false)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.doneBtnText}>Done ({menteeStudents.length} Assigned)</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* 6. CALL CONFIRMATION MODAL                                                */}
       {/* ========================================================================= */}
       <Modal visible={callConfirmVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -523,6 +1005,19 @@ const getStyles = (colors, isDarkMode) =>
       fontWeight: "500",
       marginTop: 2,
     },
+    assignTopBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 10,
+    },
+    assignTopBtnText: {
+      color: "#FFFFFF",
+      fontSize: 11.5,
+      fontWeight: "800",
+    },
 
     /* Filters */
     filterPill: {
@@ -532,6 +1027,99 @@ const getStyles = (colors, isDarkMode) =>
       borderWidth: 1,
     },
     filterPillText: {
+      fontSize: 11.5,
+      fontWeight: "700",
+    },
+
+    /* Mentee Header Card */
+    menteeHeaderCard: {
+      borderRadius: 16,
+      borderWidth: 1,
+      padding: 14,
+      marginBottom: 12,
+      elevation: 2,
+    },
+    menteeHeaderTop: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    menteeIconCircle: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    menteeHeaderTitle: {
+      fontSize: 14.5,
+      fontWeight: "800",
+    },
+    menteeActivePill: {
+      backgroundColor: "#F59E0B20",
+      paddingHorizontal: 5,
+      paddingVertical: 1.5,
+      borderRadius: 4,
+    },
+    menteeActivePillText: {
+      color: "#D97706",
+      fontSize: 8.5,
+      fontWeight: "900",
+    },
+    menteeHeaderSub: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    menteeKpiRow: {
+      flexDirection: "row",
+      gap: 6,
+      marginTop: 12,
+      marginBottom: 12,
+    },
+    menteeKpiBox: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    menteeKpiVal: {
+      fontSize: 14.5,
+      fontWeight: "900",
+    },
+    menteeKpiLabel: {
+      fontSize: 9.5,
+      fontWeight: "600",
+      marginTop: 1,
+    },
+    menteeActionsRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    addMenteeActionBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 9,
+      borderRadius: 10,
+    },
+    addMenteeActionBtnText: {
+      color: "#FFFFFF",
+      fontSize: 11.5,
+      fontWeight: "800",
+    },
+    shareMenteeBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    shareMenteeBtnText: {
       fontSize: 11.5,
       fontWeight: "700",
     },
@@ -559,6 +1147,40 @@ const getStyles = (colors, isDarkMode) =>
     countText: {
       fontSize: 12,
       fontWeight: "500",
+    },
+
+    /* Empty Mentee State */
+    emptyMenteeBox: {
+      borderRadius: 16,
+      borderWidth: 1,
+      padding: 24,
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    emptyMenteeTitle: {
+      fontSize: 15,
+      fontWeight: "800",
+      marginTop: 10,
+    },
+    emptyMenteeSub: {
+      fontSize: 11.5,
+      textAlign: "center",
+      lineHeight: 16,
+      marginTop: 4,
+      marginBottom: 14,
+    },
+    emptyAddBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+      borderRadius: 10,
+    },
+    emptyAddBtnText: {
+      color: "#FFFFFF",
+      fontSize: 12,
+      fontWeight: "800",
     },
 
     /* Student Cards */
@@ -589,18 +1211,17 @@ const getStyles = (colors, isDarkMode) =>
       fontWeight: "800",
       flex: 1,
     },
-    menteeBadge: {
+    menteeToggleBadge: {
       flexDirection: "row",
       alignItems: "center",
       gap: 3,
-      backgroundColor: "#F59E0B18",
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      borderRadius: 6,
+      borderWidth: 1,
     },
     menteeBadgeText: {
-      color: "#D97706",
-      fontSize: 8.5,
+      fontSize: 9,
       fontWeight: "900",
     },
     studentRoll: {
@@ -696,6 +1317,38 @@ const getStyles = (colors, isDarkMode) =>
       fontSize: 11,
       fontWeight: "500",
     },
+    dossierMenteeBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 10,
+      marginBottom: 10,
+    },
+    dossierMenteeTitle: {
+      fontSize: 11.5,
+      fontWeight: "900",
+    },
+    dossierMenteeSub: {
+      fontSize: 10,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+    dossierMenteeToggleBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginLeft: 6,
+    },
+    dossierMenteeToggleBtnText: {
+      fontSize: 11,
+      fontWeight: "800",
+    },
     dossierGrid: {
       borderRadius: 14,
       borderWidth: 1,
@@ -731,6 +1384,83 @@ const getStyles = (colors, isDarkMode) =>
       borderWidth: 1,
     },
     closeModalBtnText: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+
+    /* Assign Modal */
+    assignModalCard: {
+      width: "100%",
+      borderRadius: 22,
+      borderWidth: 1,
+      padding: 18,
+      elevation: 12,
+      maxHeight: "85%",
+    },
+    iconWrapRound: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    assignStudentRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 10,
+    },
+    assignRowLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1,
+    },
+    avatarCircleSmall: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    avatarSmallText: {
+      color: "#FFFFFF",
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    assignStudentName: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    assignStudentSub: {
+      fontSize: 10.5,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+    assignToggleBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginLeft: 8,
+    },
+    assignToggleBtnText: {
+      fontSize: 11,
+      fontWeight: "800",
+    },
+    doneBtn: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      borderRadius: 12,
+      marginTop: 12,
+    },
+    doneBtnText: {
+      color: "#FFFFFF",
       fontSize: 13,
       fontWeight: "800",
     },

@@ -7,7 +7,7 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { secureGet, secureSet } from "./services/secureStorage";
 import * as NavigationBar from "expo-navigation-bar";
 
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
@@ -46,8 +46,10 @@ function IndexCore() {
   // Navigation bar color
   useEffect(() => {
     if (Platform.OS === "android") {
-      NavigationBar.setBackgroundColorAsync(colors.primaryDark || "#3730A3").catch(() => {});
-      NavigationBar.setButtonStyleAsync("light").catch(() => {});
+      try {
+        NavigationBar.setBackgroundColorAsync(colors.primaryDark || "#3730A3").catch(() => {});
+        NavigationBar.setButtonStyleAsync("light").catch(() => {});
+      } catch (_e) {}
     }
   }, [colors]);
 
@@ -59,7 +61,7 @@ function IndexCore() {
       try {
         setCheckingRole(true);
 
-        const storedRole = await AsyncStorage.getItem("userRole");
+        const storedRole = await secureGet("userRole");
 
         const valid =
           storedRole &&
@@ -106,24 +108,19 @@ function IndexCore() {
   // Auth Login Callback
   const handleLoginSuccess = async () => {
     try {
-      const json = await AsyncStorage.getItem("userData");
+      const user = await secureGet("userData");
       let extractedRole: string | null = null;
 
-      if (json) {
-        try {
-          const user = JSON.parse(json);
-          extractedRole = user?.role || user?.data?.role || user?.user?.role || null;
-        } catch (_parseErr) {
-          console.warn("userData parse error:", _parseErr);
-        }
+      if (user) {
+        extractedRole = user?.role || user?.data?.role || user?.user?.role || null;
       }
 
       if (!extractedRole) {
-        extractedRole = await AsyncStorage.getItem("userRole");
+        extractedRole = await secureGet("userRole");
       }
 
       const mapped = mapRole(extractedRole);
-      await AsyncStorage.setItem("userRole", mapped);
+      await secureSet("userRole", mapped);
       setUserRole(mapped);
       setShowLoginModal(mapped === "guest");
       toast.showToast(`Welcome, ${mapped}!`, "success");
@@ -136,7 +133,7 @@ function IndexCore() {
 
   // Skip
   const handleSkip = async () => {
-    await AsyncStorage.setItem("userRole", "guest");
+    await secureSet("userRole", "guest");
     setUserRole("guest");
     setShowLoginModal(false);
     toast.showToast("Continuing as Guest", "info");
