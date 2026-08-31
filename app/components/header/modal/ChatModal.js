@@ -429,6 +429,34 @@ export default function ChatModal({ visible, onClose }) {
     }
   };
 
+  // Resolve clear human sender identity for DB & storage
+  const resolveSenderDetails = useCallback(() => {
+    const role = currentUser?.role || "student";
+    let name = "";
+    let id = "";
+
+    if (role === "student") {
+      const studentName = currentUser?.student?.name || currentUser?.name || currentUser?.profile?.name || currentUser?.username;
+      const rollNo = currentUser?.student?.rollNo || currentUser?.rollNo || currentUser?.username;
+      name = studentName ? `${studentName}${rollNo ? ` (${rollNo})` : ""}` : (rollNo ? `Student (${rollNo})` : "Student");
+      id = rollNo || currentUser?.student?._id || currentUser?.id || "stud_current";
+    } else if (role === "staff") {
+      name = currentUser?.staff?.name || currentUser?.name || currentUser?.profile?.name || "Faculty Member";
+      id = currentUser?.staff?.id || currentUser?.staff?._id || currentUser?.staffId || currentUser?.id || "staff_current";
+    } else if (role === "parent") {
+      name = currentUser?.parent?.name || currentUser?.name || currentUser?.profile?.name || "Parent";
+      id = currentUser?.parent?.id || currentUser?.parent?._id || currentUser?.id || "parent_current";
+    } else if (role === "admin") {
+      name = currentUser?.admin?.name || currentUser?.name || currentUser?.profile?.name || "Admin Office";
+      id = currentUser?.admin?.id || currentUser?.admin?._id || currentUser?.id || "admin_current";
+    } else {
+      name = currentUser?.name || currentUser?.profile?.name || currentUser?.username || "User";
+      id = currentUser?.id || currentUser?.username || "user_current";
+    }
+
+    return { senderName: name, senderId: id, senderRole: role };
+  }, [currentUser]);
+
   // ---------------- SEND OR SAVE MESSAGE ----------------
   const handleSendOrSave = async () => {
     const textTrimmed = newMsg.trim();
@@ -673,12 +701,15 @@ export default function ChatModal({ visible, onClose }) {
 
     if (!selectedStaff) return;
     const channelType = selectedChannelTab?.channelType || "student_staff";
+    const { senderName, senderId, senderRole } = resolveSenderDetails();
+
     const msgObj = createMessageObject({
       text: `🎤 Voice message (0:0${dur > 9 ? dur : "0" + dur})`,
-      senderRole: currentUser?.role || "student",
-      senderId: currentUser?.student?.rollNo || currentUser?.staffId || currentUser?.id || "user_current",
-      senderName: currentUser?.student?.name || currentUser?.staff?.name || currentUser?.name || "User",
+      senderRole,
+      senderId,
+      senderName,
       recipientId: selectedStaff.id,
+      recipientName: selectedStaff.name,
       recipientRole: selectedStaff.role || "staff",
       channelType,
       attachment: {
