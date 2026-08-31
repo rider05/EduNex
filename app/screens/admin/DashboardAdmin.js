@@ -17,6 +17,7 @@ import { SkeletonKPIRow, SkeletonListItem } from "../../components/common/Skelet
 import { getInstitutions, getAdminStats, getNoticesList, getSystemLogs, getLeavesList } from "../../services/dataService";
 import { api } from "../../services/api";
 import { showToast } from "../../utils/toastService";
+import { sendTargetedNotification } from "../../utils/notificationUtils";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
 export default function DashboardAdmin() {
@@ -137,18 +138,42 @@ export default function DashboardAdmin() {
   }, [loadData]);
 
   // Handle Leave Approvals
-  const handleApproveLeave = (id, applicantName) => {
+  const handleApproveLeave = async (id, applicantName) => {
+    const leave = leaveRequests.find((r) => r.id === id || r._id === id);
     setLeaveRequests((prev) =>
       prev.map((req) => ((req.id === id || req._id === id) ? { ...req, status: "approved" } : req))
     );
     showToast(`Approved leave request for ${applicantName}`, "success");
+
+    if (leave?.rollNo) {
+      await sendTargetedNotification({
+        targetRole: "student",
+        targetRollNo: leave.rollNo,
+        title: "✅ Leave Request Approved!",
+        message: `Your ${leave.leaveType || "Leave"} was approved by Admin office. Official pass is now issued.`,
+        type: "success",
+        metadata: { leaveId: id, status: "approved" },
+      });
+    }
   };
 
-  const handleRejectLeave = (id, applicantName) => {
+  const handleRejectLeave = async (id, applicantName) => {
+    const leave = leaveRequests.find((r) => r.id === id || r._id === id);
     setLeaveRequests((prev) =>
       prev.map((req) => ((req.id === id || req._id === id) ? { ...req, status: "rejected" } : req))
     );
     showToast(`Rejected leave request for ${applicantName}`, "warning");
+
+    if (leave?.rollNo) {
+      await sendTargetedNotification({
+        targetRole: "student",
+        targetRollNo: leave.rollNo,
+        title: "❌ Leave Request Declined",
+        message: `Your ${leave.leaveType || "Leave"} was declined by the Admin office.`,
+        type: "warning",
+        metadata: { leaveId: id, status: "rejected" },
+      });
+    }
   };
 
   // Handle Publish Notice

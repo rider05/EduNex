@@ -14,7 +14,6 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import QRCode from "react-native-qrcode-svg";
 import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
@@ -22,6 +21,8 @@ import { getStudentData } from "../../../services/dataService";
 import { resolveIdentity } from "../../../services/identityService";
 import { showToast } from "../../../utils/toastService";
 import { shareLeaveGatePassPdf } from "../../../utils/pdfGenerator";
+import { secureGet, secureSet, secureRemove } from "../../../services/secureStorage";
+import { sendTargetedNotification, subscribeToNotifications } from "../../../utils/notificationUtils";
 
 // ---------------- Leave Category Theming (Applied STRICTLY to pills & category badges) ----------------
 const LEAVE_TYPE_THEMES = {
@@ -228,28 +229,51 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
     }
   }, []);
 
+  const existingLeaveRef = useRef(existingLeave);
+  existingLeaveRef.current = existingLeave;
+
+  const historyRecordsRef = useRef(historyRecords);
+  historyRecordsRef.current = historyRecords;
+
+  const studentInfoRef = useRef(studentInfo);
+  studentInfoRef.current = studentInfo;
+
+  // Deep comparison helper to prevent infinite re-renders & flickering
+  const areRecordsEqual = (a, b) => {
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      const idA = a[i].id || a[i]._id || a[i].leaveId;
+      const idB = b[i].id || b[i]._id || b[i].leaveId;
+      if (idA !== idB || a[i].status !== b[i].status || a[i].approvedAt !== b[i].approvedAt) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   // Load Active Leave from LocalStorage / MongoDB (Instant non-blocking)
   const loadActiveLeave = useCallback(async () => {
     try {
-      const id = await AsyncStorage.getItem("activeCollegeLeaveId");
+      const id = await secureGet("activeCollegeLeaveId");
       if (!id) {
-        setExistingLeave(null);
+        if (existingLeaveRef.current !== null) setExistingLeave(null);
         return;
+      }
+
+      const cached = await secureGet(`cached_leave_${id}`);
+      if (cached && !existingLeaveRef.current) {
+        setExistingLeave(cached);
+        if (cached.status === "approved" && cached.expiresAt) {
+          setRemainingTimeText(get24HourRemainingText(cached.expiresAt));
+        }
       }
 
       const res = await api.get(`/leaves/${id}`).catch(() => null);
       const data = res?.data;
 
       if (!data) {
-        const cachedRaw = await AsyncStorage.getItem(`cached_leave_${id}`);
-        if (cachedRaw) {
-          const cached = JSON.parse(cachedRaw);
-          setExistingLeave(cached);
-          if (cached.status === "approved" && cached.expiresAt) {
-            setRemainingTimeText(get24HourRemainingText(cached.expiresAt));
-          }
-        } else {
-          await AsyncStorage.removeItem("activeCollegeLeaveId");
+        if (!cached) {
+          await secureRemove("activeCollegeLeaveId");
           setExistingLeave(null);
         }
         return;
@@ -263,12 +287,18 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
 
       if (leave.status === "approved" && now >= expiresAtMs) {
         await api.patch(`/leaves/${id}`, { status: "expired" }).catch(() => null);
-        await AsyncStorage.removeItem("activeCollegeLeaveId");
+        await secureRemove("activeCollegeLeaveId");
         setExistingLeave(null);
       } else {
-        setExistingLeave(leave);
+        const prev = existingLeaveRef.current;
+        const isDiff = !prev || prev.id !== leave.id || prev.status !== leave.status;
+        if (isDiff) {
+          setExistingLeave(leave);
+          await secureSet(`cached_leave_${id}`, leave);
+        }
         if (leave.status === "approved") {
-          setRemainingTimeText(get24HourRemainingText(leave.expiresAt || new Date(expiresAtMs).toISOString()));
+          const newTimeText = get24HourRemainingText(leave.expiresAt || new Date(expiresAtMs).toISOString());
+          setRemainingTimeText((old) => (old === newTimeText ? old : newTimeText));
         }
       }
     } catch (e) {
@@ -276,13 +306,30 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
     }
   }, []);
 
-  // Load Leave History
-  const loadHistory = useCallback(async () => {
-    setHistoryLoading(true);
+  // Load Leave History (with instant cache and zero-flicker memoization)
+  const loadHistory = useCallback(async (showSpinner = false) => {
     try {
+      // 1. Instant Cache (only if current state is empty)
+      if (historyRecordsRef.current.length === 0) {
+        const cached = await secureGet("edunex_leave_history_college");
+        if (Array.isArray(cached) && cached.length > 0) {
+          setHistoryRecords(cached);
+        } else if (showSpinner) {
+          setHistoryLoading(true);
+        }
+      }
+
+      // 2. Fetch live data silently in background
       const res = await api.get("/leaves", { type: "college", sort: "-createdAt", limit: 100 }).catch(() => null);
       const arr = Array.isArray(res?.data) ? res.data : [];
-      setHistoryRecords(arr);
+
+      if (arr.length > 0) {
+        // Only update state if data actually changed
+        if (!areRecordsEqual(historyRecordsRef.current, arr)) {
+          setHistoryRecords(arr);
+          await secureSet("edunex_leave_history_college", arr);
+        }
+      }
     } catch (e) {
       console.log("loadHistory err:", e?.message || e);
     } finally {
@@ -292,28 +339,31 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
 
   // Periodic 24h Expiry Watcher
   const check24HourExpiry = useCallback(async () => {
-    if (!existingLeave || existingLeave.status !== "approved") return;
+    const current = existingLeaveRef.current;
+    if (!current || current.status !== "approved") return;
     const now = Date.now();
-    const expiresAtMs = existingLeave.expiresAt
-      ? new Date(existingLeave.expiresAt).getTime()
-      : new Date(existingLeave.createdAt).getTime() + 24 * 60 * 60 * 1000;
+    const expiresAtMs = current.expiresAt
+      ? new Date(current.expiresAt).getTime()
+      : new Date(current.createdAt).getTime() + 24 * 60 * 60 * 1000;
 
     if (now >= expiresAtMs) {
-      await api.patch(`/leaves/${existingLeave.id || existingLeave._id}`, { status: "expired" }).catch(() => null);
-      await AsyncStorage.removeItem("activeCollegeLeaveId");
+      await api.patch(`/leaves/${current.id || current._id}`, { status: "expired" }).catch(() => null);
+      await secureRemove("activeCollegeLeaveId");
       setExistingLeave(null);
       showToast("⏰ Leave pass expired (24h window elapsed)", "info");
-      loadHistory();
+      loadHistory(false);
     } else {
-      setRemainingTimeText(get24HourRemainingText(existingLeave.expiresAt || new Date(expiresAtMs).toISOString()));
+      setRemainingTimeText(get24HourRemainingText(current.expiresAt || new Date(expiresAtMs).toISOString()));
     }
-  }, [existingLeave, loadHistory]);
+  }, [loadHistory]);
 
   useEffect(() => {
+    let unsubscribe = () => {};
+
     if (visible) {
       loadStudentFromDB();
       loadActiveLeave();
-      loadHistory();
+      loadHistory(true);
 
       Animated.timing(slideAnim, {
         toValue: 0,
@@ -321,7 +371,19 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
         useNativeDriver: true,
       }).start();
 
-      expiryIntervalRef.current = setInterval(check24HourExpiry, 10000);
+      expiryIntervalRef.current = setInterval(check24HourExpiry, 15000);
+
+      unsubscribe = subscribeToNotifications((notif) => {
+        const roll = studentInfoRef.current?.rollNo;
+        const isStudentTarget = notif.targetRole === "student";
+        const isRollTarget = notif.targetRollNo && roll && notif.targetRollNo.toLowerCase() === roll.toLowerCase();
+        const isLeaveTitle = notif.title?.toLowerCase().includes("leave") || notif.title?.toLowerCase().includes("gate pass");
+
+        if ((isRollTarget || isStudentTarget) && isLeaveTitle) {
+          loadActiveLeave();
+          loadHistory(false);
+        }
+      });
     } else {
       Animated.timing(slideAnim, {
         toValue: 350,
@@ -337,8 +399,10 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
 
     return () => {
       if (expiryIntervalRef.current) clearInterval(expiryIntervalRef.current);
+      unsubscribe();
     };
-  }, [visible, loadStudentFromDB, loadActiveLeave, loadHistory, check24HourExpiry, slideAnim]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   // Submit Leave Request -> Initially "pending" requiring Staff Approval
   const handleSubmit = async () => {
@@ -351,6 +415,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
     try {
       const leaveId = `CL-${Math.floor(100000 + Math.random() * 900000)}`;
       const now = new Date();
+      const calculatedDays = calculateDays(fromDate, toDate);
 
       const payload = {
         leaveId,
@@ -367,7 +432,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
         emergencyContact: emergencyContact.trim() || studentInfo.emergencyContact,
         fromDate: toJsDate(fromDate).toISOString(),
         toDate: toJsDate(toDate).toISOString(),
-        daysCount: calculateDays(fromDate, toDate),
+        daysCount: calculatedDays,
         status: "pending", // Requires Staff Approval!
         appliedAt: now.toISOString(),
         approvalStage: "Faculty Advisor Review",
@@ -384,8 +449,8 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
         console.log("REST leave submit sync:", apiErr);
       }
 
-      await AsyncStorage.setItem("activeCollegeLeaveId", savedDocId);
-      await AsyncStorage.setItem(`cached_leave_${savedDocId}`, JSON.stringify({ id: savedDocId, ...payload }));
+      await secureSet("activeCollegeLeaveId", savedDocId);
+      await secureSet(`cached_leave_${savedDocId}`, { id: savedDocId, ...payload });
 
       const activeObj = {
         id: savedDocId,
@@ -395,6 +460,23 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
       };
 
       setExistingLeave(activeObj);
+
+      // PUSH NOTIFICATION TO STAFF APP!
+      await sendTargetedNotification({
+        targetRole: "staff",
+        title: "📝 New Leave Request Submitted",
+        message: `${studentInfo.name} (${studentInfo.rollNo || "Student"}) applied for ${leaveType} (${calculatedDays} Day(s)). Tap to review.`,
+        type: "info",
+        metadata: {
+          leaveId: savedDocId,
+          rollNo: studentInfo.rollNo,
+          studentName: studentInfo.name,
+          leaveType,
+          daysCount: calculatedDays,
+          status: "pending",
+        },
+      });
+
       showToast(`📝 ${leaveType} submitted for Staff Approval!`, "success");
       setReason("");
       loadHistory();
@@ -411,7 +493,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
       if (existingLeave?.id) {
         await api.patch(`/leaves/${existingLeave.id}`, { status: "expired" }).catch(() => null);
       }
-      await AsyncStorage.removeItem("activeCollegeLeaveId");
+      await secureRemove("activeCollegeLeaveId");
       setExistingLeave(null);
       showToast("Leave request cleared", "info");
       loadHistory();

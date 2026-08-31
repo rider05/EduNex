@@ -14,7 +14,6 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import QRCode from "react-native-qrcode-svg";
 import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
@@ -22,6 +21,7 @@ import { resolveIdentity } from "../../../services/identityService";
 import { getStudentData } from "../../../services/dataService";
 import { showToast } from "../../../utils/toastService";
 import { shareLeaveGatePassPdf } from "../../../utils/pdfGenerator";
+import { secureGet, secureSet, secureRemove } from "../../../services/secureStorage";
 
 // ---------------- Helpers ----------------
 const formatDate = (value) => {
@@ -202,9 +202,8 @@ export default function HostelFormModal({ visible, onClose }) {
 
   // Load Active Leave from Storage / MongoDB
   const loadActiveLeave = async () => {
-    setLoadingStatus(true);
     try {
-      const id = await AsyncStorage.getItem("activeHostelLeaveId");
+      const id = await secureGet("activeHostelLeaveId");
       if (!id) {
         setExistingLeave(null);
         setLoadingStatus(false);
@@ -212,25 +211,37 @@ export default function HostelFormModal({ visible, onClose }) {
         return;
       }
 
-      const res = await api.get(`/leaves/${id}`);
+      const cached = await secureGet(`cached_hostel_leave_${id}`);
+      if (cached) {
+        setExistingLeave(cached);
+        if (cached.status === "pending") setMode("pending");
+        else if (cached.status === "approved") setMode("approved");
+        else if (cached.status === "rejected") setMode("rejected");
+        else if (cached.status === "expired") setMode("history");
+      }
+
+      const res = await api.get(`/leaves/${id}`).catch(() => null);
       const data = res?.data;
 
       if (!data) {
-        await AsyncStorage.removeItem("activeHostelLeaveId");
-        setExistingLeave(null);
-        setMode("form");
+        if (!cached) {
+          await secureRemove("activeHostelLeaveId");
+          setExistingLeave(null);
+          setMode("form");
+        }
         setLoadingStatus(false);
         return;
       }
 
       const leave = { id: data.id || data._id || id, ...data };
       setExistingLeave(leave);
+      await secureSet(`cached_hostel_leave_${id}`, leave);
 
       if (leave.status === "pending") setMode("pending");
       else if (leave.status === "approved") setMode("approved");
       else if (leave.status === "rejected") setMode("rejected");
       else if (leave.status === "expired") {
-        await AsyncStorage.removeItem("activeHostelLeaveId");
+        await secureRemove("activeHostelLeaveId");
         setMode("history");
       } else {
         setMode("form");
@@ -244,7 +255,7 @@ export default function HostelFormModal({ visible, onClose }) {
             status: "expired",
             expiredAt: new Date().toISOString(),
           });
-          await AsyncStorage.removeItem("activeHostelLeaveId");
+          await secureRemove("activeHostelLeaveId");
           setExistingLeave((p) => ({ ...(p || {}), status: "expired" }));
         } catch (e) {
           console.log("error marking leave expired:", e);
@@ -263,13 +274,44 @@ export default function HostelFormModal({ visible, onClose }) {
     }
   };
 
+  const historyRecordsRef = useRef(historyRecords);
+  historyRecordsRef.current = historyRecords;
+
+  const existingLeaveRef = useRef(existingLeave);
+  existingLeaveRef.current = existingLeave;
+
+  const areHostelRecordsEqual = (a, b) => {
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      const idA = a[i].id || a[i]._id || a[i].leaveId;
+      const idB = b[i].id || b[i]._id || b[i].leaveId;
+      if (idA !== idB || a[i].status !== b[i].status) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   // Load History
-  const loadHistory = async () => {
-    setHistoryLoading(true);
+  const loadHistory = async (showSpinner = false) => {
     try {
-      const res = await api.get("/leaves", { type: "hostel", sort: "-createdAt", limit: 100 });
+      if (historyRecordsRef.current.length === 0) {
+        const cached = await secureGet("edunex_leave_history_hostel");
+        if (Array.isArray(cached) && cached.length > 0) {
+          setHistoryRecords(cached);
+        } else if (showSpinner) {
+          setHistoryLoading(true);
+        }
+      }
+
+      const res = await api.get("/leaves", { type: "hostel", sort: "-createdAt", limit: 100 }).catch(() => null);
       const arr = Array.isArray(res?.data) ? res.data : [];
-      setHistoryRecords(arr);
+      if (arr.length > 0) {
+        if (!areHostelRecordsEqual(historyRecordsRef.current, arr)) {
+          setHistoryRecords(arr);
+          await secureSet("edunex_leave_history_hostel", arr);
+        }
+      }
     } catch (e) {
       console.log("loadHistory err:", e?.message || e);
     } finally {
@@ -280,7 +322,7 @@ export default function HostelFormModal({ visible, onClose }) {
   // Periodic Expire Check
   const checkAndExpireLeaves = async () => {
     try {
-      const res = await api.get("/leaves", { type: "hostel", limit: 100 });
+      const res = await api.get("/leaves", { type: "hostel", limit: 100 }).catch(() => null);
       const docs = Array.isArray(res?.data) ? res.data : [];
 
       for (const d of docs) {
@@ -291,9 +333,9 @@ export default function HostelFormModal({ visible, onClose }) {
               status: "expired",
               expiredAt: new Date().toISOString(),
             });
-            const activeId = await AsyncStorage.getItem("activeHostelLeaveId");
+            const activeId = await secureGet("activeHostelLeaveId");
             if (activeId === (d.id || d._id)) {
-              await AsyncStorage.removeItem("activeHostelLeaveId");
+              await secureRemove("activeHostelLeaveId");
               if (existingLeave && (existingLeave.id === d.id || existingLeave._id === d._id)) {
                 setExistingLeave((prev) => ({
                   ...(prev || {}),
@@ -308,7 +350,7 @@ export default function HostelFormModal({ visible, onClose }) {
           }
         }
       }
-      loadHistory();
+      loadHistory(false);
     } catch (e) {
       console.log("checkAndExpireLeaves err:", e);
     }
@@ -360,7 +402,7 @@ export default function HostelFormModal({ visible, onClose }) {
         console.log("REST hostel leave submit fallback:", apiErr);
       }
 
-      await AsyncStorage.setItem("activeHostelLeaveId", savedDocId);
+      await secureSet("activeHostelLeaveId", savedDocId);
 
       setExistingLeave({
         id: savedDocId,
@@ -382,7 +424,7 @@ export default function HostelFormModal({ visible, onClose }) {
 
   const clearActiveLeave = async () => {
     try {
-      await AsyncStorage.removeItem("activeHostelLeaveId");
+      await secureRemove("activeHostelLeaveId");
       setExistingLeave(null);
       setMode("form");
       checkAndExpireLeaves();

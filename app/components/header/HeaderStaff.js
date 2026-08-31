@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Text,
   View,
@@ -17,8 +17,12 @@ import AssignmentModal from "./modal/AssignmentModal";
 import ClassTestModal from "./modal/ClassTestModal";
 import CommunityModal from "./modal/CommunityModal";
 import ClassGroupMsgModal from "./modal/ClassGroupMsgModal";
+import StaffLeaveApprovalsModal from "./modal/StaffLeaveApprovalsModal";
 import { showToast } from "../../utils/toastService";
 import { resolveIdentity } from "../../services/identityService";
+import { api } from "../../services/api";
+import { secureGet } from "../../services/secureStorage";
+import { subscribeToNotifications } from "../../utils/notificationUtils";
 
 export default function HeaderStaff() {
   const { colors, isDarkMode } = useTheme();
@@ -27,8 +31,22 @@ export default function HeaderStaff() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeModal, setActiveModal] = useState(null);
   const [userLabel, setUserLabel] = useState("");
+  const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
 
   const bottomExpand = useRef(new Animated.Value(0)).current;
+
+  const fetchPendingLeaves = useCallback(async () => {
+    try {
+      const cached = await secureGet("edunex_staff_cached_leaves");
+      if (Array.isArray(cached)) {
+        setPendingLeavesCount(cached.filter((l) => l.status === "pending").length);
+      }
+      const res = await api.get("/leaves", { status: "pending", limit: 50 }).catch(() => null);
+      if (Array.isArray(res?.data)) {
+        setPendingLeavesCount(res.data.length);
+      }
+    } catch (_e) {}
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -41,7 +59,17 @@ export default function HeaderStaff() {
         }
       } catch (_e) { /* silent */ }
     })();
-  }, []);
+
+    fetchPendingLeaves();
+
+    const unsubscribe = subscribeToNotifications((notif) => {
+      if (notif.targetRole === "staff" || notif.title?.toLowerCase().includes("leave")) {
+        fetchPendingLeaves();
+      }
+    });
+
+    return () => unsubscribe();
+  }, [fetchPendingLeaves]);
 
   const handleMenuPress = () => {
     Animated.spring(bottomExpand, {
@@ -64,6 +92,7 @@ export default function HeaderStaff() {
 
   const closeModal = () => {
     setActiveModal(null);
+    fetchPendingLeaves();
   };
 
   return (
@@ -96,6 +125,20 @@ export default function HeaderStaff() {
 
           {/* Right Action Icons */}
           <View style={styles.iconGroup}>
+            {/* Student Leaves Approvals Icon */}
+            <TouchableOpacity
+              onPress={() => handleIconPress("leaveApprovals")}
+              style={styles.actionBtn}
+              activeOpacity={0.7}
+            >
+              <Icon name="clipboard-check-outline" size={22} color="#FFFFFF" />
+              {pendingLeavesCount > 0 && (
+                <View style={styles.badgePill}>
+                  <Text style={styles.badgePillText}>{pendingLeavesCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
             <TouchableOpacity
               onPress={() => handleIconPress("broadcast")}
               style={styles.actionBtn}
@@ -124,6 +167,22 @@ export default function HeaderStaff() {
             <View style={styles.quickActionsRow}>
               <TouchableOpacity
                 style={styles.quickActionItem}
+                onPress={() => handleIconPress("leaveApprovals")}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: "#F59E0B" }]}>
+                  <Icon name="clipboard-check" size={20} color="#FFFFFF" />
+                  {pendingLeavesCount > 0 && (
+                    <View style={styles.drawerBadge}>
+                      <Text style={styles.drawerBadgeText}>{pendingLeavesCount}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.quickActionLabel}>Leave Approvals</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
                 onPress={() => handleIconPress("classtest")}
                 activeOpacity={0.8}
               >
@@ -146,17 +205,6 @@ export default function HeaderStaff() {
 
               <TouchableOpacity
                 style={styles.quickActionItem}
-                onPress={() => handleIconPress("community")}
-                activeOpacity={0.8}
-              >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="domain" size={20} color="#FFFFFF" />
-                </View>
-                <Text style={styles.quickActionLabel}>Dept Forum</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
                 onPress={() => handleIconPress("assignment")}
                 activeOpacity={0.8}
               >
@@ -171,6 +219,7 @@ export default function HeaderStaff() {
       </LinearGradient>
 
       {/* Header Modals */}
+      <StaffLeaveApprovalsModal visible={activeModal === "leaveApprovals"} onClose={closeModal} />
       <ClassTestModal visible={activeModal === "classtest"} onClose={closeModal} />
       <ClassGroupMsgModal visible={activeModal === "broadcast"} onClose={closeModal} />
       <CommunityModal visible={activeModal === "community"} onClose={closeModal} />
@@ -301,5 +350,43 @@ const getStyles = (colors, isDarkMode) =>
       color: "#FFFFFF",
       fontSize: 10.5,
       fontWeight: "700",
+    },
+    badgePill: {
+      position: "absolute",
+      top: -4,
+      right: -4,
+      backgroundColor: "#EF4444",
+      borderRadius: 10,
+      minWidth: 18,
+      height: 18,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 4,
+      borderWidth: 1.5,
+      borderColor: "#FFFFFF",
+    },
+    badgePillText: {
+      color: "#FFFFFF",
+      fontSize: 9,
+      fontWeight: "900",
+    },
+    drawerBadge: {
+      position: "absolute",
+      top: -3,
+      right: -3,
+      backgroundColor: "#EF4444",
+      borderRadius: 9,
+      minWidth: 16,
+      height: 16,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 3,
+      borderWidth: 1.5,
+      borderColor: "#FFFFFF",
+    },
+    drawerBadgeText: {
+      color: "#FFFFFF",
+      fontSize: 8.5,
+      fontWeight: "900",
     },
   });

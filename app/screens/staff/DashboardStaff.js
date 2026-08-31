@@ -15,9 +15,12 @@ import AttendanceModal from "./modals/AttendanceModal";
 import ReportsModal from "./modals/AssignmentReportModal";
 import MessagesModal from "./modals/MessagesModal";
 import ScheduleModal from "./modals/ScheduleModal";
+import StaffLeaveApprovalsModal from "../../components/header/modal/StaffLeaveApprovalsModal";
 
 import { getFacultyData, getStaffClassName, getFacultySchedule } from "../../services/dataService";
 import { api } from "../../services/api";
+import { secureGet } from "../../services/secureStorage";
+import { subscribeToNotifications } from "../../utils/notificationUtils";
 import { SkeletonScreenLoader } from "../../components/common/SkeletonLoader";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
@@ -37,6 +40,8 @@ export default function DashboardStaff() {
   const [reportsVisible, setReportsVisible] = useState(false);
   const [messagesVisible, setMessagesVisible] = useState(false);
   const [scheduleVisible, setScheduleVisible] = useState(false);
+  const [leaveApprovalsVisible, setLeaveApprovalsVisible] = useState(false);
+  const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
 
   const [facultyInfo, setFacultyInfo] = useState({
     name: "",
@@ -141,6 +146,18 @@ export default function DashboardStaff() {
           }))
         );
       }
+
+      // Fetch pending student leaves count
+      try {
+        const cachedLeaves = await secureGet("edunex_staff_cached_leaves");
+        if (Array.isArray(cachedLeaves)) {
+          setPendingLeavesCount(cachedLeaves.filter((l) => l.status === "pending").length);
+        }
+        const leavesRes = await api.get("/leaves", { status: "pending", limit: 50 }).catch(() => null);
+        if (Array.isArray(leavesRes?.data)) {
+          setPendingLeavesCount(leavesRes.data.length);
+        }
+      } catch (_e) {}
     } catch (err) {
       console.log("Error loading staff dashboard:", err);
     } finally {
@@ -151,6 +168,14 @@ export default function DashboardStaff() {
   useEffect(() => {
     loadData();
     Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+
+    const unsubscribe = subscribeToNotifications((notif) => {
+      if (notif.targetRole === "staff" || notif.title?.toLowerCase().includes("leave")) {
+        loadData();
+      }
+    });
+
+    return () => unsubscribe();
   }, [fadeAnim, loadData]);
 
   useRefreshOnForeground(loadData);
@@ -285,6 +310,35 @@ export default function DashboardStaff() {
             </Text>
 
             <View style={styles.toolsGrid}>
+              <TouchableOpacity
+                style={[
+                  styles.toolCard,
+                  { backgroundColor: colors.cardBackground, borderColor: pendingLeavesCount > 0 ? "#F59E0B" : colors.divider },
+                ]}
+                onPress={() => setLeaveApprovalsVisible(true)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.toolIconCircle, { backgroundColor: "#F59E0B18" }]}>
+                  <Icon name="clipboard-check" size={24} color="#F59E0B" />
+                  {pendingLeavesCount > 0 && (
+                    <View style={styles.cardBadge}>
+                      <Text style={styles.cardBadgeText}>{pendingLeavesCount}</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={[styles.toolTitle, { color: colors.primaryText }]}>Leave & OD Approvals</Text>
+                  {pendingLeavesCount > 0 && (
+                    <View style={styles.pendingTag}>
+                      <Text style={styles.pendingTagText}>{pendingLeavesCount} NEW</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.toolSub, { color: colors.secondaryText }]}>
+                  Review student leave requests & grant digital QR Gate Passes.
+                </Text>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 style={[styles.toolCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
                 onPress={() => setAttendanceVisible(true)}
@@ -441,6 +495,13 @@ export default function DashboardStaff() {
         )}
 
         {/* Action Modals */}
+        <StaffLeaveApprovalsModal
+          visible={leaveApprovalsVisible}
+          onClose={() => {
+            setLeaveApprovalsVisible(false);
+            loadData();
+          }}
+        />
         <AttendanceModal visible={attendanceVisible} onClose={() => setAttendanceVisible(false)} />
         <ReportsModal visible={reportsVisible} onClose={() => setReportsVisible(false)} />
         <MessagesModal visible={messagesVisible} onClose={() => setMessagesVisible(false)} />
@@ -631,6 +692,36 @@ const getStyles = (colors, isDarkMode) =>
       justifyContent: "center",
       alignItems: "center",
       marginBottom: 10,
+    },
+    cardBadge: {
+      position: "absolute",
+      top: -3,
+      right: -3,
+      backgroundColor: "#EF4444",
+      borderRadius: 9,
+      minWidth: 16,
+      height: 16,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 3,
+      borderWidth: 1.5,
+      borderColor: "#FFFFFF",
+    },
+    cardBadgeText: {
+      color: "#FFFFFF",
+      fontSize: 8.5,
+      fontWeight: "900",
+    },
+    pendingTag: {
+      backgroundColor: "#FEF3C7",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    pendingTagText: {
+      color: "#D97706",
+      fontSize: 9,
+      fontWeight: "900",
     },
     toolTitle: {
       fontSize: 13.5,

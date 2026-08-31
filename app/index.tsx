@@ -14,6 +14,7 @@ import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { ToastProvider, useAppToast } from "./utils/AnimatedToast";
 import { setToastRef } from "./utils/toastService";
 import { onUnauthorized, clearAuthSession } from "./services/api";
+import { startRealtimeWatcher } from "./services/realtimeNotificationService";
 
 // Headers
 import Header from "./components/header/Header";
@@ -95,6 +96,16 @@ function IndexCore() {
       unsubscribeAuth();
     };
   }, [toast]);
+
+  // Activate Real-Time Notification Watcher for Live Background Alerts
+  useEffect(() => {
+    if (userRole && userRole !== "guest") {
+      const stopWatcher = startRealtimeWatcher(4000);
+      return () => {
+        if (stopWatcher) stopWatcher();
+      };
+    }
+  }, [userRole]);
 
   // MAP BACKEND ROLES TO APP NAVIGATOR
   const mapRole = (r?: string | null) => {

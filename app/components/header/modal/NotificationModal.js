@@ -12,6 +12,9 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
+import { resolveIdentity } from "../../../services/identityService";
+import { secureGet } from "../../../services/secureStorage";
+import { getUserNotifications, subscribeToNotifications } from "../../../utils/notificationUtils";
 
 const { height } = Dimensions.get("window");
 const CLOSE_THRESHOLD = 100;
@@ -69,26 +72,84 @@ export default function NotificationModal({ visible, onClose }) {
 
   const translateY = useRef(new Animated.Value(height)).current;
 
+  const loadAllNotifications = async () => {
+    try {
+      setIsLoading(true);
+      const role = await secureGet("userRole");
+      const identity = await resolveIdentity();
+      const userIdentifier =
+        identity?.student?.rollNo ||
+        identity?.user?.profile?.rollNo ||
+        identity?.staffId ||
+        identity?.username ||
+        "";
+
+      const [storedNotifs, apiRes] = await Promise.allSettled([
+        getUserNotifications(role, userIdentifier),
+        api.get("/notices", { limit: 10, sort: "-createdAt" }),
+      ]);
+
+      const directList = storedNotifs.status === "fulfilled" && Array.isArray(storedNotifs.value) ? storedNotifs.value : [];
+      const noticeDocs = apiRes.status === "fulfilled" && Array.isArray(apiRes.value?.data) ? apiRes.value.data : [];
+
+      const formattedNotices = noticeDocs.map((n, idx) => ({
+        id: n.id || `notice_${idx}`,
+        icon: n.senderRole === "admin" ? "shield-alert-outline" : "bell-ring-outline",
+        color: n.isNew ? "#4F46E5" : "#64748B",
+        title: n.subject || n.sender || "Campus Notice",
+        text: n.message || n.text || "",
+        createdAt: n.createdAt || n.date || new Date().toISOString(),
+      }));
+
+      const formattedStored = directList.map((n) => ({
+        id: n.id,
+        icon:
+          n.type === "success"
+            ? "check-decagram"
+            : n.type === "warning"
+            ? "alert-circle"
+            : n.type === "error"
+            ? "close-circle"
+            : "clipboard-text-clock",
+        color:
+          n.type === "success"
+            ? "#10B981"
+            : n.type === "warning"
+            ? "#EF4444"
+            : n.type === "error"
+            ? "#DC2626"
+            : "#4F46E5",
+        title: n.title,
+        text: n.message,
+        createdAt: n.createdAt,
+        isNew: n.isNew,
+      }));
+
+      const combined = [...formattedStored, ...formattedNotices].sort(
+        (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+      );
+
+      setNotifications(combined);
+    } catch (e) {
+      console.log("Notices load error:", e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (visible) {
-      setNotifications([]);
-      setIsLoading(true);
-      api.get("/notices", { limit: 10, sort: "-createdAt" })
-        .then((res) => {
-          if (res?.data && res.data.length > 0) {
-            const mapped = res.data.map((n, idx) => ({
-              id: n.id || idx,
-              icon: n.senderRole === "admin" ? "shield-alert-outline" : "bell-ring-outline",
-              color: n.isNew ? "#4F46E5" : "#64748B",
-              title: n.subject || n.sender || "Campus Notice",
-              text: n.message || n.text || "",
-            }));
-            setNotifications(mapped);
-          }
-        })
-        .catch((e) => console.log("Notices load error:", e))
-        .finally(() => setIsLoading(false));
+      loadAllNotifications();
     }
+  }, [visible]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToNotifications(() => {
+      if (visible) {
+        loadAllNotifications();
+      }
+    });
+    return () => unsubscribe();
   }, [visible]);
 
   // animate open/close on visibility change
