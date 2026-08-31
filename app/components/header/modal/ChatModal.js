@@ -16,6 +16,7 @@ import {
   Image,
   Dimensions,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
@@ -35,6 +36,7 @@ import {
   editDirectMessage,
   deleteDirectMessage,
   subscribeToChatMessages,
+  subscribeToTypingStatus,
   DEFAULT_FACULTY_ROSTER,
   DEFAULT_STUDENT_ROSTER,
   DEFAULT_PARENT_ROSTER,
@@ -57,6 +59,7 @@ export default function ChatModal({ visible, onClose }) {
   const { colors, isDarkMode } = useTheme();
   const slideAnim = useRef(new Animated.Value(100)).current;
   const flatListRef = useRef(null);
+  const lastTapRef = useRef(0);
 
   // User identity
   const [currentUser, setCurrentUser] = useState(null);
@@ -79,6 +82,30 @@ export default function ChatModal({ visible, onClose }) {
   const [threads, setThreads] = useState({});
   const [newMsg, setNewMsg] = useState("");
   const [showStaffInfo, setShowStaffInfo] = useState(false);
+
+  // Real-time Live Typing Presence State
+  const [typingState, setTypingState] = useState(null);
+  const dot1Opacity = useRef(new Animated.Value(0.3)).current;
+  const dot2Opacity = useRef(new Animated.Value(0.3)).current;
+  const dot3Opacity = useRef(new Animated.Value(0.3)).current;
+
+  // In-Chat Search State
+  const [inChatSearch, setInChatSearch] = useState(false);
+  const [inChatSearchQuery, setInChatSearchQuery] = useState("");
+
+  // Voice Note Recording & Playback State
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [recordingTimer, setRecordingTimer] = useState(0);
+  const [activeVoiceNotePlaying, setActiveVoiceNotePlaying] = useState(null);
+  const recordingIntervalRef = useRef(null);
+
+  // Audio / Video Calling State
+  const [isCalling, setIsCalling] = useState(false);
+  const [callType, setCallType] = useState("audio");
+  const [callTimer, setCallTimer] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isSpeaker, setIsSpeaker] = useState(false);
+  const callIntervalRef = useRef(null);
 
   // Message Interaction State (Long Press Action Sheet)
   const [actionMessage, setActionMessage] = useState(null);
@@ -561,6 +588,154 @@ export default function ChatModal({ visible, onClose }) {
     showToast(forEveryone ? "🗑️ Deleted for everyone" : "🗑️ Deleted for me", "info");
   };
 
+  // Listen to typing status events
+  useEffect(() => {
+    const unsub = subscribeToTypingStatus((data) => {
+      if (selectedStaff && data.threadKey === selectedStaff.id) {
+        setTypingState(data);
+      }
+    });
+    return () => unsub();
+  }, [selectedStaff]);
+
+  // Pulsing animation for typing indicator
+  useEffect(() => {
+    if (typingState?.isTyping) {
+      const anim = Animated.loop(
+        Animated.stagger(200, [
+          Animated.sequence([
+            Animated.timing(dot1Opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+            Animated.timing(dot1Opacity, { toValue: 0.3, duration: 300, useNativeDriver: true }),
+          ]),
+          Animated.sequence([
+            Animated.timing(dot2Opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+            Animated.timing(dot2Opacity, { toValue: 0.3, duration: 300, useNativeDriver: true }),
+          ]),
+          Animated.sequence([
+            Animated.timing(dot3Opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+            Animated.timing(dot3Opacity, { toValue: 0.3, duration: 300, useNativeDriver: true }),
+          ]),
+        ])
+      );
+      anim.start();
+      return () => anim.stop();
+    }
+  }, [typingState?.isTyping, dot1Opacity, dot2Opacity, dot3Opacity]);
+
+  // Voice Recording Simulation
+  const handleStartVoiceRecording = () => {
+    setIsRecordingVoice(true);
+    setRecordingTimer(0);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    } catch {}
+    recordingIntervalRef.current = setInterval(() => {
+      setRecordingTimer((prev) => prev + 1);
+    }, 1000);
+  };
+
+  const handleCancelVoiceRecording = () => {
+    if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+    setIsRecordingVoice(false);
+    setRecordingTimer(0);
+    showToast("🗑️ Voice recording discarded", "info");
+  };
+
+  const handleSendVoiceNote = async () => {
+    if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+    const dur = Math.max(1, recordingTimer);
+    setIsRecordingVoice(false);
+    setRecordingTimer(0);
+
+    if (!selectedStaff) return;
+    const channelType = selectedChannelTab?.channelType || "student_staff";
+    const msgObj = createMessageObject({
+      text: `🎤 Voice message (0:0${dur > 9 ? dur : "0" + dur})`,
+      senderRole: currentUser?.role || "student",
+      senderId: currentUser?.student?.rollNo || currentUser?.staffId || currentUser?.id || "user_current",
+      senderName: currentUser?.student?.name || currentUser?.staff?.name || currentUser?.name || "User",
+      recipientId: selectedStaff.id,
+      recipientRole: selectedStaff.role || "staff",
+      channelType,
+      attachment: {
+        type: "voice",
+        name: `Voice_${Date.now()}.m4a`,
+        size: `${Math.round(dur * 16)} KB`,
+        duration: dur,
+      },
+    });
+
+    await sendDirectMessage({
+      threadKey: selectedStaff.id,
+      channelType,
+      message: msgObj,
+      selectedContact: selectedStaff,
+    });
+  };
+
+  const handleToggleVoicePlay = (msgId) => {
+    if (activeVoiceNotePlaying === msgId) {
+      setActiveVoiceNotePlaying(null);
+    } else {
+      setActiveVoiceNotePlaying(msgId);
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch {}
+      setTimeout(() => {
+        setActiveVoiceNotePlaying(null);
+      }, 3500);
+    }
+  };
+
+  // Calling Simulation
+  const handleStartCall = (type = "audio") => {
+    setCallType(type);
+    setIsCalling(true);
+    setCallTimer(0);
+    setIsMuted(false);
+    setIsSpeaker(false);
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {}
+
+    setTimeout(() => {
+      callIntervalRef.current = setInterval(() => {
+        setCallTimer((prev) => prev + 1);
+      }, 1000);
+    }, 2000);
+  };
+
+  const handleEndCall = () => {
+    if (callIntervalRef.current) clearInterval(callIntervalRef.current);
+    setIsCalling(false);
+    setCallTimer(0);
+    showToast("📞 Call ended", "info");
+  };
+
+  const formatCallTime = (secs) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
+  };
+
+  // Double Tap to React ❤️
+  const handleDoubleTapMessage = async (msg) => {
+    if (!msg || !selectedStaff) return;
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
+    const channelType = selectedChannelTab?.channelType || "student_staff";
+    const threadList = threads[selectedStaff.id] || [];
+    const updated = threadList.map((m) => {
+      if (m.id === msg.id) {
+        return { ...m, reaction: m.reaction === "❤️" ? null : "❤️" };
+      }
+      return m;
+    });
+    setThreads((prev) => ({ ...prev, [selectedStaff.id]: updated }));
+    AsyncStorage.setItem(`chat_thread_${channelType}_${selectedStaff.id}`, JSON.stringify(updated)).catch(() => {});
+  };
+
   // ---------------- DIRECTORY FILTER ----------------
   const departments = useMemo(() => {
     const set = new Set(["All"]);
@@ -582,14 +757,19 @@ export default function ChatModal({ visible, onClose }) {
 
   const currentMessages = useMemo(() => {
     if (!selectedStaff) return [];
-    return threads[selectedStaff.id] || [];
-  }, [threads, selectedStaff]);
+    const all = threads[selectedStaff.id] || [];
+    if (!inChatSearchQuery.trim()) return all;
+    return all.filter((m) =>
+      (m.text || "").toLowerCase().includes(inChatSearchQuery.toLowerCase())
+    );
+  }, [threads, selectedStaff, inChatSearchQuery]);
 
   const handleCallStaff = () => {
-    if (!selectedStaff?.phone) return;
-    Linking.openURL(`tel:${selectedStaff.phone}`).catch(() => {
-      showToast(`Cannot make call to ${selectedStaff.phone}`, "error");
-    });
+    handleStartCall("audio");
+  };
+
+  const handleVideoCallStaff = () => {
+    handleStartCall("video");
   };
 
   const handleEmailStaff = () => {
@@ -611,6 +791,13 @@ export default function ChatModal({ visible, onClose }) {
     return (
       <TouchableOpacity
         activeOpacity={0.9}
+        onPress={() => {
+          const now = Date.now();
+          if (now - lastTapRef.current < 300) {
+            handleDoubleTapMessage(item);
+          }
+          lastTapRef.current = now;
+        }}
         onLongPress={() => handleLongPressMessage(item)}
         style={[
           styles.msgRow,
@@ -697,7 +884,7 @@ export default function ChatModal({ visible, onClose }) {
             </View>
           ) : (
             <>
-              {/* Media Attachments */}
+              {/* Media & Voice Attachments */}
               {item.attachment && (
                 <View style={styles.attachmentWrapper}>
                   {item.attachment.type === "image" && (
@@ -783,6 +970,38 @@ export default function ChatModal({ visible, onClose }) {
                       </View>
                     </View>
                   )}
+
+                  {item.attachment.type === "voice" && (
+                    <View style={styles.voiceNoteWrap}>
+                      <TouchableOpacity
+                        style={[styles.voicePlayBtn, { backgroundColor: isMe ? "#00A884" : "#0284C7" }]}
+                        onPress={() => handleToggleVoicePlay(item.id)}
+                      >
+                        <Icon
+                          name={activeVoiceNotePlaying === item.id ? "pause" : "play"}
+                          size={20}
+                          color="#FFFFFF"
+                        />
+                      </TouchableOpacity>
+                      <View style={styles.voiceWaveContainer}>
+                        {[4, 10, 16, 8, 20, 14, 22, 12, 18, 8, 14, 6].map((h, wi) => (
+                          <View
+                            key={wi}
+                            style={[
+                              styles.voiceWaveBar,
+                              {
+                                height: activeVoiceNotePlaying === item.id ? h * 1.2 : h,
+                                backgroundColor: isMe ? "#00A884" : "#0284C7",
+                              },
+                            ]}
+                          />
+                        ))}
+                      </View>
+                      <Text style={[styles.voiceDurationText, { color: isDarkMode ? "#8696A0" : "#64748B" }]}>
+                        0:0{item.attachment.duration || 4}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -842,7 +1061,7 @@ export default function ChatModal({ visible, onClose }) {
             </Text>
             {isMe && !isDeleted && (
               <Icon
-                name="check-all"
+                name={item?.status === "sent" ? "check" : "check-all"}
                 size={14}
                 color={item?.status === "read" ? "#53BDEB" : isDarkMode ? "#8696A0" : "#64748B"}
                 style={{ marginLeft: 3 }}
@@ -1100,18 +1319,31 @@ export default function ChatModal({ visible, onClose }) {
                     <Text style={styles.waHeaderName} numberOfLines={1}>
                       {selectedStaff.name}
                     </Text>
-                    <Text style={styles.waHeaderStatus} numberOfLines={1}>
-                      {selectedStaff?.status === "online" ? "online" : selectedStaff?.statusText || "active"}
+                    <Text
+                      style={[
+                        styles.waHeaderStatus,
+                        typingState?.isTyping && { color: "#34D399", fontWeight: "700" },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {typingState?.isTyping
+                        ? "typing..."
+                        : selectedStaff?.status === "online"
+                        ? "online"
+                        : selectedStaff?.statusText || "active"}
                     </Text>
                   </View>
                 </TouchableOpacity>
 
                 <View style={styles.waHeaderActions}>
+                  <TouchableOpacity onPress={() => setInChatSearch(!inChatSearch)} style={styles.waActionIcon}>
+                    <Icon name="magnify" size={21} color="#FFFFFF" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleVideoCallStaff} style={styles.waActionIcon}>
+                    <Icon name="video-outline" size={22} color="#FFFFFF" />
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={handleCallStaff} style={styles.waActionIcon}>
                     <Icon name="phone" size={20} color="#FFFFFF" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleEmailStaff} style={styles.waActionIcon}>
-                    <Icon name="email-outline" size={20} color="#FFFFFF" />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => setShowPrivacyModal(true)} style={styles.waActionIcon}>
                     <Icon name="shield-lock-outline" size={20} color="#FFFFFF" />
@@ -1119,6 +1351,24 @@ export default function ChatModal({ visible, onClose }) {
                 </View>
               </View>
             </View>
+
+            {/* In-Chat Message Search Bar */}
+            {inChatSearch && (
+              <View style={[styles.inChatSearchContainer, { backgroundColor: isDarkMode ? "#1F2C34" : "#F0F2F5" }]}>
+                <Icon name="magnify" size={18} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                <TextInput
+                  style={[styles.inChatSearchInput, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}
+                  placeholder="Search in chat..."
+                  placeholderTextColor={isDarkMode ? "#8696A0" : "#54656F"}
+                  value={inChatSearchQuery}
+                  onChangeText={setInChatSearchQuery}
+                  autoFocus
+                />
+                <TouchableOpacity onPress={() => { setInChatSearch(false); setInChatSearchQuery(""); }}>
+                  <Icon name="close-circle" size={18} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Cabin & Subject Card */}
             {showStaffInfo && (
@@ -1135,6 +1385,12 @@ export default function ChatModal({ visible, onClose }) {
                     Course: {selectedStaff.subject}
                   </Text>
                 </View>
+                <TouchableOpacity style={styles.waInfoRow} onPress={handleEmailStaff}>
+                  <Icon name="email-outline" size={16} color="#00A884" />
+                  <Text style={[styles.waInfoText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                    Email: {selectedStaff.email}
+                  </Text>
+                </TouchableOpacity>
                 <View style={styles.waInfoRow}>
                   <Icon name="shield-key-outline" size={16} color="#10B981" />
                   <Text style={[styles.waInfoText, { color: "#10B981", fontWeight: "700" }]}>
@@ -1178,6 +1434,38 @@ export default function ChatModal({ visible, onClose }) {
                       </Text>
                     </TouchableOpacity>
                   </View>
+                }
+                ListFooterComponent={
+                  typingState?.isTyping ? (
+                    <View style={[styles.msgRow, styles.msgRowLeft, { alignItems: "center", marginTop: 4 }]}>
+                      <View style={[styles.avatarBeside, { backgroundColor: selectedStaff?.avatarColor || "#059669" }]}>
+                        <Text style={styles.avatarBesideText}>{selectedStaff?.initials || "F"}</Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.bubbleContainer,
+                          styles.bubbleOther,
+                          {
+                            backgroundColor: isDarkMode ? "#202C33" : "#FFFFFF",
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 8,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                          },
+                        ]}
+                      >
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                          <Animated.View style={[styles.typingDot, { opacity: dot1Opacity }]} />
+                          <Animated.View style={[styles.typingDot, { opacity: dot2Opacity }]} />
+                          <Animated.View style={[styles.typingDot, { opacity: dot3Opacity }]} />
+                        </View>
+                        <Text style={{ fontSize: 12, fontStyle: "italic", color: isDarkMode ? "#8696A0" : "#64748B" }}>
+                          typing...
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null
                 }
                 onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
               />
@@ -1259,70 +1547,95 @@ export default function ChatModal({ visible, onClose }) {
                 </View>
               )}
 
-              {/* WhatsApp Floating Input Capsule + Floating Send FAB */}
-              <View style={styles.waInputRow}>
-                {/* Left Capsule */}
-                <View style={[styles.waInputCapsule, { backgroundColor: isDarkMode ? "#2A3942" : "#FFFFFF" }]}>
+              {/* WhatsApp Floating Input Capsule + Voice Recording Mode */}
+              {isRecordingVoice ? (
+                <View style={styles.waInputRow}>
+                  <View style={[styles.voiceRecordingCapsule, { backgroundColor: isDarkMode ? "#2A3942" : "#FFFFFF" }]}>
+                    <TouchableOpacity onPress={handleCancelVoiceRecording} style={{ padding: 6 }}>
+                      <Icon name="trash-can-outline" size={22} color="#EF4444" />
+                    </TouchableOpacity>
+                    <View style={styles.recordingRedDot} />
+                    <Text style={[styles.recordingTimerText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                      0:0{recordingTimer > 9 ? recordingTimer : "0" + recordingTimer}
+                    </Text>
+                    <View style={styles.recordingWaveSample}>
+                      {[8, 14, 22, 10, 18, 24, 12, 16, 20, 8].map((h, i) => (
+                        <View key={i} style={[styles.recordingWaveBar, { height: h }]} />
+                      ))}
+                    </View>
+                  </View>
                   <TouchableOpacity
-                    style={styles.capsuleIconBtn}
-                    onPress={() => setNewMsg((prev) => prev + "😊")}
+                    style={[styles.waSendFab, { backgroundColor: "#10B981" }]}
+                    onPress={handleSendVoiceNote}
                   >
-                    <Icon name="emoticon-happy-outline" size={22} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                    <Icon name="send" size={20} color="#FFFFFF" />
                   </TouchableOpacity>
-
-                  <TextInput
-                    style={[styles.waTextInput, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}
-                    placeholder={editingMessage ? "Edit message..." : "Message"}
-                    placeholderTextColor={isDarkMode ? "#8696A0" : "#54656F"}
-                    value={newMsg}
-                    onChangeText={setNewMsg}
-                    multiline
-                    onFocus={() => {
-                      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-                    }}
-                  />
-
-                  {/* Paperclip Attachment */}
-                  <TouchableOpacity
-                    style={styles.capsuleIconBtn}
-                    onPress={() => setShowAttachmentMenu(true)}
-                  >
-                    <Icon name="paperclip" size={22} color={isDarkMode ? "#8696A0" : "#54656F"} />
-                  </TouchableOpacity>
-
-                  {/* Camera Icon (if not typing) */}
-                  {!Boolean(newMsg.trim()) && !pendingAttachment && (
+                </View>
+              ) : (
+                <View style={styles.waInputRow}>
+                  {/* Left Capsule */}
+                  <View style={[styles.waInputCapsule, { backgroundColor: isDarkMode ? "#2A3942" : "#FFFFFF" }]}>
                     <TouchableOpacity
                       style={styles.capsuleIconBtn}
-                      onPress={() => handlePickImage(true)}
+                      onPress={() => setNewMsg((prev) => prev + "😊")}
                     >
-                      <Icon name="camera" size={22} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                      <Icon name="emoticon-happy-outline" size={22} color={isDarkMode ? "#8696A0" : "#54656F"} />
                     </TouchableOpacity>
-                  )}
-                </View>
 
-                {/* Right Floating FAB (Send or Mic) */}
-                <TouchableOpacity
-                  style={[
-                    styles.waSendFab,
-                    { backgroundColor: isDarkMode ? "#00A884" : "#008069" },
-                  ]}
-                  onPress={handleSendOrSave}
-                  activeOpacity={0.8}
-                >
-                  <Icon
-                    name={
-                      editingMessage
-                        ? "check"
-                        : newMsg.trim() || pendingAttachment
-                        ? "send"
-                        : "microphone"
-                    }
-                    size={20}
-                    color="#FFFFFF"
-                  />
-                </TouchableOpacity>
-              </View>
+                    <TextInput
+                      style={[styles.waTextInput, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}
+                      placeholder={editingMessage ? "Edit message..." : "Message"}
+                      placeholderTextColor={isDarkMode ? "#8696A0" : "#54656F"}
+                      value={newMsg}
+                      onChangeText={setNewMsg}
+                      multiline
+                      onFocus={() => {
+                        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+                      }}
+                    />
+
+                    {/* Paperclip Attachment */}
+                    <TouchableOpacity
+                      style={styles.capsuleIconBtn}
+                      onPress={() => setShowAttachmentMenu(true)}
+                    >
+                      <Icon name="paperclip" size={22} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                    </TouchableOpacity>
+
+                    {/* Camera Icon (if not typing) */}
+                    {!Boolean(newMsg.trim()) && !pendingAttachment && (
+                      <TouchableOpacity
+                        style={styles.capsuleIconBtn}
+                        onPress={() => handlePickImage(true)}
+                      >
+                        <Icon name="camera" size={22} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Right Floating FAB (Send or Mic) */}
+                  <TouchableOpacity
+                    style={[
+                      styles.waSendFab,
+                      { backgroundColor: isDarkMode ? "#00A884" : "#008069" },
+                    ]}
+                    onPress={newMsg.trim() || pendingAttachment || editingMessage ? handleSendOrSave : handleStartVoiceRecording}
+                    activeOpacity={0.8}
+                  >
+                    <Icon
+                      name={
+                        editingMessage
+                          ? "check"
+                          : newMsg.trim() || pendingAttachment
+                          ? "send"
+                          : "microphone"
+                      }
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                  </TouchableOpacity>
+                </View>
+              )}
             </KeyboardAvoidingView>
           </View>
         )}
@@ -1498,6 +1811,53 @@ export default function ChatModal({ visible, onClose }) {
             </View>
           </Modal>
         )}
+        {/* ========================================================================= */}
+        {/* MODAL 5: WHATSAPP AUDIO / VIDEO CALLING SCREEN                            */}
+        {/* ========================================================================= */}
+        {isCalling && (
+          <Modal visible={isCalling} animationType="slide" transparent={false} onRequestClose={handleEndCall}>
+            <LinearGradient
+              colors={callType === "video" ? ["#0F172A", "#1E293B", "#0F172A"] : ["#064E3B", "#022C22", "#064E3B"]}
+              style={styles.callScreenContainer}
+            >
+              <View style={styles.callHeader}>
+                <Icon name="shield-lock-outline" size={16} color="rgba(255,255,255,0.7)" />
+                <Text style={styles.callEncryptedText}>End-to-end encrypted {callType === "video" ? "Video Call" : "Voice Call"}</Text>
+              </View>
+
+              <View style={styles.callProfileCenter}>
+                <View style={[styles.callAvatarLarge, { backgroundColor: selectedStaff?.avatarColor || "#059669" }]}>
+                  <Text style={styles.callAvatarLargeText}>{selectedStaff?.initials || "F"}</Text>
+                </View>
+                <Text style={styles.callContactName}>{selectedStaff?.name || "Faculty"}</Text>
+                <Text style={styles.callStatusText}>
+                  {callTimer > 0 ? formatCallTime(callTimer) : "Ringing..."}
+                </Text>
+              </View>
+
+              {/* Call Control Buttons */}
+              <View style={styles.callControlsRow}>
+                <TouchableOpacity
+                  style={[styles.callBtnCircle, isMuted && { backgroundColor: "rgba(255,255,255,0.3)" }]}
+                  onPress={() => setIsMuted(!isMuted)}
+                >
+                  <Icon name={isMuted ? "microphone-off" : "microphone"} size={26} color="#FFFFFF" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.callBtnCircle, isSpeaker && { backgroundColor: "rgba(255,255,255,0.3)" }]}
+                  onPress={() => setIsSpeaker(!isSpeaker)}
+                >
+                  <Icon name={isSpeaker ? "volume-high" : "volume-medium"} size={26} color="#FFFFFF" />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.callEndBtnCircle} onPress={handleEndCall}>
+                  <Icon name="phone-hangup" size={28} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+          </Modal>
+        )}
       </Animated.View>
     </Modal>
   );
@@ -1563,6 +1923,18 @@ const getStyles = (colors, isDarkMode) =>
     waSearchInput: { flex: 1, fontSize: 14, padding: 0 },
     waFilterChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16 },
     waFilterChipText: { fontSize: 12, fontWeight: "600" },
+
+    /* In-Chat Search Bar */
+    inChatSearchContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      gap: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: "#E2E8F0",
+    },
+    inChatSearchInput: { flex: 1, fontSize: 14, padding: 0 },
 
     /* WhatsApp Chat List Item */
     waChatItem: {
@@ -1686,6 +2058,82 @@ const getStyles = (colors, isDarkMode) =>
       borderColor: "#E2E8F0",
     },
     reactionBadgeText: { fontSize: 12 },
+
+    /* Typing Dots */
+    typingDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: "#00A884",
+    },
+
+    /* Voice Note Bubble Player */
+    voiceNoteWrap: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 4,
+      paddingHorizontal: 2,
+      minWidth: 180,
+    },
+    voicePlayBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    voiceWaveContainer: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      height: 24,
+    },
+    voiceWaveBar: {
+      width: 3,
+      borderRadius: 1.5,
+    },
+    voiceDurationText: {
+      fontSize: 11,
+      fontWeight: "700",
+      marginLeft: 4,
+    },
+
+    /* Voice Recording Capsule */
+    voiceRecordingCapsule: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 24,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      minHeight: 46,
+      gap: 10,
+      elevation: 2,
+    },
+    recordingRedDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: "#EF4444",
+    },
+    recordingTimerText: {
+      fontSize: 14,
+      fontWeight: "800",
+    },
+    recordingWaveSample: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      height: 26,
+    },
+    recordingWaveBar: {
+      width: 3,
+      borderRadius: 1.5,
+      backgroundColor: "#EF4444",
+    },
 
     /* Attachments in Bubbles */
     attachmentWrapper: { marginBottom: 4 },
@@ -1841,4 +2289,82 @@ const getStyles = (colors, isDarkMode) =>
     privacyBoxBody: { fontSize: 13, lineHeight: 19 },
     privacyBoxBtn: { paddingVertical: 10, borderRadius: 10, alignItems: "center" },
     privacyBoxBtnText: { fontSize: 14, fontWeight: "800", color: "#FFFFFF" },
+
+    /* Audio / Video Calling Full-Screen */
+    callScreenContainer: {
+      flex: 1,
+      justifyContent: "space-between",
+      paddingVertical: 54,
+      paddingHorizontal: 24,
+      alignItems: "center",
+    },
+    callHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: "rgba(0,0,0,0.3)",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 14,
+    },
+    callEncryptedText: {
+      color: "rgba(255,255,255,0.8)",
+      fontSize: 12,
+      fontWeight: "600",
+    },
+    callProfileCenter: {
+      alignItems: "center",
+      gap: 12,
+    },
+    callAvatarLarge: {
+      width: 110,
+      height: 110,
+      borderRadius: 55,
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 3,
+      borderColor: "rgba(255,255,255,0.4)",
+      elevation: 6,
+    },
+    callAvatarLargeText: {
+      fontSize: 42,
+      fontWeight: "800",
+      color: "#FFFFFF",
+    },
+    callContactName: {
+      fontSize: 22,
+      fontWeight: "800",
+      color: "#FFFFFF",
+    },
+    callStatusText: {
+      fontSize: 15,
+      color: "rgba(255,255,255,0.75)",
+      fontWeight: "600",
+    },
+    callControlsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 24,
+      backgroundColor: "rgba(0,0,0,0.35)",
+      paddingHorizontal: 24,
+      paddingVertical: 14,
+      borderRadius: 36,
+    },
+    callBtnCircle: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: "rgba(255,255,255,0.15)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    callEndBtnCircle: {
+      width: 58,
+      height: 58,
+      borderRadius: 29,
+      backgroundColor: "#EF4444",
+      justifyContent: "center",
+      alignItems: "center",
+      elevation: 4,
+    },
   });

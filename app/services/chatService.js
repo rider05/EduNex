@@ -153,10 +153,16 @@ function getRecipientNotificationTitle(message) {
 }
 
 const chatMessageListeners = new Set();
+const typingListeners = new Set();
 
 export function subscribeToChatMessages(callback) {
   chatMessageListeners.add(callback);
   return () => chatMessageListeners.delete(callback);
+}
+
+export function subscribeToTypingStatus(callback) {
+  typingListeners.add(callback);
+  return () => typingListeners.delete(callback);
 }
 
 function notifyChatSubscribers(data) {
@@ -169,26 +175,87 @@ function notifyChatSubscribers(data) {
   });
 }
 
-function generateSimulatedReply(incomingMsg, contact) {
-  const text = (incomingMsg.text || "").toLowerCase();
-
-  if (text.includes("lab") || text.includes("assignment") || text.includes("submission") || text.includes("project")) {
-    return "Hello! I have received your submission. I am reviewing the code and report now. Please keep an eye on your portal for marks.";
-  }
-  if (text.includes("meeting") || text.includes("cabin") || text.includes("appointment") || text.includes("discuss")) {
-    return `Sure, please come by ${contact?.cabin || "my cabin"} today between 3:30 PM and 4:30 PM. Let's discuss your academic progress.`;
-  }
-  if (text.includes("leave") || text.includes("permission") || text.includes("od") || text.includes("gate pass")) {
-    return "Understood. Please ensure you submit the formal Leave/OD request on EduNex with parent endorsement so I can approve it.";
-  }
-  if (text.includes("thank") || text.includes("thanks") || text.includes("ok") || text.includes("noted")) {
-    return "You're welcome! Feel free to reach out anytime if you have further academic questions.";
-  }
-  return `Hello! I have noted your message regarding "${incomingMsg.text ? incomingMsg.text.slice(0, 35) + "..." : "your inquiry"}". Will review and update you shortly.`;
+export function notifyTypingStatus(data) {
+  typingListeners.forEach((cb) => {
+    try {
+      cb(data);
+    } catch (e) {
+      console.warn("Typing subscriber error:", e);
+    }
+  });
 }
 
 /**
- * Send DM Message & Dispatch Real-Time Push Notification strictly to recipient
+ * Helper to compute canonical paired thread key for 2 users
+ */
+export function getCanonicalPairKey(id1, id2) {
+  const a = String(id1 || "user_1").trim();
+  const b = String(id2 || "user_2").trim();
+  return [a, b].sort().join("__");
+}
+
+/**
+ * Mark all incoming unread messages in a thread as 'read'
+ */
+export async function markThreadAsRead({
+  threadKey,
+  channelType = "student_staff",
+  currentUserId,
+}) {
+  try {
+    if (!threadKey) return;
+    const storageKey = `chat_thread_${channelType}_${threadKey}`;
+    let raw = await AsyncStorage.getItem(storageKey);
+    if (!raw) {
+      raw = await AsyncStorage.getItem(`chat_thread_${threadKey}`);
+    }
+    if (!raw) return;
+
+    const list = JSON.parse(raw);
+    let changed = false;
+
+    const updated = list.map((msg) => {
+      // If message was sent to current user and is not read yet
+      if (msg.senderId !== currentUserId && msg.status !== "read") {
+        changed = true;
+        return { ...msg, status: "read" };
+      }
+      return msg;
+    });
+
+    if (changed) {
+      await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
+      AsyncStorage.setItem(`chat_thread_${threadKey}`, JSON.stringify(updated)).catch(() => {});
+
+      // If senderId is present on the messages, also update the sender's thread
+      const otherSenderId = list.find((m) => m.senderId && m.senderId !== currentUserId)?.senderId;
+      if (otherSenderId) {
+        const senderStorageKey = `chat_thread_${channelType}_${otherSenderId}`;
+        AsyncStorage.setItem(senderStorageKey, JSON.stringify(updated)).catch(() => {});
+      }
+
+      // Also update canonical pair key
+      if (currentUserId && threadKey) {
+        const pairKey = getCanonicalPairKey(currentUserId, threadKey);
+        AsyncStorage.setItem(`chat_thread_${channelType}_${pairKey}`, JSON.stringify(updated)).catch(() => {});
+      }
+
+      notifyChatSubscribers({ threadKey, updatedList: updated });
+
+      // Sync read receipt to backend
+      api.post("/messages/read", {
+        threadKey,
+        channelType,
+        readerId: currentUserId,
+      }).catch(() => {});
+    }
+  } catch (e) {
+    console.warn("markThreadAsRead error:", e);
+  }
+}
+
+/**
+ * Send DM Message strictly between real humans with zero simulated bot responses
  */
 export async function sendDirectMessage({
   threadKey,
@@ -200,44 +267,46 @@ export async function sendDirectMessage({
     const storageKey = `chat_thread_${channelType}_${threadKey}`;
     const raw = await AsyncStorage.getItem(storageKey);
     const list = raw ? JSON.parse(raw) : [];
-    const updated = [...list, message];
-    await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
 
-    // Mirror to fallback threadKey
+    // 1. Initial State: Delivered
+    const initialMsg = { ...message, status: "delivered" };
+    const updated = [...list, initialMsg];
+
+    // Save in Sender's view
+    await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
     AsyncStorage.setItem(`chat_thread_${threadKey}`, JSON.stringify(updated)).catch(() => {});
 
-    // Backend sync
+    // Save in Recipient's view so when the other human logs in, the message is there
+    if (message.senderId) {
+      const recipientStorageKey = `chat_thread_${channelType}_${message.senderId}`;
+      AsyncStorage.setItem(recipientStorageKey, JSON.stringify(updated)).catch(() => {});
+      AsyncStorage.setItem(`chat_thread_${message.senderId}`, JSON.stringify(updated)).catch(() => {});
+    }
+
+    // Save in canonical pair key
+    if (message.senderId && threadKey) {
+      const pairKey = getCanonicalPairKey(message.senderId, threadKey);
+      AsyncStorage.setItem(`chat_thread_${channelType}_${pairKey}`, JSON.stringify(updated)).catch(() => {});
+    }
+
+    // Notify live UI subscribers
+    notifyChatSubscribers({ threadKey, message: initialMsg, updatedList: updated });
+
+    // Sync to backend database
     api.post("/messages", {
-      ...message,
+      ...initialMsg,
       channelType,
       threadKey,
       contactName: selectedContact?.name || "Recipient",
     }).catch(() => {});
 
+    // Save push notification strictly in recipient's store
     const recipientTitle = getRecipientNotificationTitle(message);
     const attachmentPreview = message.attachment
-      ? ` [${message.attachment.type === "image" ? "📷 Photo" : message.attachment.type === "video" ? "🎥 Video" : "📄 Document"}]`
+      ? ` [${message.attachment.type === "image" ? "📷 Photo" : message.attachment.type === "video" ? "🎥 Video" : "🎤 Voice Note"}]`
       : "";
-
     const notificationBody = `${message.text || "Sent an attachment"}${attachmentPreview}`;
 
-    // 1. Dispatch Real-time push alert
-    await triggerRealtimeNotification({
-      title: recipientTitle,
-      body: notificationBody,
-      type: "info",
-      data: {
-        type: "chat",
-        channelType,
-        threadKey,
-        senderId: message.senderId,
-        senderRole: message.sender,
-        recipientId: message.recipientId,
-        recipientRole: message.recipientRole,
-      },
-    });
-
-    // 2. Persist in Recipient's personal notification feed
     await saveUserNotification(message.recipientRole, message.recipientId, {
       id: `notif_chat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       title: recipientTitle,
@@ -248,74 +317,23 @@ export async function sendDirectMessage({
       metadata: {
         type: "chat",
         channelType,
-        threadKey,
+        threadKey: message.senderId || threadKey,
         senderId: message.senderId,
         senderName: message.senderName,
       },
-    });
-
-    // 3. Notify live in-app subscribers of the new message
-    notifyChatSubscribers({ threadKey, message, updatedList: updated });
-
-    // 4. Trigger simulated response from contact after 2.5 seconds
-    if (selectedContact && selectedContact.id) {
-      setTimeout(async () => {
-        try {
-          const replyText = generateSimulatedReply(message, selectedContact);
-          const replyMsg = createMessageObject({
-            text: replyText,
-            senderRole: selectedContact.role || (channelType === "student_staff" ? "staff" : "student"),
-            senderId: selectedContact.id,
-            senderName: selectedContact.name,
-            recipientId: message.senderId,
-            recipientRole: message.sender,
-            channelType,
-          });
-
-          const currentRaw = await AsyncStorage.getItem(storageKey);
-          const currentList = currentRaw ? JSON.parse(currentRaw) : [];
-          const withReply = [...currentList, replyMsg];
-          await AsyncStorage.setItem(storageKey, JSON.stringify(withReply));
-          AsyncStorage.setItem(`chat_thread_${threadKey}`, JSON.stringify(withReply)).catch(() => {});
-
-          // Dispatch real-time push notification popup from contact
-          const replyTitle = `💬 ${selectedContact.name}${selectedContact.badge ? ` (${selectedContact.badge})` : ""}`;
-          await triggerRealtimeNotification({
-            title: replyTitle,
-            body: replyText,
-            type: "info",
-            data: {
-              type: "chat",
-              channelType,
-              threadKey,
-              contactId: selectedContact.id,
-              forcePopup: true,
-            },
-          });
-
-          // Save in notification store
-          await saveUserNotification(message.sender, message.senderId, {
-            id: `notif_chat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            title: replyTitle,
-            message: replyText,
-            type: "info",
-            isNew: true,
-            createdAt: new Date().toISOString(),
-            metadata: {
-              type: "chat",
-              channelType,
-              threadKey,
-              contactId: selectedContact.id,
-            },
-          });
-
-          // Notify live subscribers
-          notifyChatSubscribers({ threadKey, message: replyMsg, updatedList: withReply });
-        } catch (_replyErr) {
-          console.warn("Auto-reply error:", _replyErr);
-        }
-      }, 2500);
-    }
+    // Trigger push notification popup for the recipient
+    await triggerRealtimeNotification({
+      title: recipientTitle,
+      body: notificationBody,
+      type: "info",
+      data: {
+        type: "chat",
+        channelType,
+        threadKey: message.senderId || threadKey,
+        contactId: message.senderId || threadKey,
+        forcePopup: true,
+      },
+    }).catch(() => {});
 
     return updated;
   } catch (err) {
