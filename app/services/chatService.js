@@ -1,7 +1,6 @@
 // services/chatService.js
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "./api";
-import { triggerRealtimeNotification } from "./realtimeNotificationService";
 import { saveUserNotification } from "../utils/notificationUtils";
 
 const EDIT_TIME_LIMIT_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
@@ -362,20 +361,6 @@ export async function sendDirectMessage({
         threadKey: message.senderId || threadKey,
         senderId: message.senderId,
         senderName: message.senderName,
-      },
-    }).catch(() => {});
-
-    // Trigger push notification popup for the recipient
-    await triggerRealtimeNotification({
-      title: recipientTitle,
-      body: notificationBody,
-      type: "info",
-      data: {
-        type: "chat",
-        channelType,
-        threadKey: message.senderId || threadKey,
-        contactId: message.senderId || threadKey,
-        forcePopup: true,
       },
     }).catch(() => {});
 

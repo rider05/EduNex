@@ -69,9 +69,9 @@ export default function ChatModal({ visible, onClose }) {
   // Channel Tabs based on logged-in role
   const [selectedChannelTab, setSelectedChannelTab] = useState(null);
 
-  // Screen View: 'directory' | 'chat'
-  const [currentView, setCurrentView] = useState("directory");
-  const [selectedStaff, setSelectedStaff] = useState(null);
+  // Screen View: 'chat' (Direct 1-on-1 Chat Room by default) | 'directory'
+  const [currentView, setCurrentView] = useState("chat");
+  const [selectedStaff, setSelectedStaff] = useState(DEFAULT_FACULTY_ROSTER[0]);
 
   // Search & Department Filter
   const [searchQuery, setSearchQuery] = useState("");
@@ -345,10 +345,18 @@ export default function ChatModal({ visible, onClose }) {
     return () => unsub();
   }, [contacts, handleSelectStaff]);
 
-  // Back to Directory
+  // Back action from chat room
   const handleBackToDirectory = () => {
-    setCurrentView("directory");
-    setSelectedStaff(null);
+    if (currentUser?.role === "student" || !currentUser?.role) {
+      onClose();
+    } else {
+      if (currentView === "chat") {
+        setCurrentView("directory");
+        setSelectedStaff(null);
+      } else {
+        onClose();
+      }
+    }
     setShowStaffInfo(false);
     setShowPrivacyModal(false);
     setEditingMessage(null);

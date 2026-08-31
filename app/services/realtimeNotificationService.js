@@ -25,6 +25,7 @@ let isPolling = false;
 // In-memory state tracking to detect diffs/deltas
 let lastKnownLeaves = new Map(); // id -> status
 let lastKnownNotices = new Set(); // set of notice IDs
+let lastKnownMessages = new Set(); // set of message IDs
 let initializedState = false;
 
 /**
@@ -142,10 +143,11 @@ async function performRealtimeCheck() {
       identity?.user?.rollNo ||
       "";
 
-    // 1. Fetch live leaves and notices from backend
-    const [leavesRes, noticesRes] = await Promise.allSettled([
+    // 1. Fetch live leaves, notices, and messages from backend
+    const [leavesRes, noticesRes, messagesRes] = await Promise.allSettled([
       api.get("/leaves", { limit: 50, sort: "-createdAt" }),
       api.get("/notices", { limit: 20, sort: "-createdAt" }),
+      api.get("/messages", { limit: 40, sort: "-createdAt" }),
     ]);
 
     const liveLeaves =
@@ -162,6 +164,13 @@ async function performRealtimeCheck() {
         ? noticesRes.value
         : [];
 
+    const liveMessages =
+      messagesRes.status === "fulfilled" && Array.isArray(messagesRes.value?.data)
+        ? messagesRes.value.data
+        : Array.isArray(messagesRes.value)
+        ? messagesRes.value
+        : [];
+
     // First cycle initialization to prevent spamming on cold start
     if (!initializedState) {
       liveLeaves.forEach((l) => {
@@ -171,6 +180,10 @@ async function performRealtimeCheck() {
       liveNotices.forEach((n) => {
         const id = n.id || n._id;
         if (id) lastKnownNotices.add(id);
+      });
+      liveMessages.forEach((m) => {
+        const id = m.id || m._id;
+        if (id) lastKnownMessages.add(id);
       });
       initializedState = true;
       isPolling = false;
@@ -320,6 +333,56 @@ async function performRealtimeCheck() {
           type: "info",
           data: { noticeId: id },
         });
+      }
+    }
+
+    // =========================================================================
+    // D. INCOMING CHAT MESSAGES REALTIME CHECK (STRICTLY FOR OPPOSITE PERSON)
+    // =========================================================================
+    const currentUserId =
+      identity?.student?.rollNo ||
+      identity?.staff?.id ||
+      identity?.staffId ||
+      identity?.user?.profile?.rollNo ||
+      identity?.user?.rollNo ||
+      identity?.id ||
+      "";
+
+    for (const msg of liveMessages) {
+      const id = msg.id || msg._id;
+      if (!id) continue;
+
+      if (!lastKnownMessages.has(id)) {
+        lastKnownMessages.add(id);
+
+        const isSender =
+          (msg.senderId && currentUserId && String(msg.senderId).toLowerCase() === String(currentUserId).toLowerCase()) ||
+          (msg.sender === role && msg.senderRole === role);
+
+        const isRecipient =
+          (msg.recipientId && currentUserId && String(msg.recipientId).toLowerCase() === String(currentUserId).toLowerCase()) ||
+          (msg.recipientRole && String(msg.recipientRole).toLowerCase() === String(role).toLowerCase()) ||
+          (msg.recipient && String(msg.recipient).toLowerCase() === String(role).toLowerCase());
+
+        // ONLY trigger push notification popup if the message is from someone else to this user
+        if (isRecipient && !isSender) {
+          const senderDisplayName = msg.senderName || (msg.senderRole === "staff" ? "Faculty Advisor" : "Student");
+          const chatTitle = `💬 ${senderDisplayName}`;
+          const chatBody = msg.text || (msg.attachment ? `Sent an attachment (${msg.attachment.type || "file"})` : "New message");
+
+          await triggerRealtimeNotification({
+            title: chatTitle,
+            body: chatBody,
+            type: "info",
+            data: {
+              type: "chat",
+              threadKey: msg.senderId || msg.threadKey,
+              contactId: msg.senderId || msg.threadKey,
+              senderId: msg.senderId,
+              channelType: msg.channelType || "student_staff",
+            },
+          });
+        }
       }
     }
   } catch (err) {
