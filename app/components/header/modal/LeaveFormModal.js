@@ -6,11 +6,11 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Animated,
   ScrollView,
   ActivityIndicator,
   FlatList,
   Alert,
+  RefreshControl,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -76,7 +76,7 @@ const STATUS_CONFIG = {
     color: "#10B981",
     bgLight: "#10B98118",
     icon: "check-decagram",
-    sub: "24-Hr Digital Pass Verified",
+    sub: "Valid until Midnight (12:00 AM)",
   },
   rejected: {
     label: "REJECTED",
@@ -90,7 +90,7 @@ const STATUS_CONFIG = {
     color: "#64748B",
     bgLight: "#64748B18",
     icon: "history",
-    sub: "24-Hr Window Elapsed",
+    sub: "Midnight Window Elapsed",
   },
 };
 
@@ -104,16 +104,24 @@ const leaveTypesList = [
   { label: "Emergency", icon: "alert-circle-outline" },
 ];
 
-const sessionList = ["Full Day", "Forenoon (FN)", "Afternoon (AN)"];
+const sessionList = [
+  { id: "Full Day", label: "Full Day", badge: "Full Day", icon: "weather-sunny" },
+  { id: "Forenoon (FN)", label: "Forenoon (FN)", badge: "Half Day", icon: "weather-sunset-up" },
+  { id: "Afternoon (AN)", label: "Afternoon (AN)", badge: "Half Day", icon: "weather-sunset-down" },
+];
 
 // ---------------- Helpers ----------------
 const formatDate = (value) => {
   if (!value) return "";
-  if (typeof value?.toDate === "function") return value.toDate().toDateString();
-  if (value instanceof Date) return value.toDateString();
   try {
-    const d = new Date(value);
-    if (!isNaN(d.getTime())) return d.toDateString();
+    const d = toJsDate(value);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    }
   } catch {}
   return "";
 };
@@ -121,6 +129,7 @@ const formatDate = (value) => {
 const toJsDate = (v) => {
   if (!v) return new Date();
   if (typeof v?.toDate === "function") return v.toDate();
+  if (v instanceof Date) return v;
   try {
     const d = new Date(v);
     if (!isNaN(d.getTime())) return d;
@@ -128,30 +137,63 @@ const toJsDate = (v) => {
   return new Date();
 };
 
-const calculateDays = (from, to) => {
+// Calculate Days & Handle Half-Day for Forenoon (FN) / Afternoon (AN)
+const calculateDaysWithSession = (from, to, session = "Full Day") => {
   const start = toJsDate(from);
   const end = toJsDate(to);
-  const diffTime = Math.abs(end.getTime() - start.getTime());
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-  return diffDays > 0 ? diffDays : 1;
+
+  // Normalize both dates to midnight for exact calendar day comparison
+  const startMidnight = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const endMidnight = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  // Eliminate negative date range selection by clamping end to start
+  const safeEnd = endMidnight.getTime() < startMidnight.getTime() ? startMidnight : endMidnight;
+  const isSameDay = startMidnight.getTime() === safeEnd.getTime();
+  const isHalfDay = session === "Forenoon (FN)" || session === "Afternoon (AN)";
+
+  if (isSameDay && isHalfDay) {
+    const sessionTag = session === "Forenoon (FN)" ? "FN" : "AN";
+    return {
+      daysCount: 0.5,
+      durationLabel: `Half Day (${sessionTag})`,
+    };
+  }
+
+  const diffTime = safeEnd.getTime() - startMidnight.getTime();
+  const diffDays = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1);
+  return {
+    daysCount: diffDays,
+    durationLabel: diffDays === 1 ? "1 Day (Full Day)" : `${diffDays} Days`,
+  };
 };
 
-// Calculate 24h Remaining Validity
-const get24HourRemainingText = (expiresAt) => {
-  if (!expiresAt) return "24 hrs remaining";
+// Calculate Expiry Date at 12:00 AM Midnight following toDate
+const getMidnightExpiryDate = (dateVal) => {
+  const d = toJsDate(dateVal);
+  // Normalize to 12:00:00 AM of the day following dateVal
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0);
+};
+
+// Calculate Remaining Time until 12:00 AM Midnight
+const getMidnightRemainingText = (expiresAt) => {
+  if (!expiresAt) return "Valid until midnight (12:00 AM)";
   const exp = new Date(expiresAt).getTime();
   const now = Date.now();
   const diff = exp - now;
-  if (diff <= 0) return "Expired";
+  if (diff <= 0) return "Expired at midnight (12:00 AM)";
   const hrs = Math.floor(diff / (1000 * 60 * 60));
   const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  return `${hrs}h ${mins}m remaining`;
+  if (hrs > 24) {
+    const days = Math.floor(hrs / 24);
+    const remHrs = hrs % 24;
+    return `${days}d ${remHrs}h remaining until midnight`;
+  }
+  return `${hrs}h ${mins}m remaining (expires at 12:00 AM midnight)`;
 };
 
 // ---------------- Main Component ----------------
 export default function CollegeLeaveFormModal({ visible, onClose }) {
   const { colors, isDarkMode } = useTheme();
-  const slideAnim = useRef(new Animated.Value(350)).current;
 
   // View Mode: 'form' | 'history'
   const [currentView, setCurrentView] = useState("form");
@@ -263,8 +305,9 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
       const cached = await secureGet(`cached_leave_${id}`);
       if (cached && !existingLeaveRef.current) {
         setExistingLeave(cached);
-        if (cached.status === "approved" && cached.expiresAt) {
-          setRemainingTimeText(get24HourRemainingText(cached.expiresAt));
+        const expTime = cached.expiresAt || getMidnightExpiryDate(cached.toDate || cached.createdAt).toISOString();
+        if (cached.status === "approved") {
+          setRemainingTimeText(getMidnightRemainingText(expTime));
         }
       }
 
@@ -283,7 +326,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
       const now = Date.now();
       const expiresAtMs = leave.expiresAt
         ? new Date(leave.expiresAt).getTime()
-        : new Date(leave.createdAt).getTime() + 24 * 60 * 60 * 1000;
+        : getMidnightExpiryDate(leave.toDate || leave.createdAt).getTime();
 
       if (leave.status === "approved" && now >= expiresAtMs) {
         await api.patch(`/leaves/${id}`, { status: "expired" }).catch(() => null);
@@ -297,7 +340,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
           await secureSet(`cached_leave_${id}`, leave);
         }
         if (leave.status === "approved") {
-          const newTimeText = get24HourRemainingText(leave.expiresAt || new Date(expiresAtMs).toISOString());
+          const newTimeText = getMidnightRemainingText(leave.expiresAt || new Date(expiresAtMs).toISOString());
           setRemainingTimeText((old) => (old === newTimeText ? old : newTimeText));
         }
       }
@@ -305,6 +348,9 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
       console.log("loadActiveLeave error:", e?.message || e);
     }
   }, []);
+
+  const hasLoadedHistoryOnce = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Load Leave History (with instant cache and zero-flicker memoization)
   const loadHistory = useCallback(async (showSpinner = false) => {
@@ -314,6 +360,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
         const cached = await secureGet("edunex_leave_history_college");
         if (Array.isArray(cached) && cached.length > 0) {
           setHistoryRecords(cached);
+          hasLoadedHistoryOnce.current = true;
         } else if (showSpinner) {
           setHistoryLoading(true);
         }
@@ -333,29 +380,45 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
     } catch (e) {
       console.log("loadHistory err:", e?.message || e);
     } finally {
+      hasLoadedHistoryOnce.current = true;
       setHistoryLoading(false);
     }
   }, []);
 
-  // Periodic 24h Expiry Watcher
-  const check24HourExpiry = useCallback(async () => {
+  // Periodic Midnight (12:00 AM) Expiry Watcher
+  const checkMidnightExpiry = useCallback(async () => {
     const current = existingLeaveRef.current;
     if (!current || current.status !== "approved") return;
     const now = Date.now();
     const expiresAtMs = current.expiresAt
       ? new Date(current.expiresAt).getTime()
-      : new Date(current.createdAt).getTime() + 24 * 60 * 60 * 1000;
+      : getMidnightExpiryDate(current.toDate || current.createdAt).getTime();
 
     if (now >= expiresAtMs) {
       await api.patch(`/leaves/${current.id || current._id}`, { status: "expired" }).catch(() => null);
       await secureRemove("activeCollegeLeaveId");
       setExistingLeave(null);
-      showToast("⏰ Leave pass expired (24h window elapsed)", "info");
+      showToast("⏰ Leave pass expired at 12:00 AM midnight", "info");
       loadHistory(false);
     } else {
-      setRemainingTimeText(get24HourRemainingText(current.expiresAt || new Date(expiresAtMs).toISOString()));
+      setRemainingTimeText(getMidnightRemainingText(current.expiresAt || new Date(expiresAtMs).toISOString()));
     }
   }, [loadHistory]);
+
+  // Manual Pull-to-Refresh Handler
+  const onManualRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        loadStudentFromDB(),
+        loadActiveLeave(),
+        loadHistory(false),
+      ]);
+      showToast("🔄 Leave records refreshed", "info");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadStudentFromDB, loadActiveLeave, loadHistory]);
 
   useEffect(() => {
     let unsubscribe = () => {};
@@ -363,15 +426,9 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
     if (visible) {
       loadStudentFromDB();
       loadActiveLeave();
-      loadHistory(true);
+      loadHistory(historyRecordsRef.current.length === 0);
 
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-
-      expiryIntervalRef.current = setInterval(check24HourExpiry, 15000);
+      expiryIntervalRef.current = setInterval(checkMidnightExpiry, 15000);
 
       unsubscribe = subscribeToNotifications((notif) => {
         const roll = studentInfoRef.current?.rollNo;
@@ -385,12 +442,6 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
         }
       });
     } else {
-      Animated.timing(slideAnim, {
-        toValue: 350,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-
       if (expiryIntervalRef.current) {
         clearInterval(expiryIntervalRef.current);
         expiryIntervalRef.current = null;
@@ -415,7 +466,8 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
     try {
       const leaveId = `CL-${Math.floor(100000 + Math.random() * 900000)}`;
       const now = new Date();
-      const calculatedDays = calculateDays(fromDate, toDate);
+      const { daysCount: calculatedDays, durationLabel } = calculateDaysWithSession(fromDate, toDate, sessionTiming);
+      const midnightExpiry = getMidnightExpiryDate(toDate);
 
       const payload = {
         leaveId,
@@ -433,6 +485,8 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
         fromDate: toJsDate(fromDate).toISOString(),
         toDate: toJsDate(toDate).toISOString(),
         daysCount: calculatedDays,
+        durationLabel,
+        expiresAt: midnightExpiry.toISOString(),
         status: "pending", // Requires Staff Approval!
         appliedAt: now.toISOString(),
         approvalStage: "Faculty Advisor Review",
@@ -465,7 +519,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
       await sendTargetedNotification({
         targetRole: "staff",
         title: "📝 New Leave Request Submitted",
-        message: `${studentInfo.name} (${studentInfo.rollNo || "Student"}) applied for ${leaveType} (${calculatedDays} Day(s)). Tap to review.`,
+        message: `${studentInfo.name} (${studentInfo.rollNo || "Student"}) applied for ${leaveType} (${durationLabel}). Tap to review.`,
         type: "info",
         metadata: {
           leaveId: savedDocId,
@@ -473,13 +527,14 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
           studentName: studentInfo.name,
           leaveType,
           daysCount: calculatedDays,
+          durationLabel,
           status: "pending",
         },
       });
 
-      showToast(`📝 ${leaveType} submitted for Staff Approval!`, "success");
+      showToast(`📝 ${leaveType} (${durationLabel}) submitted for Staff Approval!`, "success");
       setReason("");
-      loadHistory();
+      loadHistory(false);
     } catch (e) {
       console.log("submit err:", e);
       Alert.alert("Error", e.message || "Failed to submit leave");
@@ -558,7 +613,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
     : null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlayFull}>
         {/* ========================================================================= */}
         {/* 1. TOP HEADER (Standard Theme - Consistent Header)                        */}
@@ -585,12 +640,11 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
         {/* ========================================================================= */}
         {/* 2. BODY CONTENT (FORM OR HISTORY)                                         */}
         {/* ========================================================================= */}
-        <Animated.View
+        <View
           style={[
             styles.cardFull,
             {
               backgroundColor: colors.cardBackground,
-              transform: [{ translateY: slideAnim }],
             },
           ]}
         >
@@ -644,7 +698,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
                 </ScrollView>
               </View>
 
-              {historyLoading ? (
+              {historyLoading || (!hasLoadedHistoryOnce.current && filteredHistory.length === 0) ? (
                 <View style={{ paddingVertical: 40, alignItems: "center" }}>
                   <ActivityIndicator size="large" color={colors.primaryAccent} />
                 </View>
@@ -661,10 +715,22 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
                   data={filteredHistory}
                   keyExtractor={(item) => item.id || item._id || item.leaveId}
                   contentContainerStyle={{ padding: 16, gap: 10 }}
+                  initialNumToRender={8}
+                  maxToRenderPerBatch={10}
+                  windowSize={5}
+                  refreshControl={
+                    <RefreshControl
+                      refreshing={refreshing}
+                      onRefresh={onManualRefresh}
+                      colors={[colors.primaryAccent]}
+                      tintColor={colors.primaryAccent}
+                    />
+                  }
                   renderItem={({ item }) => {
                     const statusKey = (item.status || "pending").toLowerCase();
                     const statusConf = STATUS_CONFIG[statusKey] || STATUS_CONFIG.pending;
                     const itemCategoryTheme = LEAVE_TYPE_THEMES[item.leaveType] || LEAVE_TYPE_THEMES["Academic OD"];
+                    const durText = item.durationLabel || (item.daysCount === 0.5 ? "Half Day" : `${item.daysCount || 1} Day(s)`);
 
                     return (
                       <View
@@ -710,7 +776,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                             <Icon name="calendar-range" size={13} color={colors.secondaryText} />
                             <Text style={[styles.historyDateRange, { color: colors.secondaryText }]}>
-                              {formatDate(item.fromDate)} → {formatDate(item.toDate)}
+                              {formatDate(item.fromDate)} → {formatDate(item.toDate)} ({durText})
                             </Text>
                           </View>
 
@@ -736,6 +802,14 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
               contentContainerStyle={styles.formContainer}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onManualRefresh}
+                  colors={[colors.primaryAccent]}
+                  tintColor={colors.primaryAccent}
+                />
+              }
             >
               {/* ========================================================================= */}
               {/* 3. ACTIVE LEAVE STATUS CARD (PENDING STAFF APPROVAL / APPROVED / REJECTED) */}
@@ -784,7 +858,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
                       </View>
 
                       <Text style={[styles.activeSessionText, { color: colors.secondaryText }]}>
-                        {existingLeave.sessionTiming} · {calculateDays(existingLeave.fromDate, existingLeave.toDate)} Day(s)
+                        {existingLeave.sessionTiming || "Full Day"} · {existingLeave.durationLabel || (existingLeave.daysCount === 0.5 ? "Half Day" : `${existingLeave.daysCount || 1} Day(s)`)}
                       </Text>
 
                       {/* Status-Specific Details */}
@@ -801,7 +875,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
                         <View style={styles.activeTimerRow}>
                           <Icon name="clock-outline" size={15} color="#10B981" />
                           <Text style={[styles.activeTimerVal, { color: "#10B981" }]}>
-                            ⏳ {remainingTimeText || "24 hrs validity"}
+                            ⏳ {remainingTimeText || "Expires at 12:00 AM midnight"}
                           </Text>
                         </View>
                       )}
@@ -870,7 +944,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
                         color={existingLeave.status === "approved" ? "#10B981" : colors.disabledText}
                       />
                       <Text style={[styles.stepperText, { color: existingLeave.status === "approved" ? colors.primaryText : colors.disabledText }]}>
-                        3. 24h Pass
+                        3. Midnight Pass
                       </Text>
                     </View>
                   </View>
@@ -1000,7 +1074,21 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>To Date</Text>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <Text style={[styles.inputLabel, { color: colors.secondaryText, marginBottom: 0 }]}>To Date</Text>
+                    {toJsDate(toDate).toDateString() !== toJsDate(fromDate).toDateString() && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setToDate(fromDate);
+                          showToast("Deselected end date (Single Day)", "info");
+                        }}
+                        style={{ paddingHorizontal: 2 }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: "800", color: "#EF4444" }}>✕ Deselect</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   <TouchableOpacity
                     style={[
                       styles.dateSelectBtn,
@@ -1010,45 +1098,75 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
                     activeOpacity={0.8}
                   >
                     <Icon name="calendar-end" size={18} color={colors.primaryAccent} />
-                    <Text style={[styles.dateSelectText, { color: colors.primaryText }]}>
+                    <Text style={[styles.dateSelectText, { color: colors.primaryText, flex: 1 }]}>
                       {formatDate(toDate)}
                     </Text>
+                    {toJsDate(toDate).toDateString() !== toJsDate(fromDate).toDateString() && (
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          setToDate(fromDate);
+                          showToast("Reset to Single Day", "info");
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={{ padding: 2 }}
+                      >
+                        <Icon name="close-circle" size={16} color={colors.secondaryText} />
+                      </TouchableOpacity>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
 
-              {/* Duration Counter Pill */}
-              <View style={[styles.durationCounterBadge, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
-                <Icon name="clock-check-outline" size={16} color={colors.primaryAccent} />
-                <Text style={[styles.durationCounterText, { color: colors.primaryText }]}>
-                  Duration: <Text style={{ color: colors.primaryAccent, fontWeight: "800" }}>{calculateDays(fromDate, toDate)} Day(s)</Text> · Staff Clearance Required
-                </Text>
-              </View>
-
-              {/* Session Period */}
-              <View style={{ marginTop: 12 }}>
-                <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>Session Period</Text>
+              {/* Session Period Selector */}
+              <View style={{ marginTop: 14 }}>
+                <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>Session / Timing Period</Text>
                 <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
                   {sessionList.map((s) => {
-                    const isSel = sessionTiming === s;
+                    const isSel = sessionTiming === s.id;
                     return (
                       <TouchableOpacity
-                        key={s}
+                        key={s.id}
                         style={[
                           styles.sessionTimingPill,
                           isSel
                             ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
                             : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
                         ]}
-                        onPress={() => setSessionTiming(s)}
+                        onPress={() => {
+                          setSessionTiming(s.id);
+                          if (s.id !== "Full Day") {
+                            setToDate(fromDate);
+                          }
+                        }}
+                        activeOpacity={0.8}
                       >
+                        <Icon name={s.icon} size={16} color={isSel ? "#FFFFFF" : colors.primaryAccent} style={{ marginBottom: 3 }} />
                         <Text style={[styles.miniPillText, { color: isSel ? "#FFFFFF" : colors.primaryText }]}>
-                          {s}
+                          {s.label}
                         </Text>
+                        <View
+                          style={[
+                            styles.sessionBadgeWrap,
+                            { backgroundColor: isSel ? "rgba(255,255,255,0.25)" : colors.primaryAccent + "18" },
+                          ]}
+                        >
+                          <Text style={[styles.miniPillBadge, { color: isSel ? "#FFFFFF" : colors.primaryAccent }]}>
+                            {s.badge}
+                          </Text>
+                        </View>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
+              </View>
+
+              {/* Duration Counter Pill */}
+              <View style={[styles.durationCounterBadge, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, marginTop: 12 }]}>
+                <Icon name="clock-check-outline" size={16} color={colors.primaryAccent} />
+                <Text style={[styles.durationCounterText, { color: colors.primaryText }]}>
+                  Duration: <Text style={{ color: colors.primaryAccent, fontWeight: "800" }}>{calculateDaysWithSession(fromDate, toDate, sessionTiming).durationLabel}</Text> · Staff Clearance Required
+                </Text>
               </View>
 
               {/* Date Pickers */}
@@ -1056,9 +1174,17 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
                 <DateTimePicker
                   value={toJsDate(fromDate)}
                   mode="date"
-                  onChange={(_e, d) => {
+                  minimumDate={new Date()}
+                  onChange={(_e, selectedDate) => {
                     setShowFromPicker(false);
-                    if (d) setFromDate(d);
+                    if (selectedDate) {
+                      setFromDate(selectedDate);
+                      const startMid = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+                      const endMid = new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate());
+                      if (endMid.getTime() < startMid.getTime()) {
+                        setToDate(selectedDate);
+                      }
+                    }
                   }}
                 />
               )}
@@ -1066,9 +1192,19 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
                 <DateTimePicker
                   value={toJsDate(toDate)}
                   mode="date"
-                  onChange={(_e, d) => {
+                  minimumDate={toJsDate(fromDate)}
+                  onChange={(_e, selectedDate) => {
                     setShowToPicker(false);
-                    if (d) setToDate(d);
+                    if (selectedDate) {
+                      const startMid = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
+                      const endMid = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+                      if (endMid.getTime() < startMid.getTime()) {
+                        setToDate(fromDate);
+                        showToast("⚠️ To Date cannot be earlier than From Date", "warning");
+                      } else {
+                        setToDate(selectedDate);
+                      }
+                    }
                   }}
                 />
               )}
@@ -1130,7 +1266,7 @@ export default function CollegeLeaveFormModal({ visible, onClose }) {
               <View style={{ height: 30 }} />
             </ScrollView>
           )}
-        </Animated.View>
+        </View>
       </View>
     </Modal>
   );
@@ -1428,13 +1564,26 @@ const getStyles = (colors, _isDarkMode) =>
     sessionTimingPill: {
       flex: 1,
       alignItems: "center",
-      paddingVertical: 7,
+      justifyContent: "center",
+      paddingVertical: 8,
+      paddingHorizontal: 4,
       borderRadius: 10,
       borderWidth: 1,
     },
     miniPillText: {
-      fontSize: 11,
+      fontSize: 10.5,
       fontWeight: "700",
+      textAlign: "center",
+    },
+    sessionBadgeWrap: {
+      paddingHorizontal: 5,
+      paddingVertical: 1.5,
+      borderRadius: 4,
+      marginTop: 3,
+    },
+    miniPillBadge: {
+      fontSize: 9,
+      fontWeight: "800",
     },
 
     /* Inputs */

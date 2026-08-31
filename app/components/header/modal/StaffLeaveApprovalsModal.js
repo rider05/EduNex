@@ -34,6 +34,9 @@ export default function StaffLeaveApprovalsModal({ visible, onClose }) {
   const [activeTab, setActiveTab] = useState("Pending Review");
   const [searchQuery, setSearchQuery] = useState("");
   const [leaves, setLeaves] = useState([]);
+  const leavesRef = useRef(leaves);
+  leavesRef.current = leaves;
+
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processingId, setProcessingId] = useState(null);
@@ -43,12 +46,26 @@ export default function StaffLeaveApprovalsModal({ visible, onClose }) {
     role: "Class Tutor",
   });
 
+  const areStaffLeavesEqual = (a, b) => {
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      const idA = a[i].id || a[i]._id || a[i].leaveId;
+      const idB = b[i].id || b[i]._id || b[i].leaveId;
+      if (idA !== idB || a[i].status !== b[i].status) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   const fetchLeaves = useCallback(async () => {
     try {
       // 1. Instant Cache Load
-      const cached = await secureGet("edunex_staff_cached_leaves");
-      if (Array.isArray(cached) && cached.length > 0) {
-        setLeaves(cached);
+      if (leavesRef.current.length === 0) {
+        const cached = await secureGet("edunex_staff_cached_leaves");
+        if (Array.isArray(cached) && cached.length > 0) {
+          setLeaves(cached);
+        }
       }
 
       // 2. Fetch staff identity
@@ -65,9 +82,11 @@ export default function StaffLeaveApprovalsModal({ visible, onClose }) {
       const res = await api.get("/leaves", { sort: "-createdAt", limit: 100 }).catch(() => null);
       const items = res?.data || res || [];
       if (Array.isArray(items) && items.length > 0) {
-        setLeaves(items);
-        await secureSet("edunex_staff_cached_leaves", items);
-      } else if (!cached || cached.length === 0) {
+        if (!areStaffLeavesEqual(leavesRef.current, items)) {
+          setLeaves(items);
+          await secureSet("edunex_staff_cached_leaves", items);
+        }
+      } else if (leavesRef.current.length === 0) {
         // Sample default if empty
         const defaultSample = [
           {
@@ -548,7 +567,7 @@ export default function StaffLeaveApprovalsModal({ visible, onClose }) {
                         <View style={styles.detailItem}>
                           <Text style={[styles.detailLabel, { color: colors.secondaryText }]}>DURATION</Text>
                           <Text style={[styles.detailValueBold, { color: colors.primaryText }]}>
-                            {item.daysCount ? `${item.daysCount} Day(s)` : "1 Day"}
+                            {item.durationLabel || (item.daysCount === 0.5 ? "Half Day" : item.daysCount ? `${item.daysCount} Day(s)` : "1 Day")}
                           </Text>
                         </View>
                         <View style={styles.detailItem}>

@@ -5,7 +5,7 @@ import { api } from "./api";
 import { resolveIdentity } from "./identityService";
 import { secureGet, secureSet } from "./secureStorage";
 import { showToast } from "../utils/toastService";
-import { saveUserNotification } from "../utils/notificationUtils";
+import { saveUserNotification, handleNotificationAction } from "../utils/notificationUtils";
 
 // Configure expo-notifications presentation behavior in foreground
 Notifications.setNotificationHandler({
@@ -69,6 +69,18 @@ export async function triggerRealtimeNotification({
   data = {},
 }) {
   try {
+    // 0. Suppress self-notifications on sender's device
+    if (data?.senderId) {
+      try {
+        const id = await resolveIdentity();
+        const currentUserId = id?.student?.rollNo || id?.staffId || id?.id || id?.username;
+        if (currentUserId && String(data.senderId).toLowerCase() === String(currentUserId).toLowerCase()) {
+          // Outgoing message sent by this user -> Do not self-notify
+          return;
+        }
+      } catch (_e) {}
+    }
+
     // 1. Physical Haptic feedback
     try {
       if (type === "success") {
@@ -313,7 +325,7 @@ async function performRealtimeCheck() {
 /**
  * Start Real-time Notification Background Watcher
  */
-export function startRealtimeWatcher(intervalMs = 4000) {
+export function startRealtimeWatcher(intervalMs = 12000) {
   if (isWatcherActive) return;
   isWatcherActive = true;
 
@@ -327,6 +339,19 @@ export function startRealtimeWatcher(intervalMs = 4000) {
     performRealtimeCheck();
   }, intervalMs);
 
+  // Notification click listener (opens corresponding modal on click)
+  const notifResponseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+    try {
+      const content = response?.notification?.request?.content;
+      const data = content?.data || {};
+      const title = content?.title || "";
+      const message = content?.body || "";
+      handleNotificationAction({ title, message, ...data });
+    } catch (e) {
+      console.warn("Notification click navigation error:", e);
+    }
+  });
+
   // AppState listener: re-check immediately when user returns to foreground
   const appStateSub = AppState.addEventListener("change", (nextState) => {
     if (nextState === "active") {
@@ -337,6 +362,7 @@ export function startRealtimeWatcher(intervalMs = 4000) {
   return () => {
     stopRealtimeWatcher();
     appStateSub.remove();
+    notifResponseSub.remove();
   };
 }
 

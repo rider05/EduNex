@@ -7,10 +7,60 @@ import Toast from "react-native-toast-message";
 
 // Real-time notification event emitter
 const notifListeners = new Set();
+const navigationListeners = new Set();
 
 export function subscribeToNotifications(callback) {
   notifListeners.add(callback);
   return () => notifListeners.delete(callback);
+}
+
+export function onNavigateToNotification(callback) {
+  navigationListeners.add(callback);
+  return () => navigationListeners.delete(callback);
+}
+
+export function handleNotificationAction(notifData) {
+  if (!notifData) return;
+  const title = (notifData.title || notifData.subject || "").toLowerCase();
+  const text = (notifData.message || notifData.text || "").toLowerCase();
+  const meta = notifData.metadata || notifData.data || {};
+
+  let targetModal = "notify";
+
+  if (
+    title.includes("leave") ||
+    title.includes("gate pass") ||
+    title.includes("on-duty") ||
+    title.includes("od") ||
+    text.includes("leave request") ||
+    meta.leaveId
+  ) {
+    if (meta.targetRole === "staff" || notifData.targetRole === "staff") {
+      targetModal = "staff_leave";
+    } else {
+      targetModal = "leave";
+    }
+  } else if (title.includes("hostel") || title.includes("outing") || text.includes("hostel pass")) {
+    targetModal = "hostel";
+  } else if (title.includes("assignment") || text.includes("assignment")) {
+    targetModal = "assignment";
+  } else if (title.includes("test") || text.includes("class test") || title.includes("exam")) {
+    targetModal = "test";
+  } else if (title.includes("bus") || title.includes("transport") || text.includes("bus")) {
+    targetModal = "bus";
+  } else if (title.includes("mess") || title.includes("food") || title.includes("menu")) {
+    targetModal = "mess";
+  } else if (title.includes("chat") || title.includes("message") || title.includes("broadcast")) {
+    targetModal = "chat";
+  }
+
+  navigationListeners.forEach((cb) => {
+    try {
+      cb({ target: targetModal, notifData });
+    } catch (e) {
+      console.warn("Navigation listener error:", e);
+    }
+  });
 }
 
 function notifySubscribers(notif) {

@@ -18,11 +18,12 @@ import ClassTestModal from "./modal/ClassTestModal";
 import CommunityModal from "./modal/CommunityModal";
 import ClassGroupMsgModal from "./modal/ClassGroupMsgModal";
 import StaffLeaveApprovalsModal from "./modal/StaffLeaveApprovalsModal";
+import ChatModal from "./modal/ChatModal";
 import { showToast } from "../../utils/toastService";
 import { resolveIdentity } from "../../services/identityService";
 import { api } from "../../services/api";
 import { secureGet } from "../../services/secureStorage";
-import { subscribeToNotifications } from "../../utils/notificationUtils";
+import { subscribeToNotifications, onNavigateToNotification } from "../../utils/notificationUtils";
 
 export default function HeaderStaff() {
   const { colors, isDarkMode } = useTheme();
@@ -68,7 +69,24 @@ export default function HeaderStaff() {
       }
     });
 
-    return () => unsubscribe();
+    const unsubNav = onNavigateToNotification(({ target }) => {
+      if (target === "staff_leave" || target === "leave") {
+        setActiveModal("staff_leave");
+      } else if (
+        target === "assignment" ||
+        target === "test" ||
+        target === "community" ||
+        target === "groupMsg" ||
+        target === "chat"
+      ) {
+        setActiveModal(target);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      unsubNav();
+    };
   }, [fetchPendingLeaves]);
 
   const handleMenuPress = () => {
@@ -140,6 +158,14 @@ export default function HeaderStaff() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              onPress={() => handleIconPress("chat")}
+              style={styles.actionBtn}
+              activeOpacity={0.7}
+            >
+              <Icon name="chat-processing-outline" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
               onPress={() => handleIconPress("broadcast")}
               style={styles.actionBtn}
               activeOpacity={0.7}
@@ -183,6 +209,17 @@ export default function HeaderStaff() {
 
               <TouchableOpacity
                 style={styles.quickActionItem}
+                onPress={() => handleIconPress("chat")}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: "#4F46E5" }]}>
+                  <Icon name="chat-outline" size={20} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionLabel}>Student DMs</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
                 onPress={() => handleIconPress("classtest")}
                 activeOpacity={0.8}
               >
@@ -219,9 +256,10 @@ export default function HeaderStaff() {
       </LinearGradient>
 
       {/* Header Modals */}
-      <StaffLeaveApprovalsModal visible={activeModal === "leaveApprovals"} onClose={closeModal} />
-      <ClassTestModal visible={activeModal === "classtest"} onClose={closeModal} />
-      <ClassGroupMsgModal visible={activeModal === "broadcast"} onClose={closeModal} />
+      <StaffLeaveApprovalsModal visible={activeModal === "leaveApprovals" || activeModal === "staff_leave"} onClose={closeModal} />
+      <ChatModal visible={activeModal === "chat"} onClose={closeModal} />
+      <ClassTestModal visible={activeModal === "classtest" || activeModal === "test"} onClose={closeModal} />
+      <ClassGroupMsgModal visible={activeModal === "broadcast" || activeModal === "groupMsg"} onClose={closeModal} />
       <CommunityModal visible={activeModal === "community"} onClose={closeModal} />
       <AssignmentModal visible={activeModal === "assignment"} onClose={closeModal} />
     </View>

@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   FlatList,
   Alert,
+  RefreshControl,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -26,11 +27,15 @@ import { secureGet, secureSet, secureRemove } from "../../../services/secureStor
 // ---------------- Helpers ----------------
 const formatDate = (value) => {
   if (!value) return "";
-  if (typeof value?.toDate === "function") return value.toDate().toDateString();
-  if (value instanceof Date) return value.toDateString();
   try {
-    const d = new Date(value);
-    if (!isNaN(d.getTime())) return d.toDateString();
+    const d = toJsDate(value);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    }
   } catch {}
   return "";
 };
@@ -38,6 +43,7 @@ const formatDate = (value) => {
 const toJsDate = (v) => {
   if (!v) return new Date();
   if (typeof v?.toDate === "function") return v.toDate();
+  if (v instanceof Date) return v;
   try {
     const d = new Date(v);
     if (!isNaN(d.getTime())) return d;
@@ -58,8 +64,16 @@ const isDateExpired = (value) => {
 const calculateDurationText = (from, to, type, outTime, inTime) => {
   const start = toJsDate(from);
   const end = toJsDate(to);
-  const diffTime = end.getTime() - start.getTime();
-  const diffDays = Math.ceil(Math.abs(diffTime) / (1000 * 60 * 60 * 24)) + 1;
+
+  const startMidnight = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const endMidnight = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  if (endMidnight.getTime() < startMidnight.getTime()) {
+    return `Single Day Outing · ${outTime || "06:00 AM"} to ${inTime || "08:30 PM"}`;
+  }
+
+  const diffTime = endMidnight.getTime() - startMidnight.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
   if (type === "Local Day Outing" || diffDays <= 1) {
     return `Single Day Outing · ${outTime || "06:00 AM"} to ${inTime || "08:30 PM"}`;
@@ -292,6 +306,23 @@ export default function HostelFormModal({ visible, onClose }) {
     return true;
   };
 
+  const hasLoadedHostelOnce = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Manual Pull to Refresh
+  const onManualRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        loadActiveLeave(),
+        loadHistory(false),
+      ]);
+      showToast("🔄 Hostel passes refreshed", "info");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   // Load History
   const loadHistory = async (showSpinner = false) => {
     try {
@@ -299,6 +330,7 @@ export default function HostelFormModal({ visible, onClose }) {
         const cached = await secureGet("edunex_leave_history_hostel");
         if (Array.isArray(cached) && cached.length > 0) {
           setHistoryRecords(cached);
+          hasLoadedHostelOnce.current = true;
         } else if (showSpinner) {
           setHistoryLoading(true);
         }
@@ -315,6 +347,7 @@ export default function HostelFormModal({ visible, onClose }) {
     } catch (e) {
       console.log("loadHistory err:", e?.message || e);
     } finally {
+      hasLoadedHostelOnce.current = true;
       setHistoryLoading(false);
     }
   };
@@ -825,7 +858,7 @@ export default function HostelFormModal({ visible, onClose }) {
 
           {/* History List */}
           <View style={styles.historyListContainer}>
-            {historyLoading ? (
+            {historyLoading || (!hasLoadedHostelOnce.current && filteredHistory.length === 0) ? (
               <View style={styles.historyLoadingWrap}>
                 <ActivityIndicator size="large" color={colors.primaryAccent} />
               </View>
@@ -842,6 +875,17 @@ export default function HostelFormModal({ visible, onClose }) {
                 keyExtractor={(item) => item.id || item._id || item.leaveId}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 60 }}
+                initialNumToRender={8}
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onManualRefresh}
+                    colors={[colors.primaryAccent]}
+                    tintColor={colors.primaryAccent}
+                  />
+                }
                 renderItem={({ item }) => {
                   const isApp = item.status === "approved";
                   const isPend = item.status === "pending";
@@ -1160,7 +1204,21 @@ export default function HostelFormModal({ visible, onClose }) {
 
               <View style={styles.datePickerRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.inputLabel, { color: colors.secondaryText }]}>In Date</Text>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <Text style={[styles.inputLabel, { color: colors.secondaryText, marginBottom: 0 }]}>In Date</Text>
+                    {toJsDate(toDate).toDateString() !== toJsDate(fromDate).toDateString() && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setToDate(fromDate);
+                          showToast("Deselected end date (Single Day)", "info");
+                        }}
+                        style={{ paddingHorizontal: 2 }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: "800", color: "#EF4444" }}>✕ Deselect</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   <TouchableOpacity
                     style={[
                       styles.dateSelectBtn,
@@ -1170,9 +1228,22 @@ export default function HostelFormModal({ visible, onClose }) {
                     activeOpacity={0.8}
                   >
                     <Icon name="calendar-check" size={16} color="#10B981" />
-                    <Text style={[styles.dateSelectText, { color: colors.primaryText }]}>
+                    <Text style={[styles.dateSelectText, { color: colors.primaryText, flex: 1 }]}>
                       {formatDate(toDate)}
                     </Text>
+                    {toJsDate(toDate).toDateString() !== toJsDate(fromDate).toDateString() && (
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          setToDate(fromDate);
+                          showToast("Reset to Single Day Outing", "info");
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={{ padding: 2 }}
+                      >
+                        <Icon name="close-circle" size={16} color={colors.secondaryText} />
+                      </TouchableOpacity>
+                    )}
                   </TouchableOpacity>
                 </View>
 
@@ -1226,9 +1297,17 @@ export default function HostelFormModal({ visible, onClose }) {
               <DateTimePicker
                 value={toJsDate(fromDate)}
                 mode="date"
-                onChange={(e, d) => {
+                minimumDate={new Date()}
+                onChange={(_e, selectedDate) => {
                   setShowFromPicker(false);
-                  if (d) setFromDate(d);
+                  if (selectedDate) {
+                    setFromDate(selectedDate);
+                    const startMid = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+                    const endMid = new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate());
+                    if (endMid.getTime() < startMid.getTime()) {
+                      setToDate(selectedDate);
+                    }
+                  }
                 }}
               />
             )}
@@ -1236,9 +1315,19 @@ export default function HostelFormModal({ visible, onClose }) {
               <DateTimePicker
                 value={toJsDate(toDate)}
                 mode="date"
-                onChange={(e, d) => {
+                minimumDate={toJsDate(fromDate)}
+                onChange={(_e, selectedDate) => {
                   setShowToPicker(false);
-                  if (d) setToDate(d);
+                  if (selectedDate) {
+                    const startMid = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
+                    const endMid = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+                    if (endMid.getTime() < startMid.getTime()) {
+                      setToDate(fromDate);
+                      showToast("⚠️ In Date cannot be earlier than Out Date", "warning");
+                    } else {
+                      setToDate(selectedDate);
+                    }
+                  }
                 }}
               />
             )}

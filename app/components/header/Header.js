@@ -20,13 +20,14 @@ import BusTrackerModal from "./modal/BusTrackerModal";
 import MessMenuModal from "./modal/MessMenuModal";
 import { showToast } from "../../utils/toastService";
 import { resolveIdentity } from "../../services/identityService";
+import { onNavigateToNotification } from "../../utils/notificationUtils";
 
 export default function Header() {
   const { colors, isDarkMode } = useTheme();
   const styles = getStyles(colors, isDarkMode);
 
   const [isExpanded, setIsExpanded] = useState(false);
-  const [activeModal, setActiveModal] = useState(null); // leave | hostel | notify | chat
+  const [activeModal, setActiveModal] = useState(null); // leave | hostel | notify | chat | bus | mess
   const [userLabel, setUserLabel] = useState("");
 
   const bottomExpand = useRef(new Animated.Value(0)).current;
@@ -43,6 +44,21 @@ export default function Header() {
         }
       } catch (_e) { /* silent */ }
     })();
+
+    const unsub = onNavigateToNotification(({ target }) => {
+      if (
+        target === "leave" ||
+        target === "hostel" ||
+        target === "chat" ||
+        target === "bus" ||
+        target === "mess" ||
+        target === "notify"
+      ) {
+        setActiveModal(target);
+      }
+    });
+
+    return () => unsub();
   }, []);
 
   const handleAppIconPress = () => showToast("👋 Welcome to EduNex Student Hub!", "info");

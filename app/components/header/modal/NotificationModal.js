@@ -8,13 +8,18 @@ import {
   ScrollView,
   PanResponder,
   Dimensions,
+  TouchableOpacity,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
 import { resolveIdentity } from "../../../services/identityService";
 import { secureGet } from "../../../services/secureStorage";
-import { getUserNotifications, subscribeToNotifications } from "../../../utils/notificationUtils";
+import {
+  getUserNotifications,
+  subscribeToNotifications,
+  handleNotificationAction,
+} from "../../../utils/notificationUtils";
 
 const { height } = Dimensions.get("window");
 const CLOSE_THRESHOLD = 100;
@@ -224,7 +229,17 @@ export default function NotificationModal({ visible, onClose }) {
                 ))
               : notifications.length > 0
                 ? notifications.map((note) => (
-                    <View key={note.id} style={styles.cardItem}>
+                    <TouchableOpacity
+                      key={note.id}
+                      style={styles.cardItem}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        onClose?.();
+                        setTimeout(() => {
+                          handleNotificationAction(note);
+                        }, 120);
+                      }}
+                    >
                       <View style={[styles.iconContainer, { backgroundColor: note.color + "22" }]}>
                         <Icon name={note.icon} size={24} color={note.color} />
                       </View>
@@ -232,11 +247,12 @@ export default function NotificationModal({ visible, onClose }) {
                         <Text style={[styles.cardTitle, { color: isDarkMode ? "#FFF" : "#000" }]}>
                           {note.title}
                         </Text>
-                        <Text style={[styles.cardText, { color: isDarkMode ? "#D3D3D3" : "#555" }]}>
+                        <Text style={[styles.cardText, { color: isDarkMode ? "#D3D3D3" : "#555" }]} numberOfLines={2}>
                           {note.text}
                         </Text>
                       </View>
-                    </View>
+                      <Icon name="chevron-right" size={18} color={isDarkMode ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)"} style={{ alignSelf: "center" }} />
+                    </TouchableOpacity>
                   ))
                 : (
                   <View style={styles.emptyState}>

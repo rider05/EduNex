@@ -422,7 +422,7 @@ export async function shareLeaveGatePassPdf({ leave = {}, student = {} }) {
   const reason = leave.reason || "Official Academic Seminar & Project Work";
   const fromDate = leave.startDate || leave.fromDate || "28 Aug 2026";
   const toDate = leave.endDate || leave.toDate || "29 Aug 2026";
-  const days = leave.days || leave.duration || "2 Days";
+  const days = leave.durationLabel || leave.days || leave.duration || (leave.daysCount === 0.5 ? "Half Day" : "1 Day");
   const status = leave.status || "Approved";
   const approvedBy = leave.approvedByName || leave.approvedBy || "Ms. Z. Ananth Angel (Class Tutor)";
 
