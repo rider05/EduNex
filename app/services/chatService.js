@@ -13,29 +13,57 @@ export function createMessageObject({
   text = "",
   senderRole = "student", // 'student' | 'staff' | 'parent' | 'admin'
   senderId = "",
-  senderName = "User",
+  senderName = "",
   recipientId = "",
+  recipientName = "",
   recipientRole = "staff",
   channelType = "student_staff", // 'student_staff' | 'staff_staff' | 'staff_parent' | 'admin_staff' | 'admin_student' | 'admin_parent'
-  attachment = null, // { type: 'image' | 'video' | 'document' | 'link', uri, name, size, mimeType }
+  attachment = null, // { type: 'image' | 'video' | 'document' | 'voice' | 'link', uri, name, size, mimeType }
   replyTo = null, // { id, text, senderName }
 }) {
   const now = new Date();
   const timestamp = now.getTime();
   const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+  const resolvedSenderName =
+    String(senderName || "").trim() ||
+    (senderRole === "staff"
+      ? "Faculty Member"
+      : senderRole === "parent"
+      ? "Parent"
+      : senderRole === "admin"
+      ? "Admin Office"
+      : "Student");
+
+  const resolvedRecipientName =
+    String(recipientName || "").trim() ||
+    (recipientRole === "staff"
+      ? "Faculty Member"
+      : recipientRole === "parent"
+      ? "Parent"
+      : recipientRole === "admin"
+      ? "Admin Office"
+      : "Student");
+
   return {
     id: `msg_${timestamp}_${Math.random().toString(36).substring(2, 7)}`,
     text: text.trim(),
     sender: senderRole,
-    senderId,
-    senderName,
-    recipientId,
+    senderRole,
+    senderId: String(senderId || "").trim() || "user_current",
+    senderName: resolvedSenderName,
+    author: resolvedSenderName,
+    from: resolvedSenderName,
+    recipient: recipientRole,
     recipientRole,
+    recipientId: String(recipientId || "").trim() || "contact_recipient",
+    recipientName: resolvedRecipientName,
+    to: resolvedRecipientName,
     channelType,
     timestamp,
     time,
     date: now.toISOString(),
+    createdAt: now.toISOString(),
     status: "delivered", // 'sent' | 'delivered' | 'read'
     attachment: attachment || null,
     replyTo: replyTo || null,
@@ -295,9 +323,23 @@ export async function sendDirectMessage({
     // Sync to backend database
     api.post("/messages", {
       ...initialMsg,
+      id: initialMsg.id,
+      text: initialMsg.text,
+      senderName: initialMsg.senderName,
+      senderId: initialMsg.senderId,
+      senderRole: initialMsg.senderRole || initialMsg.sender,
+      sender: initialMsg.senderRole || initialMsg.sender,
+      author: initialMsg.senderName,
+      recipientName: selectedContact?.name || initialMsg.recipientName,
+      recipientId: selectedContact?.id || initialMsg.recipientId,
+      recipientRole: initialMsg.recipientRole || selectedContact?.role,
       channelType,
       threadKey,
-      contactName: selectedContact?.name || "Recipient",
+      contactName: selectedContact?.name || initialMsg.recipientName || "Recipient",
+      attachment: initialMsg.attachment,
+      replyTo: initialMsg.replyTo,
+      timestamp: initialMsg.timestamp,
+      createdAt: initialMsg.createdAt || initialMsg.date,
     }).catch(() => {});
 
     // Save push notification strictly in recipient's store
@@ -321,6 +363,8 @@ export async function sendDirectMessage({
         senderId: message.senderId,
         senderName: message.senderName,
       },
+    }).catch(() => {});
+
     // Trigger push notification popup for the recipient
     await triggerRealtimeNotification({
       title: recipientTitle,

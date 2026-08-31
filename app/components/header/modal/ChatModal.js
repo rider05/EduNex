@@ -35,6 +35,8 @@ import {
   sendDirectMessage,
   editDirectMessage,
   deleteDirectMessage,
+  markThreadAsRead,
+  notifyTypingStatus,
   subscribeToChatMessages,
   subscribeToTypingStatus,
   DEFAULT_FACULTY_ROSTER,
@@ -311,7 +313,21 @@ export default function ChatModal({ visible, onClose }) {
     setReplyingTo(null);
     setPendingAttachment(null);
     syncStaffMessages(contact.id);
-  }, [syncStaffMessages]);
+
+    const myId = currentUser?.student?.rollNo || currentUser?.staffId || currentUser?.id || "user_current";
+    const channel = selectedChannelTab?.channelType || "student_staff";
+    markThreadAsRead({ threadKey: contact.id, channelType: channel, currentUserId: myId });
+  }, [syncStaffMessages, currentUser, selectedChannelTab]);
+
+  // Auto-sync active conversation every 3.5 seconds
+  useEffect(() => {
+    if (visible && currentView === "chat" && selectedStaff?.id) {
+      const interval = setInterval(() => {
+        syncStaffMessages(selectedStaff.id);
+      }, 3500);
+      return () => clearInterval(interval);
+    }
+  }, [visible, currentView, selectedStaff, syncStaffMessages]);
 
   // Listen to navigation notification clicks (e.g. clicking a chat push alert)
   useEffect(() => {
@@ -443,43 +459,31 @@ export default function ChatModal({ visible, onClose }) {
     }
 
     // B. Send New Message
-    const role = currentUser?.role || "student";
-    const senderName =
-      currentUser?.student?.name ||
-      currentUser?.staff?.name ||
-      currentUser?.profile?.name ||
-      currentUser?.name ||
-      (role === "staff" ? "Faculty" : role === "parent" ? "Parent" : role === "admin" ? "Admin Office" : "Student");
-
-    const senderId =
-      currentUser?.student?.rollNo ||
-      currentUser?.staffId ||
-      currentUser?.id ||
-      currentUser?.username ||
-      "user_current";
+    const { senderName, senderId, senderRole } = resolveSenderDetails();
 
     // Determine recipient role based on channel
     let recipientRole = "staff";
     if (channelType === "student_staff") {
-      recipientRole = role === "student" ? "staff" : "student";
+      recipientRole = senderRole === "student" ? "staff" : "student";
     } else if (channelType === "staff_staff") {
       recipientRole = "staff";
     } else if (channelType === "staff_parent") {
-      recipientRole = role === "staff" ? "parent" : "staff";
+      recipientRole = senderRole === "staff" ? "parent" : "staff";
     } else if (channelType === "admin_staff") {
-      recipientRole = role === "admin" ? "staff" : "admin";
+      recipientRole = senderRole === "admin" ? "staff" : "admin";
     } else if (channelType === "admin_student") {
-      recipientRole = role === "admin" ? "student" : "admin";
+      recipientRole = senderRole === "admin" ? "student" : "admin";
     } else if (channelType === "admin_parent") {
-      recipientRole = role === "admin" ? "parent" : "admin";
+      recipientRole = senderRole === "admin" ? "parent" : "admin";
     }
 
     const msgObj = createMessageObject({
       text: textTrimmed,
-      senderRole: role,
+      senderRole,
       senderId,
       senderName,
       recipientId: selectedStaff.id,
+      recipientName: selectedStaff.name,
       recipientRole,
       channelType,
       attachment: pendingAttachment,
@@ -588,15 +592,35 @@ export default function ChatModal({ visible, onClose }) {
     showToast(forEveryone ? "🗑️ Deleted for everyone" : "🗑️ Deleted for me", "info");
   };
 
-  // Listen to typing status events
+  // Listen to typing status events (from other human)
   useEffect(() => {
     const unsub = subscribeToTypingStatus((data) => {
-      if (selectedStaff && data.threadKey === selectedStaff.id) {
+      const myId = currentUser?.student?.rollNo || currentUser?.staffId || currentUser?.id || "user_current";
+      if (
+        selectedStaff &&
+        data.senderId !== myId &&
+        (data.threadKey === selectedStaff.id || data.senderId === selectedStaff.id)
+      ) {
         setTypingState(data);
       }
     });
     return () => unsub();
-  }, [selectedStaff]);
+  }, [selectedStaff, currentUser]);
+
+  // Handle typing input with live broadcast
+  const handleTypingChange = (text) => {
+    setNewMsg(text);
+    if (selectedStaff) {
+      const myId = currentUser?.student?.rollNo || currentUser?.staffId || currentUser?.id || "user_current";
+      const myName = currentUser?.student?.name || currentUser?.staff?.name || currentUser?.name || "User";
+      notifyTypingStatus({
+        threadKey: selectedStaff.id,
+        senderId: myId,
+        isTyping: text.trim().length > 0,
+        name: myName,
+      });
+    }
+  };
 
   // Pulsing animation for typing indicator
   useEffect(() => {
@@ -1587,7 +1611,7 @@ export default function ChatModal({ visible, onClose }) {
                       placeholder={editingMessage ? "Edit message..." : "Message"}
                       placeholderTextColor={isDarkMode ? "#8696A0" : "#54656F"}
                       value={newMsg}
-                      onChangeText={setNewMsg}
+                      onChangeText={handleTypingChange}
                       multiline
                       onFocus={() => {
                         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
