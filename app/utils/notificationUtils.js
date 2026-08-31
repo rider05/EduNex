@@ -48,9 +48,17 @@ export function handleNotificationAction(notifData) {
     targetModal = "test";
   } else if (title.includes("bus") || title.includes("transport") || text.includes("bus")) {
     targetModal = "bus";
-  } else if (title.includes("mess") || title.includes("food") || title.includes("menu")) {
-    targetModal = "mess";
-  } else if (title.includes("chat") || title.includes("message") || title.includes("broadcast")) {
+  } else if (
+    meta.type === "chat" ||
+    notifData.type === "chat" ||
+    title.includes("chat") ||
+    title.includes("message") ||
+    title.includes("tutor") ||
+    title.includes("faculty") ||
+    title.includes("doubt") ||
+    title.includes("dm") ||
+    title.includes("broadcast")
+  ) {
     targetModal = "chat";
   }
 

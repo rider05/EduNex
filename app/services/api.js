@@ -177,6 +177,7 @@ export const api = {
   put: (path, body, headers) => request(path, { method: "PUT", body, headers }),
   patch: (path, body, headers) => request(path, { method: "PATCH", body, headers }),
   del: (path, params, headers) => request(path, { method: "DELETE", params, headers }),
+  delete: (path, body, headers) => request(path, { method: "DELETE", body, headers }),
 };
 
 export default api;

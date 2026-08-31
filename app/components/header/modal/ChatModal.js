@@ -30,10 +30,17 @@ import {
   isMessageEditable,
   getRemainingEditMinutes,
   extractUrls,
+  getChannelTabsForRole,
   sendDirectMessage,
   editDirectMessage,
   deleteDirectMessage,
+  subscribeToChatMessages,
+  DEFAULT_FACULTY_ROSTER,
+  DEFAULT_STUDENT_ROSTER,
+  DEFAULT_PARENT_ROSTER,
+  DEFAULT_ADMIN_ROSTER,
 } from "../../../services/chatService";
+import { onNavigateToNotification } from "../../../utils/notificationUtils";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -46,69 +53,6 @@ const QUICK_PROMPTS = [
   "Thank you for the guidance!",
 ];
 
-const DEFAULT_STAFF = [
-  {
-    id: "staff_1",
-    name: "Dr. K. Vigneshwaran",
-    role: "Professor & HOD",
-    dept: "AI & Data Science",
-    subject: "Deep Neural Networks",
-    cabin: "Academic Block 3, Room 402",
-    status: "online",
-    statusText: "online",
-    initials: "KV",
-    avatarColor: "#059669",
-    phone: "+91 98765 43210",
-    email: "vignesh.ai@edunex.edu",
-    e2eeKey: "0x89F4A...B21C",
-  },
-  {
-    id: "staff_2",
-    name: "Dr. M. Sangeetha",
-    role: "Associate Professor",
-    dept: "Computer Science",
-    subject: "Distributed Cloud Architecture",
-    cabin: "CS Research Wing, Cabin 12",
-    status: "in_lecture",
-    statusText: "In Lecture (CS Hall 2)",
-    initials: "MS",
-    avatarColor: "#0D9488",
-    phone: "+91 98765 43211",
-    email: "sangeetha.cs@edunex.edu",
-    e2eeKey: "0x33A1F...992E",
-  },
-  {
-    id: "staff_3",
-    name: "Prof. R. Ananth",
-    role: "Assistant Professor",
-    dept: "AI & Data Science",
-    subject: "Machine Learning Foundations",
-    cabin: "AI Dept Hub, Desk 07",
-    status: "online",
-    statusText: "online",
-    initials: "RA",
-    avatarColor: "#D97706",
-    phone: "+91 98765 43212",
-    email: "ananth.ai@edunex.edu",
-    e2eeKey: "0x66B72...FF10",
-  },
-  {
-    id: "staff_4",
-    name: "Dr. P. Rajesh",
-    role: "Dean of Student Affairs",
-    dept: "Administration",
-    subject: "Academic Grievances & Policy",
-    cabin: "Admin Block, Ground Floor",
-    status: "offline",
-    statusText: "last seen today at 05:00 PM",
-    initials: "PR",
-    avatarColor: "#DC2626",
-    phone: "+91 98765 43213",
-    email: "dean.student@edunex.edu",
-    e2eeKey: "0x44FE1...77A8",
-  },
-];
-
 export default function ChatModal({ visible, onClose }) {
   const { colors, isDarkMode } = useTheme();
   const slideAnim = useRef(new Animated.Value(100)).current;
@@ -117,18 +61,21 @@ export default function ChatModal({ visible, onClose }) {
   // User identity
   const [currentUser, setCurrentUser] = useState(null);
 
+  // Channel Tabs based on logged-in role
+  const [selectedChannelTab, setSelectedChannelTab] = useState(null);
+
   // Screen View: 'directory' | 'chat'
   const [currentView, setCurrentView] = useState("directory");
   const [selectedStaff, setSelectedStaff] = useState(null);
 
-  // Search & Filter
+  // Search & Department Filter
   const [searchQuery, setSearchQuery] = useState("");
   const [deptFilter, setDeptFilter] = useState("All");
 
   // Contacts dataset
-  const [contacts, setContacts] = useState(DEFAULT_STAFF);
+  const [contacts, setContacts] = useState(DEFAULT_FACULTY_ROSTER);
 
-  // Chat message state keyed by staff id
+  // Chat message state keyed by contact id
   const [threads, setThreads] = useState({});
   const [newMsg, setNewMsg] = useState("");
   const [showStaffInfo, setShowStaffInfo] = useState(false);
@@ -151,51 +98,111 @@ export default function ChatModal({ visible, onClose }) {
   // Privacy E2EE Modal State
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
-  // 1. Initialize Threads from Storage / Default Roster
+  // Dynamic available channel tabs for current role
+  const channelTabs = useMemo(() => {
+    return getChannelTabsForRole(currentUser?.role || "student");
+  }, [currentUser]);
+
+  // Set default active tab
   useEffect(() => {
-    async function loadAllThreads() {
+    if (channelTabs.length > 0 && !selectedChannelTab) {
+      setSelectedChannelTab(channelTabs[0]);
+    }
+  }, [channelTabs, selectedChannelTab]);
+
+  // 1. Initialize User Identity
+  useEffect(() => {
+    async function loadIdentity() {
       try {
         const id = await resolveIdentity();
         setCurrentUser(id);
-
-        const staffRes = await api.get("/staff").catch(() => null);
-        if (Array.isArray(staffRes?.data) && staffRes.data.length > 0) {
-          const mapped = staffRes.data.map((s, idx) => ({
-            id: s._id || s.id || `staff_api_${idx}`,
-            name: s.name || "Faculty Member",
-            role: s.designation || s.role || "Professor",
-            dept: s.department || s.dept || "General",
-            subject: s.subject || s.specialization || "Engineering",
-            cabin: s.cabin || s.room || "Academic Wing",
-            status: idx % 2 === 0 ? "online" : "in_lecture",
-            statusText: idx % 2 === 0 ? "online" : "In Lecture",
-            initials: (s.name || "F").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase(),
-            avatarColor: idx % 3 === 0 ? "#059669" : idx % 3 === 1 ? "#0D9488" : "#D97706",
-            phone: s.phone || "+91 98765 43210",
-            email: s.email || "faculty@edunex.edu",
-            e2eeKey: `0x${Math.random().toString(16).substring(2, 8).toUpperCase()}...B2`,
-          }));
-          setContacts(mapped);
-        }
       } catch (e) {
-        console.log("Staff fetch err:", e?.message || e);
+        console.log("Identity load err:", e);
       }
-
-      const loaded = {};
-      for (const staff of DEFAULT_STAFF) {
-        try {
-          const raw = await AsyncStorage.getItem(`chat_thread_${staff.id}`);
-          if (raw) {
-            loaded[staff.id] = JSON.parse(raw);
-          }
-        } catch {}
-      }
-      setThreads(loaded);
     }
     if (visible) {
-      loadAllThreads();
+      loadIdentity();
     }
   }, [visible]);
+
+  // 2. Load Contacts based on Selected Channel Tab
+  useEffect(() => {
+    async function loadContactsForChannel() {
+      if (!selectedChannelTab) return;
+      const ch = selectedChannelTab.channelType;
+
+      if (ch === "student_staff") {
+        if (currentUser?.role === "staff") {
+          // Staff viewing students
+          try {
+            const res = await api.get("/students").catch(() => null);
+            if (Array.isArray(res?.data) && res.data.length > 0) {
+              const mapped = res.data.map((s, idx) => ({
+                id: s._id || s.id || `stud_${idx}`,
+                name: `${s.name || "Student"} (${s.rollNo || s.roll || "22AD001"})`,
+                role: `Student · ${s.department || "Engineering"}`,
+                badge: idx === 0 ? "ASSIGNED WARD" : "STUDENT",
+                dept: s.department || "AI & DS",
+                subject: `Roll No: ${s.rollNo || "22AD001"} · Sec ${s.section || "A"}`,
+                cabin: s.hostel ? `Hostel ${s.hostel}` : "Day Scholar",
+                status: idx % 2 === 0 ? "online" : "offline",
+                statusText: idx % 2 === 0 ? "online" : "offline",
+                initials: (s.name || "S").slice(0, 2).toUpperCase(),
+                avatarColor: idx % 2 === 0 ? "#4F46E5" : "#0D9488",
+                phone: s.phone || "+91 91234 56780",
+                email: s.email || "student@edunex.edu",
+                e2eeKey: `0x${Math.random().toString(16).substring(2, 8).toUpperCase()}...A1`,
+              }));
+              setContacts(mapped);
+              return;
+            }
+          } catch {}
+          setContacts(DEFAULT_STUDENT_ROSTER);
+        } else {
+          // Student viewing staff / tutors
+          try {
+            const staffRes = await api.get("/staff").catch(() => null);
+            if (Array.isArray(staffRes?.data) && staffRes.data.length > 0) {
+              const mapped = staffRes.data.map((s, idx) => ({
+                id: s._id || s.id || `staff_${idx}`,
+                name: s.name || "Faculty Member",
+                role: s.designation || s.role || "Professor",
+                badge: idx === 0 ? "ASSIGNED TUTOR" : "FACULTY",
+                dept: s.department || s.dept || "General",
+                subject: s.subject || s.specialization || "Engineering",
+                cabin: s.cabin || s.room || "Academic Block",
+                status: idx % 2 === 0 ? "online" : "in_lecture",
+                statusText: idx % 2 === 0 ? "online" : "In Lecture",
+                initials: (s.name || "F").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase(),
+                avatarColor: idx % 3 === 0 ? "#059669" : idx % 3 === 1 ? "#0D9488" : "#D97706",
+                phone: s.phone || "+91 98765 43210",
+                email: s.email || "faculty@edunex.edu",
+                e2eeKey: `0x${Math.random().toString(16).substring(2, 8).toUpperCase()}...B2`,
+              }));
+              setContacts(mapped);
+              return;
+            }
+          } catch {}
+          setContacts(DEFAULT_FACULTY_ROSTER);
+        }
+      } else if (ch === "staff_staff") {
+        setContacts(DEFAULT_FACULTY_ROSTER);
+      } else if (ch === "staff_parent" || ch === "admin_parent") {
+        setContacts(DEFAULT_PARENT_ROSTER);
+      } else if (ch === "admin_staff" || ch === "admin_student") {
+        if (currentUser?.role === "admin") {
+          setContacts(ch === "admin_staff" ? DEFAULT_FACULTY_ROSTER : DEFAULT_STUDENT_ROSTER);
+        } else {
+          setContacts(DEFAULT_ADMIN_ROSTER);
+        }
+      } else {
+        setContacts(DEFAULT_FACULTY_ROSTER);
+      }
+    }
+    if (visible && selectedChannelTab) {
+      loadContactsForChannel();
+    }
+  }, [visible, selectedChannelTab, currentUser]);
 
   // Modal Slide Animation
   useEffect(() => {
@@ -214,36 +221,86 @@ export default function ChatModal({ visible, onClose }) {
     return () => showSub.remove();
   }, []);
 
-  // Fetch messages from REST API for selected staff
-  const syncStaffMessages = useCallback(async (staffId) => {
+  // Listen to incoming live messages & auto-scroll
+  useEffect(() => {
+    const unsub = subscribeToChatMessages(({ threadKey, updatedList }) => {
+      setThreads((prev) => ({
+        ...prev,
+        [threadKey]: updatedList,
+      }));
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    });
+    return () => unsub();
+  }, []);
+
+  // Fetch messages from Storage / API for selected contact in channel
+  const syncStaffMessages = useCallback(async (contactId) => {
     try {
-      const storageKey = `chat_thread_${staffId}`;
-      const raw = await AsyncStorage.getItem(storageKey);
-      if (raw) {
-        setThreads((prev) => ({ ...prev, [staffId]: JSON.parse(raw) }));
+      const channel = selectedChannelTab?.channelType || "student_staff";
+      const storageKey = `chat_thread_${channel}_${contactId}`;
+      let raw = await AsyncStorage.getItem(storageKey);
+      if (!raw) {
+        raw = await AsyncStorage.getItem(`chat_thread_${contactId}`);
       }
-      const res = await api.get("/messages", { staffId, limit: 40, sort: "createdAt" }).catch(() => null);
+      if (raw) {
+        setThreads((prev) => ({ ...prev, [contactId]: JSON.parse(raw) }));
+      } else if (contactId === "staff_1") {
+        // Preload default greeting for assigned tutor
+        const starterMsgs = [
+          createMessageObject({
+            text: "Welcome to the AI & Data Science tutoring channel. Reach out for lab doubts, research guidance, and leave permissions.",
+            senderRole: "staff",
+            senderId: "staff_1",
+            senderName: "Dr. K. Vigneshwaran",
+            recipientId: currentUser?.student?.rollNo || "user_current",
+            recipientRole: "student",
+            channelType: "student_staff",
+          }),
+        ];
+        setThreads((prev) => ({ ...prev, [contactId]: starterMsgs }));
+        AsyncStorage.setItem(storageKey, JSON.stringify(starterMsgs)).catch(() => {});
+      }
+
+      const res = await api.get("/messages", { contactId, channelType: channel, limit: 40, sort: "createdAt" }).catch(() => null);
       if (Array.isArray(res?.data) && res.data.length > 0) {
         setThreads((prev) => ({
           ...prev,
-          [staffId]: res.data,
+          [contactId]: res.data,
         }));
         AsyncStorage.setItem(storageKey, JSON.stringify(res.data)).catch(() => {});
       }
     } catch (e) {
       console.log("Chat fetch err:", e?.message || e);
     }
-  }, []);
+  }, [selectedChannelTab, currentUser]);
 
-  // Open Individual Staff Chat
-  const handleSelectStaff = (staff) => {
-    setSelectedStaff(staff);
+  // Open Individual Chat
+  const handleSelectStaff = useCallback((contact) => {
+    setSelectedStaff(contact);
     setCurrentView("chat");
     setEditingMessage(null);
     setReplyingTo(null);
     setPendingAttachment(null);
-    syncStaffMessages(staff.id);
-  };
+    syncStaffMessages(contact.id);
+  }, [syncStaffMessages]);
+
+  // Listen to navigation notification clicks (e.g. clicking a chat push alert)
+  useEffect(() => {
+    const unsub = onNavigateToNotification(({ target, notifData }) => {
+      if (target === "chat") {
+        const contactId = notifData?.threadKey || notifData?.contactId || notifData?.metadata?.threadKey;
+        if (contactId && contacts && contacts.length > 0) {
+          const found = contacts.find((c) => c.id === contactId);
+          if (found) {
+            handleSelectStaff(found);
+          }
+        }
+      }
+    });
+    return () => unsub();
+  }, [contacts, handleSelectStaff]);
 
   // Back to Directory
   const handleBackToDirectory = () => {
@@ -335,11 +392,14 @@ export default function ChatModal({ visible, onClose }) {
     if (!textTrimmed && !pendingAttachment) return;
     if (!selectedStaff) return;
 
+    const channelType = selectedChannelTab?.channelType || "student_staff";
+
     // A. If in Edit Mode
     if (editingMessage) {
       try {
         const updatedList = await editDirectMessage({
           threadKey: selectedStaff.id,
+          channelType,
           messageId: editingMessage.id,
           newText: textTrimmed,
         });
@@ -356,13 +416,13 @@ export default function ChatModal({ visible, onClose }) {
     }
 
     // B. Send New Message
-    const role = currentUser?.role === "staff" ? "staff" : "student";
+    const role = currentUser?.role || "student";
     const senderName =
       currentUser?.student?.name ||
       currentUser?.staff?.name ||
       currentUser?.profile?.name ||
       currentUser?.name ||
-      (role === "staff" ? "Faculty" : "Student");
+      (role === "staff" ? "Faculty" : role === "parent" ? "Parent" : role === "admin" ? "Admin Office" : "Student");
 
     const senderId =
       currentUser?.student?.rollNo ||
@@ -371,13 +431,30 @@ export default function ChatModal({ visible, onClose }) {
       currentUser?.username ||
       "user_current";
 
+    // Determine recipient role based on channel
+    let recipientRole = "staff";
+    if (channelType === "student_staff") {
+      recipientRole = role === "student" ? "staff" : "student";
+    } else if (channelType === "staff_staff") {
+      recipientRole = "staff";
+    } else if (channelType === "staff_parent") {
+      recipientRole = role === "staff" ? "parent" : "staff";
+    } else if (channelType === "admin_staff") {
+      recipientRole = role === "admin" ? "staff" : "admin";
+    } else if (channelType === "admin_student") {
+      recipientRole = role === "admin" ? "student" : "admin";
+    } else if (channelType === "admin_parent") {
+      recipientRole = role === "admin" ? "parent" : "admin";
+    }
+
     const msgObj = createMessageObject({
       text: textTrimmed,
       senderRole: role,
       senderId,
       senderName,
       recipientId: selectedStaff.id,
-      recipientRole: role === "staff" ? "student" : "staff",
+      recipientRole,
+      channelType,
       attachment: pendingAttachment,
       replyTo: replyingTo
         ? { id: replyingTo.id, text: replyingTo.text, senderName: replyingTo.senderName }
@@ -386,6 +463,7 @@ export default function ChatModal({ visible, onClose }) {
 
     const updated = await sendDirectMessage({
       threadKey: selectedStaff.id,
+      channelType,
       message: msgObj,
       selectedContact: selectedStaff,
     });
@@ -419,6 +497,7 @@ export default function ChatModal({ visible, onClose }) {
     } catch {}
     setShowActionSheet(false);
 
+    const channelType = selectedChannelTab?.channelType || "student_staff";
     const threadList = threads[selectedStaff.id] || [];
     const updated = threadList.map((m) => {
       if (m.id === actionMessage.id) {
@@ -430,7 +509,7 @@ export default function ChatModal({ visible, onClose }) {
 
     setThreads((prev) => ({ ...prev, [selectedStaff.id]: updated }));
     try {
-      await AsyncStorage.setItem(`chat_thread_${selectedStaff.id}`, JSON.stringify(updated));
+      await AsyncStorage.setItem(`chat_thread_${channelType}_${selectedStaff.id}`, JSON.stringify(updated));
     } catch {}
   };
 
@@ -468,8 +547,10 @@ export default function ChatModal({ visible, onClose }) {
     if (!actionMessage || !selectedStaff) return;
     setShowActionSheet(false);
 
+    const channelType = selectedChannelTab?.channelType || "student_staff";
     const updated = await deleteDirectMessage({
       threadKey: selectedStaff.id,
+      channelType,
       messageId: actionMessage.id,
       deleteForEveryone: forEveryone,
     });
@@ -488,12 +569,13 @@ export default function ChatModal({ visible, onClose }) {
   }, [contacts]);
 
   const filteredStaffList = useMemo(() => {
-    return contacts.filter((staff) => {
+    return contacts.filter((contact) => {
       const matchesSearch =
-        staff.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        staff.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        staff.dept.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesDept = deptFilter === "All" || staff.dept === deptFilter;
+        contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (contact.subject && contact.subject.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (contact.dept && contact.dept.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (contact.badge && contact.badge.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesDept = deptFilter === "All" || contact.dept === deptFilter;
       return matchesSearch && matchesDept;
     });
   }, [contacts, searchQuery, deptFilter]);
@@ -512,7 +594,7 @@ export default function ChatModal({ visible, onClose }) {
 
   const handleEmailStaff = () => {
     if (!selectedStaff?.email) return;
-    Linking.openURL(`mailto:${selectedStaff.email}?subject=Academic%20Inquiry%20from%20Student`).catch(() => {
+    Linking.openURL(`mailto:${selectedStaff.email}?subject=Academic%20Inquiry`).catch(() => {
       showToast(`Cannot open mail client for ${selectedStaff.email}`, "error");
     });
   };
@@ -521,9 +603,10 @@ export default function ChatModal({ visible, onClose }) {
 
   // ---------------- Render Message Bubble ----------------
   const renderMessageBubble = ({ item }) => {
-    const isMe = item.sender === (currentUser?.role === "staff" ? "staff" : "student");
-    const isDeleted = item.deletedForEveryone;
-    const urls = extractUrls(item.text);
+    if (!item) return null;
+    const isMe = item?.sender === (currentUser?.role || "student");
+    const isDeleted = Boolean(item?.deletedForEveryone);
+    const urls = extractUrls(item?.text || "");
 
     return (
       <TouchableOpacity
@@ -749,19 +832,19 @@ export default function ChatModal({ visible, onClose }) {
 
           {/* Bubble Meta Footer (Time, Edited tag, Double Check) */}
           <View style={styles.bubbleMetaRow}>
-            {item.isEdited && !isDeleted && (
+            {item?.isEdited && !isDeleted && (
               <Text style={[styles.editedTag, { color: isDarkMode ? "#8696A0" : "#64748B" }]}>
                 edited
               </Text>
             )}
             <Text style={[styles.timestampText, { color: isDarkMode ? "#8696A0" : "#64748B" }]}>
-              {item.time}
+              {item?.time || ""}
             </Text>
             {isMe && !isDeleted && (
               <Icon
                 name="check-all"
                 size={14}
-                color={item.status === "read" ? "#53BDEB" : isDarkMode ? "#8696A0" : "#64748B"}
+                color={item?.status === "read" ? "#53BDEB" : isDarkMode ? "#8696A0" : "#64748B"}
                 style={{ marginLeft: 3 }}
               />
             )}
@@ -782,7 +865,7 @@ export default function ChatModal({ visible, onClose }) {
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
       <Animated.View style={[styles.container, { transform: [{ translateY: slideAnim }] }]}>
         {/* ========================================================================= */}
-        {/* VIEW 1: WHATSAPP-STYLE DIRECTORY & CHATS LIST                             */}
+        {/* VIEW 1: WHATSAPP-STYLE MULTI-ROLE DIRECTORY & CHATS LIST                 */}
         {/* ========================================================================= */}
         {currentView === "directory" && (
           <View style={{ flex: 1, backgroundColor: isDarkMode ? "#111B21" : "#FFFFFF" }}>
@@ -793,8 +876,10 @@ export default function ChatModal({ visible, onClose }) {
                   <Icon name="arrow-left" size={24} color="#FFFFFF" />
                 </TouchableOpacity>
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.waHeaderTitle}>Faculty Chats</Text>
-                  <Text style={styles.waHeaderSub}>End-to-End Encrypted</Text>
+                  <Text style={styles.waHeaderTitle}>EduNex Direct Channels</Text>
+                  <Text style={styles.waHeaderSub}>
+                    {currentUser?.role ? `${currentUser.role.toUpperCase()} MESSAGING` : "END-TO-END ENCRYPTED"}
+                  </Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => setShowPrivacyModal(true)}
@@ -805,13 +890,59 @@ export default function ChatModal({ visible, onClose }) {
               </View>
             </View>
 
+            {/* Dynamic Role Channels Selector Bar */}
+            {channelTabs.length > 1 && (
+              <View style={[styles.channelTabsContainer, { backgroundColor: isDarkMode ? "#182229" : "#F0F2F5" }]}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 8, paddingHorizontal: 12, paddingVertical: 8 }}
+                >
+                  {channelTabs.map((tab) => {
+                    const isSelected = selectedChannelTab?.id === tab.id;
+                    return (
+                      <TouchableOpacity
+                        key={tab.id}
+                        style={[
+                          styles.channelTabChip,
+                          isSelected
+                            ? { backgroundColor: isDarkMode ? "#00A884" : "#008069", elevation: 2 }
+                            : { backgroundColor: isDarkMode ? "#202C33" : "#FFFFFF" },
+                        ]}
+                        onPress={() => {
+                          setSelectedChannelTab(tab);
+                          setSearchQuery("");
+                          setDeptFilter("All");
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Icon
+                          name={tab.icon || "chat"}
+                          size={16}
+                          color={isSelected ? "#FFFFFF" : isDarkMode ? "#8696A0" : "#54656F"}
+                        />
+                        <Text
+                          style={[
+                            styles.channelTabChipText,
+                            { color: isSelected ? "#FFFFFF" : isDarkMode ? "#E9EDEF" : "#111B21" },
+                          ]}
+                        >
+                          {tab.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
             {/* WhatsApp Search Bar */}
             <View style={[styles.waSearchContainer, { backgroundColor: isDarkMode ? "#111B21" : "#FFFFFF" }]}>
               <View style={[styles.waSearchBox, { backgroundColor: isDarkMode ? "#1F2C34" : "#F0F2F5" }]}>
                 <Icon name="magnify" size={20} color={isDarkMode ? "#8696A0" : "#54656F"} />
                 <TextInput
                   style={[styles.waSearchInput, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}
-                  placeholder="Search faculty or subject..."
+                  placeholder={`Search ${selectedChannelTab?.label || "contacts"}...`}
                   placeholderTextColor={isDarkMode ? "#8696A0" : "#54656F"}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -824,7 +955,7 @@ export default function ChatModal({ visible, onClose }) {
               </View>
             </View>
 
-            {/* WhatsApp Filters (All, AI & DS, CSE, Mentors) */}
+            {/* WhatsApp Filters (All, AI & DS, CSE, etc.) */}
             <View style={{ paddingVertical: 6 }}>
               <ScrollView
                 horizontal
@@ -865,9 +996,10 @@ export default function ChatModal({ visible, onClose }) {
               contentContainerStyle={{ paddingBottom: 60 }}
               showsVerticalScrollIndicator={false}
               renderItem={({ item }) => {
-                const threadMsgs = threads[item.id] || [];
+                if (!item) return null;
+                const threadMsgs = (item?.id && Array.isArray(threads[item.id])) ? threads[item.id].filter(Boolean) : [];
                 const lastMsg = threadMsgs.length > 0 ? threadMsgs[threadMsgs.length - 1] : null;
-                const isOnline = item.status === "online";
+                const isOnline = item?.status === "online";
 
                 return (
                   <TouchableOpacity
@@ -886,24 +1018,33 @@ export default function ChatModal({ visible, onClose }) {
                     {/* Chat Item Details */}
                     <View style={styles.waChatDetails}>
                       <View style={styles.waChatTopRow}>
-                        <Text
-                          style={[styles.waContactName, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}
-                          numberOfLines={1}
-                        >
-                          {item.name}
-                        </Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", flex: 1, marginRight: 6 }}>
+                          <Text
+                            style={[styles.waContactName, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}
+                            numberOfLines={1}
+                          >
+                            {item.name}
+                          </Text>
+                          {item.badge && (
+                            <View style={[styles.roleBadgePill, { backgroundColor: isDarkMode ? "#064E3B" : "#ECFDF5" }]}>
+                              <Text style={[styles.roleBadgePillText, { color: isDarkMode ? "#34D399" : "#059669" }]}>
+                                {item.badge}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                         <Text style={[styles.waLastTime, { color: isDarkMode ? "#8696A0" : "#667781" }]}>
-                          {lastMsg ? lastMsg.time : isOnline ? "Online" : "Faculty"}
+                          {lastMsg ? lastMsg.time : isOnline ? "Online" : "Direct"}
                         </Text>
                       </View>
 
                       <View style={styles.waChatBottomRow}>
                         <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                          {lastMsg?.sender === "student" && (
+                          {Boolean(lastMsg?.sender) && Boolean(currentUser?.role) && lastMsg.sender === currentUser.role && (
                             <Icon
                               name="check-all"
                               size={14}
-                              color={lastMsg.status === "read" ? "#53BDEB" : "#8696A0"}
+                              color={lastMsg?.status === "read" ? "#53BDEB" : "#8696A0"}
                               style={{ marginRight: 4 }}
                             />
                           )}
@@ -914,16 +1055,18 @@ export default function ChatModal({ visible, onClose }) {
                             ]}
                             numberOfLines={1}
                           >
-                            {lastMsg ? lastMsg.text || `[${lastMsg.attachment?.type}]` : `${item.role} · ${item.subject}`}
+                            {lastMsg ? lastMsg.text || `[${lastMsg.attachment?.type || "media"}]` : `${item.role || "Contact"} · ${item.subject || item.dept || ""}`}
                           </Text>
                         </View>
 
-                        {/* Unread Pill or Dept Tag */}
-                        <View style={[styles.waDeptBadge, { backgroundColor: isDarkMode ? "#1F2C34" : "#E2E8F0" }]}>
-                          <Text style={[styles.waDeptBadgeText, { color: isDarkMode ? "#8696A0" : "#475569" }]}>
-                            {item.dept}
-                          </Text>
-                        </View>
+                        {/* Department Tag */}
+                        {item.dept && (
+                          <View style={[styles.waDeptBadge, { backgroundColor: isDarkMode ? "#1F2C34" : "#E2E8F0" }]}>
+                            <Text style={[styles.waDeptBadgeText, { color: isDarkMode ? "#8696A0" : "#475569" }]}>
+                              {item.dept}
+                            </Text>
+                          </View>
+                        )}
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -958,7 +1101,7 @@ export default function ChatModal({ visible, onClose }) {
                       {selectedStaff.name}
                     </Text>
                     <Text style={styles.waHeaderStatus} numberOfLines={1}>
-                      {selectedStaff.status === "online" ? "online" : selectedStaff.statusText}
+                      {selectedStaff?.status === "online" ? "online" : selectedStaff?.statusText || "active"}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -1387,6 +1530,25 @@ const getStyles = (colors, isDarkMode) =>
     waHeaderStatus: { fontSize: 11, color: "rgba(255,255,255,0.85)" },
     waHeaderActions: { flexDirection: "row", gap: 12 },
     waActionIcon: { padding: 4 },
+
+    /* Dynamic Channel Tabs */
+    channelTabsContainer: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "rgba(0,0,0,0.06)" },
+    channelTabChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 16,
+    },
+    channelTabChipText: { fontSize: 12, fontWeight: "700" },
+    roleBadgePill: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      marginLeft: 6,
+    },
+    roleBadgePillText: { fontSize: 9.5, fontWeight: "800", textTransform: "uppercase" },
 
     /* Directory Search & Filters */
     waSearchContainer: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 },

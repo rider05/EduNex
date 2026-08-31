@@ -152,6 +152,41 @@ function getRecipientNotificationTitle(message) {
   return `💬 Direct Message from ${senderName}`;
 }
 
+const chatMessageListeners = new Set();
+
+export function subscribeToChatMessages(callback) {
+  chatMessageListeners.add(callback);
+  return () => chatMessageListeners.delete(callback);
+}
+
+function notifyChatSubscribers(data) {
+  chatMessageListeners.forEach((cb) => {
+    try {
+      cb(data);
+    } catch (e) {
+      console.warn("Chat subscriber error:", e);
+    }
+  });
+}
+
+function generateSimulatedReply(incomingMsg, contact) {
+  const text = (incomingMsg.text || "").toLowerCase();
+
+  if (text.includes("lab") || text.includes("assignment") || text.includes("submission") || text.includes("project")) {
+    return "Hello! I have received your submission. I am reviewing the code and report now. Please keep an eye on your portal for marks.";
+  }
+  if (text.includes("meeting") || text.includes("cabin") || text.includes("appointment") || text.includes("discuss")) {
+    return `Sure, please come by ${contact?.cabin || "my cabin"} today between 3:30 PM and 4:30 PM. Let's discuss your academic progress.`;
+  }
+  if (text.includes("leave") || text.includes("permission") || text.includes("od") || text.includes("gate pass")) {
+    return "Understood. Please ensure you submit the formal Leave/OD request on EduNex with parent endorsement so I can approve it.";
+  }
+  if (text.includes("thank") || text.includes("thanks") || text.includes("ok") || text.includes("noted")) {
+    return "You're welcome! Feel free to reach out anytime if you have further academic questions.";
+  }
+  return `Hello! I have noted your message regarding "${incomingMsg.text ? incomingMsg.text.slice(0, 35) + "..." : "your inquiry"}". Will review and update you shortly.`;
+}
+
 /**
  * Send DM Message & Dispatch Real-Time Push Notification strictly to recipient
  */
@@ -186,7 +221,7 @@ export async function sendDirectMessage({
 
     const notificationBody = `${message.text || "Sent an attachment"}${attachmentPreview}`;
 
-    // 1. Dispatch Real-time push alert with senderId (sender suppression built-in)
+    // 1. Dispatch Real-time push alert
     await triggerRealtimeNotification({
       title: recipientTitle,
       body: notificationBody,
@@ -218,6 +253,69 @@ export async function sendDirectMessage({
         senderName: message.senderName,
       },
     });
+
+    // 3. Notify live in-app subscribers of the new message
+    notifyChatSubscribers({ threadKey, message, updatedList: updated });
+
+    // 4. Trigger simulated response from contact after 2.5 seconds
+    if (selectedContact && selectedContact.id) {
+      setTimeout(async () => {
+        try {
+          const replyText = generateSimulatedReply(message, selectedContact);
+          const replyMsg = createMessageObject({
+            text: replyText,
+            senderRole: selectedContact.role || (channelType === "student_staff" ? "staff" : "student"),
+            senderId: selectedContact.id,
+            senderName: selectedContact.name,
+            recipientId: message.senderId,
+            recipientRole: message.sender,
+            channelType,
+          });
+
+          const currentRaw = await AsyncStorage.getItem(storageKey);
+          const currentList = currentRaw ? JSON.parse(currentRaw) : [];
+          const withReply = [...currentList, replyMsg];
+          await AsyncStorage.setItem(storageKey, JSON.stringify(withReply));
+          AsyncStorage.setItem(`chat_thread_${threadKey}`, JSON.stringify(withReply)).catch(() => {});
+
+          // Dispatch real-time push notification popup from contact
+          const replyTitle = `💬 ${selectedContact.name}${selectedContact.badge ? ` (${selectedContact.badge})` : ""}`;
+          await triggerRealtimeNotification({
+            title: replyTitle,
+            body: replyText,
+            type: "info",
+            data: {
+              type: "chat",
+              channelType,
+              threadKey,
+              contactId: selectedContact.id,
+              forcePopup: true,
+            },
+          });
+
+          // Save in notification store
+          await saveUserNotification(message.sender, message.senderId, {
+            id: `notif_chat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            title: replyTitle,
+            message: replyText,
+            type: "info",
+            isNew: true,
+            createdAt: new Date().toISOString(),
+            metadata: {
+              type: "chat",
+              channelType,
+              threadKey,
+              contactId: selectedContact.id,
+            },
+          });
+
+          // Notify live subscribers
+          notifyChatSubscribers({ threadKey, message: replyMsg, updatedList: withReply });
+        } catch (_replyErr) {
+          console.warn("Auto-reply error:", _replyErr);
+        }
+      }, 2500);
+    }
 
     return updated;
   } catch (err) {
@@ -312,7 +410,11 @@ export async function deleteDirectMessage({
     AsyncStorage.setItem(`chat_thread_${threadKey}`, JSON.stringify(updated)).catch(() => {});
 
     if (deleteForEveryone) {
-      api.delete(`/messages/${messageId}`, { data: { deleteForEveryone: true } }).catch(() => {});
+      if (typeof api.delete === "function") {
+        api.delete(`/messages/${messageId}`, { data: { deleteForEveryone: true } }).catch(() => {});
+      } else if (typeof api.del === "function") {
+        api.del(`/messages/${messageId}`, { data: { deleteForEveryone: true } }).catch(() => {});
+      }
     }
 
     return updated;

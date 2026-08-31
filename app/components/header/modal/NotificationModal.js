@@ -109,7 +109,9 @@ export default function NotificationModal({ visible, onClose }) {
       const formattedStored = directList.map((n) => ({
         id: n.id,
         icon:
-          n.type === "success"
+          n.metadata?.type === "chat" || (n.title || "").toLowerCase().includes("message") || (n.title || "").toLowerCase().includes("tutor")
+            ? "chat-processing-outline"
+            : n.type === "success"
             ? "check-decagram"
             : n.type === "warning"
             ? "alert-circle"
@@ -117,7 +119,9 @@ export default function NotificationModal({ visible, onClose }) {
             ? "close-circle"
             : "clipboard-text-clock",
         color:
-          n.type === "success"
+          n.metadata?.type === "chat" || (n.title || "").toLowerCase().includes("message")
+            ? "#059669"
+            : n.type === "success"
             ? "#10B981"
             : n.type === "warning"
             ? "#EF4444"
@@ -128,6 +132,8 @@ export default function NotificationModal({ visible, onClose }) {
         text: n.message,
         createdAt: n.createdAt,
         isNew: n.isNew,
+        metadata: n.metadata || n.data || {},
+        data: n.data || n.metadata || {},
       }));
 
       const combined = [...formattedStored, ...formattedNotices].sort(

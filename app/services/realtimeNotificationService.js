@@ -69,8 +69,11 @@ export async function triggerRealtimeNotification({
   data = {},
 }) {
   try {
-    // 0. Suppress self-notifications on sender's device
-    if (data?.senderId) {
+    // 0. Ensure notification channel is ready
+    await setupPushNotificationPermissions();
+
+    // Suppress self-notifications on sender's device unless forcePopup is requested
+    if (data?.senderId && !data?.forcePopup) {
       try {
         const id = await resolveIdentity();
         const currentUserId = id?.student?.rollNo || id?.staffId || id?.id || id?.username;
@@ -95,17 +98,21 @@ export async function triggerRealtimeNotification({
     }
 
     // 2. Native System Push Notification (works across devices/screens)
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title,
-        body,
-        data,
-        sound: "default",
-        badge: 1,
-        channelId: "edunex_alerts",
-      },
-      trigger: null, // deliver immediately
-    });
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          data,
+          sound: "default",
+          badge: 1,
+          channelId: "edunex_alerts",
+        },
+        trigger: null, // deliver immediately
+      });
+    } catch (_schedErr) {
+      console.warn("scheduleNotificationAsync fallback:", _schedErr);
+    }
 
     // 3. In-App Animated Toast Banner
     showToast(`${title}: ${body}`, type);

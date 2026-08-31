@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Text,
   View,
@@ -16,7 +16,9 @@ import { useTheme } from "../../context/ThemeContext";
 // Modals
 import AddUserModal from "./amodal/AddUserModal";
 import FullSettingsModal from "./settings/FullSettingsModal";
+import ChatModal from "./modal/ChatModal";
 import { showToast } from "../../utils/toastService";
+import { onNavigateToNotification } from "../../utils/notificationUtils";
 
 export default function HeaderAdmin() {
   const { colors, isDarkMode } = useTheme();
@@ -29,6 +31,18 @@ export default function HeaderAdmin() {
   /* Modals */
   const [manageModal, setManageModal] = useState(false);
   const [settingsModal, setSettingsModal] = useState(false);
+  const [chatModal, setChatModal] = useState(false);
+
+  useEffect(() => {
+    const unsub = onNavigateToNotification(({ target }) => {
+      if (target === "chat") {
+        setChatModal(true);
+      } else if (target === "settings") {
+        setSettingsModal(true);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   const handleMenuPress = () => {
     Animated.spring(bottomExpand, {
@@ -96,6 +110,14 @@ export default function HeaderAdmin() {
           <View style={styles.iconGroup}>
             <TouchableOpacity
               style={styles.actionBtn}
+              onPress={() => setChatModal(true)}
+              activeOpacity={0.7}
+            >
+              <Icon name="chat-outline" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionBtn}
               onPress={() => setManageModal(true)}
               activeOpacity={0.7}
             >
@@ -130,6 +152,20 @@ export default function HeaderAdmin() {
             <View style={styles.quickActionsRow}>
               <TouchableOpacity
                 style={styles.quickActionItem}
+                onPress={() => {
+                  setIsExpanded(false);
+                  setChatModal(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={styles.quickActionIcon}>
+                  <Icon name="chat-outline" size={20} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionLabel}>Campus DMs</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
                 onPress={() => handleIconPress("Add User")}
                 activeOpacity={0.8}
               >
@@ -160,17 +196,6 @@ export default function HeaderAdmin() {
                 </View>
                 <Text style={styles.quickActionLabel}>Backup</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => handleIconPress("Settings")}
-                activeOpacity={0.8}
-              >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="tune-vertical" size={20} color="#FFFFFF" />
-                </View>
-                <Text style={styles.quickActionLabel}>Settings</Text>
-              </TouchableOpacity>
             </View>
           )}
         </Animated.View>
@@ -179,6 +204,7 @@ export default function HeaderAdmin() {
       {/* 🚀 Modals */}
       <AddUserModal visible={manageModal} onClose={() => setManageModal(false)} />
       <FullSettingsModal visible={settingsModal} onClose={() => setSettingsModal(false)} />
+      <ChatModal visible={chatModal} onClose={() => setChatModal(false)} />
     </View>
   );
 }

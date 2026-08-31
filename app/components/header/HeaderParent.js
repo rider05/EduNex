@@ -15,8 +15,10 @@ import { useTheme } from "../../context/ThemeContext";
 import AssignmentModal from "./pmodal/AssignmentModal";
 import FeedbackModal from "./pmodal/FeedbackModal";
 import EntryExitModal from "./pmodal/EntryExitModal";
+import ChatModal from "./modal/ChatModal";
 import { getParentData } from "../../services/dataService";
 import { showToast } from "../../utils/toastService";
+import { onNavigateToNotification } from "../../utils/notificationUtils";
 
 export default function HeaderParent() {
   const { colors, isDarkMode } = useTheme();
@@ -38,6 +40,14 @@ export default function HeaderParent() {
         setRollNo(data.ward.rollNo || "");
       }
     }).catch(() => {});
+
+    const unsub = onNavigateToNotification(({ target }) => {
+      if (target === "chat" || target === "assignment" || target === "feedback" || target === "entryexit") {
+        setActiveModal(target);
+      }
+    });
+
+    return () => unsub();
   }, []);
 
   const handleMenuPress = () => {
@@ -132,6 +142,17 @@ export default function HeaderParent() {
 
               <TouchableOpacity
                 style={styles.quickActionItem}
+                onPress={() => handleIconPress("chat")}
+                activeOpacity={0.8}
+              >
+                <View style={styles.quickActionIcon}>
+                  <Icon name="chat-outline" size={20} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionLabel}>Tutor DM</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
                 onPress={() => handleIconPress("feedback")}
                 activeOpacity={0.8}
               >
@@ -160,6 +181,7 @@ export default function HeaderParent() {
       <AssignmentModal visible={activeModal === "assignment"} onClose={closeModal} />
       <FeedbackModal visible={activeModal === "feedback"} onClose={closeModal} />
       <EntryExitModal visible={activeModal === "entryexit"} onClose={closeModal} />
+      <ChatModal visible={activeModal === "chat"} onClose={closeModal} />
     </View>
   );
 }
