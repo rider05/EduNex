@@ -49,7 +49,9 @@ function IndexCore() {
       try {
         NavigationBar.setBackgroundColorAsync(colors.primaryDark || "#3730A3").catch(() => {});
         NavigationBar.setButtonStyleAsync("light").catch(() => {});
-      } catch (_e) {}
+      } catch {
+        // Suppress on edge-to-edge Android
+      }
     }
   }, [colors]);
 
