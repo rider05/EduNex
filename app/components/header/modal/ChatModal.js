@@ -11,6 +11,7 @@ import {
   Keyboard,
   Platform,
   Animated,
+  PanResponder,
   Linking,
   ScrollView,
   Image,
@@ -45,15 +46,13 @@ import {
   sendCallSignal,
   getCanonicalPairKey,
   resolveHumanDisplayName,
-  DEFAULT_FACULTY_ROSTER,
-  DEFAULT_STUDENT_ROSTER,
-  DEFAULT_PARENT_ROSTER,
-  DEFAULT_ADMIN_ROSTER,
 } from "../../../services/chatService";
 import { onNavigateToNotification } from "../../../utils/notificationUtils";
 import { setActiveOpenChatContact } from "../../../services/realtimeNotificationService";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const PIP_WIDTH = 115;
+const PIP_HEIGHT = 155;
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -132,11 +131,38 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
   const [hasCameraPermission, setHasCameraPermission] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null); // { caller, callType, channelType }
   const callIntervalRef = useRef(null);
+  const ringTimeoutRef = useRef(null);
+  const incomingRingTimeoutRef = useRef(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const wave1Anim = useRef(new Animated.Value(12)).current;
   const wave2Anim = useRef(new Animated.Value(24)).current;
   const wave3Anim = useRef(new Animated.Value(16)).current;
   const wave4Anim = useRef(new Animated.Value(30)).current;
+
+  // Draggable Floating Camera Self-View Pan State
+  const pipPan = useRef(
+    new Animated.ValueXY({ x: SCREEN_WIDTH - PIP_WIDTH - 16, y: Platform.OS === "ios" ? 110 : 90 })
+  ).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        pipPan.setOffset({
+          x: pipPan.x._value,
+          y: pipPan.y._value,
+        });
+        pipPan.setValue({ x: 0, y: 0 });
+      },
+      onPanResponderMove: Animated.event([null, { dx: pipPan.x, dy: pipPan.y }], {
+        useNativeDriver: false,
+      }),
+      onPanResponderRelease: () => {
+        pipPan.flattenOffset();
+      },
+    })
+  ).current;
 
   // Message Interaction State (Long Press Action Sheet)
   const [actionMessage, setActionMessage] = useState(null);
@@ -180,85 +206,178 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
     }
   }, [visible]);
 
-  // 2. Load Contacts based on Selected Channel Tab & Effective Role
+  // 2. Load Contacts strictly from Database based on Selected Channel Tab
   useEffect(() => {
     let isCancelled = false;
     async function loadContactsForChannel() {
       if (!selectedChannelTab) return;
       const ch = selectedChannelTab.channelType;
 
-      if (ch === "student_staff") {
-        if (effectiveRole === "staff") {
-          // Staff viewing students
-          try {
+      try {
+        if (ch === "student_staff") {
+          if (effectiveRole === "staff") {
+            // Staff viewing students from DB
             const res = await api.get("/students").catch(() => null);
-            if (!isCancelled && Array.isArray(res?.data) && res.data.length > 0) {
-              const mapped = res.data.map((s, idx) => ({
-                id: s.rollNo || s.roll || s.id || s._id || `stud_${idx}`,
-                rollNo: s.rollNo || s.roll || "",
-                name: `${s.name || "Student"} (${s.rollNo || s.roll || "22AD001"})`,
-                role: `Student · ${s.department || "Engineering"}`,
-                badge: idx === 0 ? "ASSIGNED WARD" : "STUDENT",
-                dept: s.department || "AI & DS",
-                subject: `Roll No: ${s.rollNo || "22AD001"} · Sec ${s.section || "A"}`,
-                cabin: s.hostel ? `Hostel ${s.hostel}` : "Day Scholar",
-                status: idx % 2 === 0 ? "online" : "offline",
-                statusText: idx % 2 === 0 ? "online" : "offline",
-                initials: (s.name || "S").slice(0, 2).toUpperCase(),
-                avatarColor: idx % 2 === 0 ? "#4F46E5" : "#0D9488",
-                phone: s.phone || "+91 91234 56780",
-                email: s.email || "student@edunex.edu",
-                e2eeKey: `0x${Math.random().toString(16).substring(2, 8).toUpperCase()}...A1`,
-              }));
+            const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+            if (!isCancelled) {
+              const mapped = list.map((s, idx) => {
+                const roll = s.rollNo || s.roll || s.id || s._id || `stud_${idx + 1}`;
+                const name = s.name || s.fullName || `Student (${roll})`;
+                return {
+                  id: roll,
+                  rollNo: roll,
+                  name: s.name ? `${s.name} (${roll})` : `Student (${roll})`,
+                  role: s.class || s.section ? `Student · ${s.class || ""} ${s.section || ""}` : (s.department ? `Student · ${s.department}` : "Student"),
+                  badge: idx === 0 ? "ASSIGNED WARD" : "STUDENT",
+                  dept: s.department || s.dept || "Academic",
+                  subject: `Roll No: ${roll}`,
+                  cabin: s.hostel ? `Hostel ${s.hostel}` : "Day Scholar",
+                  status: s.status || (idx % 2 === 0 ? "online" : "offline"),
+                  statusText: s.status || (idx % 2 === 0 ? "online" : "offline"),
+                  initials: (name || "S").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "S",
+                  avatarColor: s.avatarColor || (idx % 2 === 0 ? "#4F46E5" : "#0D9488"),
+                  phone: s.phone || "",
+                  email: s.email || "",
+                };
+              });
               setContacts(mapped);
-              return;
             }
-          } catch {}
-          if (!isCancelled) setContacts(DEFAULT_STUDENT_ROSTER);
-        } else {
-          // Student viewing staff / tutors
-          try {
+          } else {
+            // Student viewing staff from DB
             const staffRes = await api.get("/staff").catch(() => null);
-            if (!isCancelled && Array.isArray(staffRes?.data) && staffRes.data.length > 0) {
-              const mapped = staffRes.data.map((s, idx) => {
+            const staffList = Array.isArray(staffRes?.data) ? staffRes.data : Array.isArray(staffRes) ? staffRes : [];
+            if (!isCancelled) {
+              const mapped = staffList.map((s, idx) => {
                 const staffRealId = s.staffId || s.id || s._id || `staff_${idx + 1}`;
-                const staffRealName = resolveHumanDisplayName(staffRealId, "staff", s.name || s.fullName);
+                const staffRealName = s.name || s.fullName || `Faculty Member (${staffRealId})`;
                 return {
                   id: staffRealId,
                   staffId: staffRealId,
                   name: staffRealName,
-                  role: s.designation || s.role || (idx === 0 ? "Class Tutor & HOD" : "Associate Professor"),
+                  role: s.designation || s.role || "Faculty Advisor",
                   badge: idx === 0 ? "ASSIGNED TUTOR" : "FACULTY",
-                  dept: s.department || s.dept || "AI & Data Science",
-                  subject: s.subject || s.specialization || "Deep Neural Networks",
-                  cabin: s.cabin || s.room || `Academic Block 3, Room ${401 + idx}`,
-                  status: idx % 2 === 0 ? "online" : "in_lecture",
-                  statusText: idx % 2 === 0 ? "online" : "In Lecture",
-                  initials: staffRealName.split(" ").filter((w) => !w.startsWith("Dr.") && !w.startsWith("Prof.")).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "KV",
-                  avatarColor: idx % 3 === 0 ? "#059669" : idx % 3 === 1 ? "#0D9488" : "#D97706",
-                  phone: s.phone || "+91 98765 43210",
-                  email: s.email || "vignesh.ai@edunex.edu",
-                  e2eeKey: `0x${Math.random().toString(16).substring(2, 8).toUpperCase()}...B2`,
+                  dept: s.department || s.dept || "Academic Dept",
+                  subject: s.subject || s.specialization || "Engineering",
+                  cabin: s.cabin || s.room || "Faculty Cabin",
+                  status: s.status || (idx % 2 === 0 ? "online" : "offline"),
+                  statusText: s.status || (idx % 2 === 0 ? "online" : "offline"),
+                  initials: staffRealName.split(" ").filter((w) => !w.startsWith("Dr.") && !w.startsWith("Prof.")).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "F",
+                  avatarColor: s.avatarColor || (idx % 3 === 0 ? "#059669" : idx % 3 === 1 ? "#0D9488" : "#D97706"),
+                  phone: s.phone || "",
+                  email: s.email || "",
                 };
               });
               setContacts(mapped);
-              return;
             }
-          } catch {}
-          if (!isCancelled) setContacts(DEFAULT_FACULTY_ROSTER);
-        }
-      } else if (ch === "staff_staff") {
-        setContacts(DEFAULT_FACULTY_ROSTER);
-      } else if (ch === "staff_parent" || ch === "admin_parent") {
-        setContacts(DEFAULT_PARENT_ROSTER);
-      } else if (ch === "admin_staff" || ch === "admin_student") {
-        if (effectiveRole === "admin") {
-          setContacts(ch === "admin_staff" ? DEFAULT_FACULTY_ROSTER : DEFAULT_STUDENT_ROSTER);
+          }
+        } else if (ch === "staff_staff" || ch === "admin_staff") {
+          const staffRes = await api.get("/staff").catch(() => null);
+          const staffList = Array.isArray(staffRes?.data) ? staffRes.data : Array.isArray(staffRes) ? staffRes : [];
+          if (!isCancelled) {
+            const mapped = staffList.map((s, idx) => {
+              const staffRealId = s.staffId || s.id || s._id || `staff_${idx + 1}`;
+              const staffRealName = s.name || s.fullName || `Faculty Member (${staffRealId})`;
+              return {
+                id: staffRealId,
+                staffId: staffRealId,
+                name: staffRealName,
+                role: s.designation || s.role || "Faculty Member",
+                badge: "FACULTY",
+                dept: s.department || s.dept || "Academic Dept",
+                subject: s.subject || s.specialization || "Engineering",
+                cabin: s.cabin || s.room || "Faculty Cabin",
+                status: s.status || "online",
+                statusText: s.status || "online",
+                initials: staffRealName.split(" ").filter((w) => !w.startsWith("Dr.") && !w.startsWith("Prof.")).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "F",
+                avatarColor: s.avatarColor || (idx % 3 === 0 ? "#059669" : idx % 3 === 1 ? "#0D9488" : "#D97706"),
+                phone: s.phone || "",
+                email: s.email || "",
+              };
+            });
+            setContacts(mapped);
+          }
+        } else if (ch === "staff_parent" || ch === "admin_parent") {
+          const parentRes = await api.get("/parents").catch(() => null);
+          const parentList = Array.isArray(parentRes?.data) ? parentRes.data : Array.isArray(parentRes) ? parentRes : [];
+          if (!isCancelled) {
+            const mapped = parentList.map((p, idx) => {
+              const pId = p.parentId || p.id || p._id || `parent_${idx + 1}`;
+              const pName = p.name || p.fullName || `Parent (${pId})`;
+              const wardRoll = p.wardRollNo || p.studentID || p.ward_roll_no || "";
+              return {
+                id: pId,
+                name: wardRoll ? `${pName} (P/O ${wardRoll})` : pName,
+                role: "Parent / Guardian",
+                badge: wardRoll ? `PARENT OF ${wardRoll}` : "PARENT",
+                dept: p.dept || "Parent Relation",
+                subject: wardRoll ? `Ward Roll No: ${wardRoll}` : "Primary Guardian",
+                cabin: "Parent Contact",
+                status: p.status || "online",
+                statusText: p.status || "online",
+                initials: pName.split(" ").filter((w) => !["Mr.", "Mrs.", "Dr."].includes(w)).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "P",
+                avatarColor: p.avatarColor || (idx % 2 === 0 ? "#7C3AED" : "#0D9488"),
+                phone: p.phone || "",
+                email: p.email || "",
+              };
+            });
+            setContacts(mapped);
+          }
+        } else if (ch === "admin_student") {
+          const studRes = await api.get("/students").catch(() => null);
+          const studList = Array.isArray(studRes?.data) ? studRes.data : Array.isArray(studRes) ? studRes : [];
+          if (!isCancelled) {
+            const mapped = studList.map((s, idx) => {
+              const roll = s.rollNo || s.roll || s.id || s._id || `stud_${idx + 1}`;
+              const name = s.name || s.fullName || `Student (${roll})`;
+              return {
+                id: roll,
+                rollNo: roll,
+                name: s.name ? `${s.name} (${roll})` : `Student (${roll})`,
+                role: `Student · ${s.department || "Academic"}`,
+                badge: "STUDENT",
+                dept: s.department || s.dept || "Academic",
+                subject: `Roll No: ${roll}`,
+                cabin: "Student Contact",
+                status: s.status || "online",
+                statusText: s.status || "online",
+                initials: (name || "S").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "S",
+                avatarColor: s.avatarColor || (idx % 2 === 0 ? "#4F46E5" : "#0D9488"),
+                phone: s.phone || "",
+                email: s.email || "",
+              };
+            });
+            setContacts(mapped);
+          }
         } else {
-          setContacts(DEFAULT_ADMIN_ROSTER);
+          // Admin office directory from DB
+          const adminRes = await api.get("/admins").catch(() => null);
+          const adminList = Array.isArray(adminRes?.data) ? adminRes.data : Array.isArray(adminRes) ? adminRes : [];
+          if (!isCancelled) {
+            const mapped = adminList.map((a, idx) => {
+              const aId = a.adminId || a.id || a._id || `admin_${idx + 1}`;
+              const aName = a.name || a.fullName || "Admin Office";
+              return {
+                id: aId,
+                name: aName,
+                role: a.designation || a.role || "Administrator",
+                badge: "ADMIN",
+                dept: a.department || "Administration",
+                subject: a.office || "Administrative Office",
+                cabin: a.cabin || "Admin Block",
+                status: "online",
+                statusText: "online",
+                initials: aName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "AD",
+                avatarColor: a.avatarColor || (idx % 2 === 0 ? "#DC2626" : "#B91C1C"),
+                phone: a.phone || "",
+                email: a.email || "",
+              };
+            });
+            setContacts(mapped);
+          }
         }
-      } else {
-        setContacts(DEFAULT_FACULTY_ROSTER);
+      } catch (err) {
+        console.warn("loadContactsForChannel error:", err);
+        if (!isCancelled) setContacts([]);
       }
     }
     if (visible && selectedChannelTab) {
@@ -406,21 +525,45 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
             try {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             } catch {}
+
+            // 45-Second Maximum Ringing Limit for Incoming Call
+            if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
+            incomingRingTimeoutRef.current = setTimeout(() => {
+              setIncomingCall(null);
+              sendCallSignal({
+                type: "call_decline",
+                roomId: payload.roomId,
+                caller: payload.caller,
+                recipientId: payload.recipientId,
+                recipientName: payload.recipientName,
+                callType: payload.callType || "audio",
+                reason: "timeout",
+              }).catch(() => {});
+              showToast("📞 Missed call", "info");
+            }, 45000);
             return;
           }
 
           if (payload.signalType === "call_accept") {
+            if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+            if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
             setCallStatus("connected");
+            if (callIntervalRef.current) clearInterval(callIntervalRef.current);
+            callIntervalRef.current = setInterval(() => {
+              setCallTimer((prev) => prev + 1);
+            }, 1000);
             return;
           }
 
           if (payload.signalType === "call_end" || payload.signalType === "call_decline") {
+            if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+            if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
             if (isCalling) {
               if (callIntervalRef.current) clearInterval(callIntervalRef.current);
               setIsCalling(false);
               setCallStatus("ended");
               setCallTimer(0);
-              showToast("📞 Call ended by remote user", "info");
+              showToast(payload.reason === "timeout" ? "📞 Call unanswered" : "📞 Call ended", "info");
             }
             if (incomingCall) {
               setIncomingCall(null);
@@ -1095,7 +1238,7 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
       channelType: selectedChannelTab?.channelType,
     });
 
-    // Calling Lifecycle: "Calling..." -> "Ringing..." -> "Connected"
+    // Calling Lifecycle: "Calling..." -> "Ringing..."
     setTimeout(() => {
       setCallStatus("ringing");
       try {
@@ -1103,16 +1246,26 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
       } catch {}
     }, 1200);
 
-    setTimeout(() => {
-      setCallStatus("connected");
-      try {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } catch {}
+    // 45-Second Maximum Ringing Limit (Auto-end call if no answer)
+    if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+    ringTimeoutRef.current = setTimeout(() => {
       if (callIntervalRef.current) clearInterval(callIntervalRef.current);
-      callIntervalRef.current = setInterval(() => {
-        setCallTimer((prev) => prev + 1);
-      }, 1000);
-    }, 2800);
+      setIsCalling(false);
+      setCallStatus("ended");
+      setCallTimer(0);
+
+      sendCallSignal({
+        type: "call_end",
+        roomId,
+        caller: { id: myId, name: myName, role: senderRole },
+        recipientId: targetRecipientId,
+        recipientName: selectedStaff?.name || "Contact",
+        callType: type,
+        reason: "timeout",
+      }).catch(() => {});
+
+      showToast("📞 No answer (Ringing ended after 45s)", "info");
+    }, 45000);
   };
 
   const handleLaunchFullDuplexRoom = async (type = callType) => {
@@ -1160,6 +1313,8 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
   };
 
   const handleEndCall = async () => {
+    if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+    if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
     if (callIntervalRef.current) clearInterval(callIntervalRef.current);
     const finalDuration = callTimer;
     setIsCalling(false);
@@ -1199,14 +1354,17 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
 
   const handleAnswerIncomingCall = async () => {
     if (!incomingCall) return;
+    if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
     const call = incomingCall;
     setIncomingCall(null);
+
+    const callerName = call.caller?.name || call.senderName || "Caller";
     setSelectedStaff({
-      id: call.caller.id,
-      name: call.caller.name,
-      role: call.caller.role,
+      id: call.caller?.id || call.senderId,
+      name: callerName,
+      role: call.caller?.role || call.senderRole || "Contact",
       avatarColor: "#059669",
-      initials: (call.caller.name || "U")[0],
+      initials: (callerName || "U")[0],
     });
     setCallType(call.callType || "audio");
     setIsCalling(true);
@@ -1234,8 +1392,8 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
       type: "call_accept",
       roomId: call.roomId,
       caller: { id: myId, name: myName, role: effectiveRole },
-      recipientId: call.caller.id,
-      recipientName: call.caller.name,
+      recipientId: call.caller?.id || call.senderId,
+      recipientName: callerName,
       callType: call.callType || "audio",
       channelType: call.channelType || "student_staff",
     }).catch(() => {});
@@ -1247,6 +1405,7 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
   };
 
   const handleDeclineIncomingCall = () => {
+    if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
     if (incomingCall) {
       const myId =
         currentUser?.student?.rollNo ||
@@ -1264,8 +1423,8 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
         type: "call_decline",
         roomId: incomingCall.roomId,
         caller: { id: myId, name: myName, role: effectiveRole },
-        recipientId: incomingCall.caller?.id,
-        recipientName: incomingCall.caller?.name,
+        recipientId: incomingCall.caller?.id || incomingCall.senderId,
+        recipientName: incomingCall.caller?.name || incomingCall.senderName,
         callType: incomingCall.callType || "audio",
         channelType: incomingCall.channelType || "student_staff",
       }).catch(() => {});
@@ -2449,56 +2608,69 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
             onRequestClose={handleEndCall}
           >
             <View style={{ flex: 1, backgroundColor: "#0B141A" }}>
-              {/* VIDEO CALL VIEW */}
+              {/* VIDEO CALL VIEW WITH DRAGGABLE FLOATING SELF-CAMERA PIP OVERLAY */}
               {callType === "video" ? (
                 <View style={{ flex: 1 }}>
-                  {/* Real Live Camera Stream View */}
-                  {isVideoEnabled && hasCameraPermission ? (
-                    <CameraView
-                      style={StyleSheet.absoluteFillObject}
-                      facing={cameraFacing}
-                      mute={isMuted}
-                    />
-                  ) : (
-                    <LinearGradient
-                      colors={["#0F172A", "#1E293B", "#0F172A"]}
+                  {/* 1. Full Screen Remote Party View (Live Background) */}
+                  <LinearGradient
+                    colors={["#0B141A", "#111B21", "#0B141A"]}
+                    style={[
+                      StyleSheet.absoluteFillObject,
+                      { justifyContent: "center", alignItems: "center" },
+                    ]}
+                  >
+                    <Animated.View
                       style={[
-                        StyleSheet.absoluteFillObject,
-                        { justifyContent: "center", alignItems: "center" },
+                        styles.callAvatarLarge,
+                        {
+                          backgroundColor: selectedStaff?.avatarColor || "#059669",
+                          width: 120,
+                          height: 120,
+                          borderRadius: 60,
+                          transform: [{ scale: callStatus === "connected" ? pulseAnim : 1 }],
+                        },
                       ]}
                     >
-                      <View
-                        style={[
-                          styles.callAvatarLarge,
-                          {
-                            backgroundColor: selectedStaff?.avatarColor || "#059669",
-                            width: 110,
-                            height: 110,
-                            borderRadius: 55,
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.callAvatarLargeText, { fontSize: 38 }]}>
-                          {selectedStaff?.initials || "F"}
-                        </Text>
-                      </View>
-                      <Text
-                        style={{
-                          color: "#94A3B8",
-                          marginTop: 14,
-                          fontSize: 14,
-                          fontWeight: "600",
-                        }}
-                      >
-                        {!hasCameraPermission ? "Camera permission required" : "Camera turned off"}
+                      <Text style={[styles.callAvatarLargeText, { fontSize: 44 }]}>
+                        {selectedStaff?.initials || "F"}
                       </Text>
-                    </LinearGradient>
-                  )}
+                    </Animated.View>
+                    <Text
+                      style={{
+                        color: "#FFFFFF",
+                        fontSize: 22,
+                        fontWeight: "800",
+                        marginTop: 16,
+                      }}
+                    >
+                      {selectedStaff?.name || "Participant"}
+                    </Text>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        marginTop: 8,
+                        backgroundColor: "rgba(16,185,129,0.18)",
+                        paddingHorizontal: 12,
+                        paddingVertical: 5,
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: "rgba(52,211,153,0.35)",
+                      }}
+                    >
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />
+                      <Text style={{ color: "#34D399", fontSize: 12.5, fontWeight: "700" }}>
+                        {callStatus === "connected" ? "Live HD 2-Way Video Call" : "Connecting Live Video..."}
+                      </Text>
+                    </View>
+                  </LinearGradient>
 
                   {/* Gradient Overlay for Controls */}
                   <LinearGradient
-                    colors={["rgba(0,0,0,0.7)", "transparent", "rgba(0,0,0,0.85)"]}
+                    colors={["rgba(0,0,0,0.75)", "transparent", "rgba(0,0,0,0.88)"]}
                     style={StyleSheet.absoluteFillObject}
+                    pointerEvents="none"
                   />
 
                   {/* Top Header Floating Info */}
@@ -2556,60 +2728,58 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
                       activeOpacity={0.8}
                     >
                       <Icon name="broadcast" size={14} color="#34D399" />
-                      <Text style={styles.fullDuplexPillText}>Full Duplex HD WebRTC</Text>
+                      <Text style={styles.fullDuplexPillText}>Full Duplex HD WebRTC (2-Way Stream)</Text>
                       <Icon name="open-in-new" size={12} color="#34D399" />
                     </TouchableOpacity>
                   </View>
 
-                  {/* Floating PIP Self-View / Contact Tile */}
-                  <View style={styles.videoPipCard}>
-                    <View
-                      style={[
-                        styles.waSmallAvatar,
-                        {
-                          backgroundColor: selectedStaff?.avatarColor || "#059669",
-                          width: 36,
-                          height: 36,
-                          borderRadius: 18,
-                        },
-                      ]}
-                    >
-                      <Text style={styles.waSmallAvatarText}>
-                        {selectedStaff?.initials || "F"}
-                      </Text>
-                    </View>
-                    <Text
-                      style={{
-                        color: "#FFFFFF",
-                        fontSize: 11,
-                        fontWeight: "700",
-                        marginTop: 4,
-                      }}
-                      numberOfLines={1}
-                    >
-                      {selectedStaff?.name?.split(" ")[0] || "Remote"}
-                    </Text>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 3,
-                        marginTop: 2,
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: 3,
-                          backgroundColor: "#10B981",
-                        }}
+                  {/* 2. Floating Draggable PIP Self-Camera View (WhatsApp Style Movable Overlay) */}
+                  <Animated.View
+                    style={[
+                      styles.draggablePipCard,
+                      {
+                        transform: [
+                          {
+                            translateX: pipPan.x.interpolate({
+                              inputRange: [0, SCREEN_WIDTH - PIP_WIDTH],
+                              outputRange: [0, SCREEN_WIDTH - PIP_WIDTH],
+                              extrapolate: "clamp",
+                            }),
+                          },
+                          {
+                            translateY: pipPan.y.interpolate({
+                              inputRange: [20, SCREEN_HEIGHT - PIP_HEIGHT - 90],
+                              outputRange: [20, SCREEN_HEIGHT - PIP_HEIGHT - 90],
+                              extrapolate: "clamp",
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                    {...panResponder.panHandlers}
+                  >
+                    {isVideoEnabled && hasCameraPermission ? (
+                      <CameraView
+                        style={StyleSheet.absoluteFillObject}
+                        facing={cameraFacing}
+                        mute={isMuted}
                       />
-                      <Text style={{ color: "#34D399", fontSize: 9.5, fontWeight: "700" }}>
-                        HD Live
-                      </Text>
+                    ) : (
+                      <View style={styles.pipAvatarFallback}>
+                        <Text style={styles.pipAvatarText}>
+                          {(resolveSenderDetails().senderName || "Me")[0]}
+                        </Text>
+                        <Text style={{ color: "#94A3B8", fontSize: 9.5, fontWeight: "600", marginTop: 2 }}>
+                          Camera off
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={styles.pipBadge}>
+                      <View style={styles.greenLiveDot} />
+                      <Text style={styles.pipBadgeText}>You (Drag to move)</Text>
                     </View>
-                  </View>
+                  </Animated.View>
 
                   {/* Video Call Controls Floating Bar */}
                   <View style={styles.callControlsRow}>
@@ -3627,6 +3797,56 @@ const getStyles = (colors, isDarkMode) =>
       fontSize: 15,
       color: "rgba(255,255,255,0.75)",
       fontWeight: "600",
+    },
+    draggablePipCard: {
+      position: "absolute",
+      width: PIP_WIDTH,
+      height: PIP_HEIGHT,
+      borderRadius: 16,
+      overflow: "hidden",
+      backgroundColor: "#1E293B",
+      borderWidth: 2,
+      borderColor: "#34D399",
+      elevation: 16,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.5,
+      shadowRadius: 10,
+      zIndex: 999,
+    },
+    pipAvatarFallback: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "#1E293B",
+    },
+    pipAvatarText: {
+      fontSize: 32,
+      fontWeight: "800",
+      color: "#FFFFFF",
+    },
+    pipBadge: {
+      position: "absolute",
+      bottom: 6,
+      alignSelf: "center",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: "rgba(0,0,0,0.65)",
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 10,
+    },
+    pipBadgeText: {
+      color: "#FFFFFF",
+      fontSize: 9.5,
+      fontWeight: "700",
+    },
+    greenLiveDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: "#10B981",
     },
     callControlsRow: {
       position: "absolute",

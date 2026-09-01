@@ -421,11 +421,13 @@ async function performRealtimeCheck() {
             });
 
             if (msg.signalType === "call_invite") {
-              const callerName = resolveHumanDisplayName(
-                msg.senderId || msg.caller?.id,
-                msg.senderRole || msg.caller?.role || "staff",
-                msg.senderName || msg.caller?.name
-              );
+              const rawName = msg.caller?.name || msg.senderName || "";
+              const callerName =
+                rawName ||
+                resolveHumanDisplayName(
+                  msg.caller?.id || msg.senderId,
+                  msg.caller?.role || msg.senderRole || "staff"
+                );
               const callKind = msg.callType === "video" ? "Video Call" : "Voice Call";
               await triggerRealtimeNotification({
                 title: `📞 Incoming ${callKind}`,

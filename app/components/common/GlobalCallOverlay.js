@@ -8,6 +8,7 @@ import {
   Dimensions,
   Platform,
   Animated,
+  PanResponder,
   Linking,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -24,7 +25,9 @@ import {
 } from "../../services/chatService";
 import { showToast } from "../../utils/toastService";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const PIP_WIDTH = 115;
+const PIP_HEIGHT = 155;
 
 export default function GlobalCallOverlay() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -47,6 +50,31 @@ export default function GlobalCallOverlay() {
   const wave2Anim = useRef(new Animated.Value(24)).current;
   const wave3Anim = useRef(new Animated.Value(16)).current;
   const wave4Anim = useRef(new Animated.Value(30)).current;
+
+  // Draggable Floating Camera Self-View Pan State
+  const pipPan = useRef(
+    new Animated.ValueXY({ x: SCREEN_WIDTH - PIP_WIDTH - 16, y: Platform.OS === "ios" ? 110 : 90 })
+  ).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        pipPan.setOffset({
+          x: pipPan.x._value,
+          y: pipPan.y._value,
+        });
+        pipPan.setValue({ x: 0, y: 0 });
+      },
+      onPanResponderMove: Animated.event([null, { dx: pipPan.x, dy: pipPan.y }], {
+        useNativeDriver: false,
+      }),
+      onPanResponderRelease: () => {
+        pipPan.flattenOffset();
+      },
+    })
+  ).current;
 
   // 1. Load user identity
   useEffect(() => {
@@ -181,13 +209,15 @@ export default function GlobalCallOverlay() {
 
   const handleAnswerIncomingCall = async () => {
     if (!incomingCall) return;
+    if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
     const call = incomingCall;
     setIncomingCall(null);
 
+    const rawName = call.caller?.name || call.senderName || "";
     const callerNameResolved = resolveHumanDisplayName(
       call.caller?.id || call.senderId,
       call.caller?.role || call.senderRole || "staff",
-      call.caller?.name || call.senderName
+      rawName
     );
 
     const callerData = {
@@ -246,6 +276,7 @@ export default function GlobalCallOverlay() {
   };
 
   const handleDeclineIncomingCall = () => {
+    if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
     if (incomingCall) {
       const myId =
         currentUser?.student?.rollNo ||
@@ -381,18 +412,29 @@ export default function GlobalCallOverlay() {
                   ]}
                 >
                   <Text style={{ fontSize: 34, fontWeight: "800", color: "#FFF" }}>
-                    {(resolveHumanDisplayName(incomingCall.caller?.id || incomingCall.senderId, incomingCall.caller?.role || incomingCall.senderRole, incomingCall.caller?.name || incomingCall.senderName) || "U")[0]}
+                    {(
+                      incomingCall.caller?.name ||
+                      incomingCall.senderName ||
+                      resolveHumanDisplayName(
+                        incomingCall.caller?.id || incomingCall.senderId,
+                        incomingCall.caller?.role || incomingCall.senderRole
+                      ) ||
+                      "U"
+                    )[0]}
                   </Text>
                 </View>
                 <Text style={{ color: "#FFFFFF", fontSize: 20, fontWeight: "800", textAlign: "center", paddingHorizontal: 12 }}>
-                  {resolveHumanDisplayName(
-                    incomingCall.caller?.id || incomingCall.senderId,
-                    incomingCall.caller?.role || incomingCall.senderRole || "staff",
-                    incomingCall.caller?.name || incomingCall.senderName
-                  )}
+                  {incomingCall.caller?.name ||
+                    incomingCall.senderName ||
+                    resolveHumanDisplayName(
+                      incomingCall.caller?.id || incomingCall.senderId,
+                      incomingCall.caller?.role || incomingCall.senderRole || "staff"
+                    )}
                 </Text>
                 <Text style={{ color: "#34D399", fontSize: 13, fontWeight: "600", marginTop: 4 }}>
-                  {incomingCall.caller?.role === "staff" ? "Faculty Advisor · AI & Data Science" : "Student · III Year AI & DS"}
+                  {incomingCall.caller?.role === "staff"
+                    ? incomingCall.caller?.dept || "Faculty Member"
+                    : incomingCall.caller?.dept || "Student"}
                 </Text>
                 <Text style={{ color: "#94A3B8", fontSize: 12, marginTop: 2 }}>
                   EduNex E2EE Real-Time Call
@@ -440,47 +482,61 @@ export default function GlobalCallOverlay() {
         >
           <View style={{ flex: 1, backgroundColor: "#0B141A" }}>
             {callType === "video" ? (
-              /* VIDEO CALL SCREEN */
+              /* VIDEO CALL SCREEN WITH DRAGGABLE FLOATING SELF-VIEW PIP OVERLAY */
               <View style={{ flex: 1 }}>
-                {isVideoEnabled && hasCameraPermission ? (
-                  <CameraView
-                    style={StyleSheet.absoluteFillObject}
-                    facing={cameraFacing}
-                    mute={isMuted}
-                  />
-                ) : (
-                  <LinearGradient
-                    colors={["#0F172A", "#1E293B", "#0F172A"]}
+                {/* 1. Full Screen Remote Party View (Live Background) */}
+                <LinearGradient
+                  colors={["#0B141A", "#111B21", "#0B141A"]}
+                  style={[
+                    StyleSheet.absoluteFillObject,
+                    { justifyContent: "center", alignItems: "center" },
+                  ]}
+                >
+                  <Animated.View
                     style={[
-                      StyleSheet.absoluteFillObject,
-                      { justifyContent: "center", alignItems: "center" },
+                      styles.callAvatarLarge,
+                      {
+                        backgroundColor: "#059669",
+                        width: 120,
+                        height: 120,
+                        borderRadius: 60,
+                        transform: [{ scale: callStatus === "connected" ? pulseAnim : 1 }],
+                      },
                     ]}
                   >
-                    <View
-                      style={[
-                        styles.callAvatarLarge,
-                        {
-                          backgroundColor: "#059669",
-                          width: 110,
-                          height: 110,
-                          borderRadius: 55,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.callAvatarLargeText, { fontSize: 38 }]}>
-                        {remoteParty?.initials || "U"}
-                      </Text>
-                    </View>
-                    <Text style={{ color: "#94A3B8", marginTop: 14, fontSize: 14, fontWeight: "600" }}>
-                      {!hasCameraPermission ? "Camera permission required" : "Camera turned off"}
+                    <Text style={[styles.callAvatarLargeText, { fontSize: 44 }]}>
+                      {remoteParty?.initials || "U"}
                     </Text>
-                  </LinearGradient>
-                )}
+                  </Animated.View>
+                  <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "800", marginTop: 16 }}>
+                    {remoteParty?.name || "Remote User"}
+                  </Text>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      marginTop: 8,
+                      backgroundColor: "rgba(16,185,129,0.18)",
+                      paddingHorizontal: 12,
+                      paddingVertical: 5,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: "rgba(52,211,153,0.35)",
+                    }}
+                  >
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />
+                    <Text style={{ color: "#34D399", fontSize: 12.5, fontWeight: "700" }}>
+                      {callStatus === "connected" ? "Live HD 2-Way Video Call" : "Connecting Live Video..."}
+                    </Text>
+                  </View>
+                </LinearGradient>
 
-                {/* Dark Gradient Overlay for readability */}
+                {/* Dark Gradient Overlay for Header & Controls */}
                 <LinearGradient
-                  colors={["rgba(0,0,0,0.7)", "transparent", "rgba(0,0,0,0.85)"]}
+                  colors={["rgba(0,0,0,0.75)", "transparent", "rgba(0,0,0,0.88)"]}
                   style={StyleSheet.absoluteFillObject}
+                  pointerEvents="none"
                 />
 
                 {/* Top Header Floating Info */}
@@ -506,36 +562,65 @@ export default function GlobalCallOverlay() {
                     {callStatus === "connected" ? formatCallTime(callTimer) : "Connecting..."}
                   </Text>
 
-                  {/* Launch Full-Duplex WebRTC Live Session */}
+                  {/* Launch Real Full-Duplex WebRTC Live Session */}
                   <TouchableOpacity
                     style={styles.fullDuplexPillBtn}
                     onPress={() => handleLaunchFullDuplexRoom("video")}
                     activeOpacity={0.8}
                   >
                     <Icon name="broadcast" size={14} color="#34D399" />
-                    <Text style={styles.fullDuplexPillText}>Full Duplex HD WebRTC</Text>
+                    <Text style={styles.fullDuplexPillText}>Full Duplex HD WebRTC (2-Way Stream)</Text>
                     <Icon name="open-in-new" size={12} color="#34D399" />
                   </TouchableOpacity>
                 </View>
 
-                {/* Floating PIP Self-View / Contact Tile */}
-                <View style={styles.videoPipCard}>
-                  <View
-                    style={[
-                      styles.waSmallAvatar,
-                      { backgroundColor: "#059669", width: 36, height: 36, borderRadius: 18 },
-                    ]}
-                  >
-                    <Text style={styles.waSmallAvatarText}>{remoteParty?.initials || "U"}</Text>
+                {/* 2. Floating Draggable PIP Self-Camera View (WhatsApp Style Movable Overlay) */}
+                <Animated.View
+                  style={[
+                    styles.draggablePipCard,
+                    {
+                      transform: [
+                        {
+                          translateX: pipPan.x.interpolate({
+                            inputRange: [0, SCREEN_WIDTH - PIP_WIDTH],
+                            outputRange: [0, SCREEN_WIDTH - PIP_WIDTH],
+                            extrapolate: "clamp",
+                          }),
+                        },
+                        {
+                          translateY: pipPan.y.interpolate({
+                            inputRange: [20, SCREEN_HEIGHT - PIP_HEIGHT - 90],
+                            outputRange: [20, SCREEN_HEIGHT - PIP_HEIGHT - 90],
+                            extrapolate: "clamp",
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                  {...panResponder.panHandlers}
+                >
+                  {isVideoEnabled && hasCameraPermission ? (
+                    <CameraView
+                      style={StyleSheet.absoluteFillObject}
+                      facing={cameraFacing}
+                      mute={isMuted}
+                    />
+                  ) : (
+                    <View style={styles.pipAvatarFallback}>
+                      <Text style={styles.pipAvatarText}>
+                        {(currentUser?.name || "Me")[0]}
+                      </Text>
+                      <Text style={{ color: "#94A3B8", fontSize: 9.5, fontWeight: "600", marginTop: 2 }}>
+                        Camera off
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={styles.pipBadge}>
+                    <View style={styles.greenLiveDot} />
+                    <Text style={styles.pipBadgeText}>You (Drag to move)</Text>
                   </View>
-                  <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "700", marginTop: 4 }} numberOfLines={1}>
-                    {remoteParty?.name?.split(" ")[0] || "Remote"}
-                  </Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2 }}>
-                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#10B981" }} />
-                    <Text style={{ color: "#34D399", fontSize: 9.5, fontWeight: "700" }}>HD Live</Text>
-                  </View>
-                </View>
+                </Animated.View>
 
                 {/* Video Call Controls Docked at Bottom */}
                 <View style={styles.callControlsRow}>
@@ -744,29 +829,55 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginTop: 8,
   },
-  fullDuplexPillText: {
-    color: "#34D399",
-    fontSize: 12,
+  draggablePipCard: {
+    position: "absolute",
+    width: PIP_WIDTH,
+    height: PIP_HEIGHT,
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "#1E293B",
+    borderWidth: 2,
+    borderColor: "#34D399",
+    elevation: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    zIndex: 999,
+  },
+  pipAvatarFallback: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#1E293B",
+  },
+  pipAvatarText: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  pipBadge: {
+    position: "absolute",
+    bottom: 6,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  pipBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 9.5,
     fontWeight: "700",
   },
-  videoPipCard: {
-    position: "absolute",
-    top: Platform.OS === "ios" ? 110 : 90,
-    right: 16,
-    width: 100,
-    height: 125,
-    backgroundColor: "rgba(15, 23, 42, 0.88)",
-    borderRadius: 16,
-    padding: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.25)",
-    elevation: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
+  greenLiveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#10B981",
   },
   waSmallAvatar: {
     justifyContent: "center",
