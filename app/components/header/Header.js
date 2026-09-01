@@ -193,7 +193,7 @@ export default function Header() {
       <BusTrackerModal visible={activeModal === "bus"} onClose={closeModal} />
       <MessMenuModal visible={activeModal === "mess"} onClose={closeModal} />
       <NotificationModal visible={activeModal === "notify"} onClose={closeModal} />
-      <ChatModal visible={activeModal === "chat"} onClose={closeModal} />
+      <ChatModal visible={activeModal === "chat"} onClose={closeModal} userRole="student" />
     </View>
   );
 }

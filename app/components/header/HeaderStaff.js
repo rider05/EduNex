@@ -257,7 +257,7 @@ export default function HeaderStaff() {
 
       {/* Header Modals */}
       <StaffLeaveApprovalsModal visible={activeModal === "leaveApprovals" || activeModal === "staff_leave"} onClose={closeModal} />
-      <ChatModal visible={activeModal === "chat"} onClose={closeModal} />
+      <ChatModal visible={activeModal === "chat"} onClose={closeModal} userRole="staff" />
       <ClassTestModal visible={activeModal === "classtest" || activeModal === "test"} onClose={closeModal} />
       <ClassGroupMsgModal visible={activeModal === "broadcast" || activeModal === "groupMsg"} onClose={closeModal} />
       <CommunityModal visible={activeModal === "community"} onClose={closeModal} />

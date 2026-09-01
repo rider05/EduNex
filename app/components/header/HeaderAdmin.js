@@ -204,7 +204,7 @@ export default function HeaderAdmin() {
       {/* 🚀 Modals */}
       <AddUserModal visible={manageModal} onClose={() => setManageModal(false)} />
       <FullSettingsModal visible={settingsModal} onClose={() => setSettingsModal(false)} />
-      <ChatModal visible={chatModal} onClose={() => setChatModal(false)} />
+      <ChatModal visible={chatModal} onClose={() => setChatModal(false)} userRole="admin" />
     </View>
   );
 }

@@ -149,8 +149,7 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
       StatusBar.setBackgroundColor("#312E81");
       StatusBar.setBarStyle("light-content");
       if (Platform.OS === "android") {
-        NavigationBar.setBackgroundColorAsync("#1E1B4B");
-        NavigationBar.setButtonStyleAsync("light");
+        NavigationBar.setButtonStyleAsync("light").catch(() => {});
       }
     } catch {}
   }, []);

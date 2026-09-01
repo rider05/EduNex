@@ -42,62 +42,81 @@ async function searchFirst(path, params = {}) {
   }
 }
 
-function docMatchesUsername(doc, username) {
-  if (!doc || !username) return false;
-  const u = norm(username);
-  return [doc.username, doc.name, doc.rollNo, doc.roll, doc.email, doc.id].some(
-    (f) => f && (norm(f) === u || norm(f).includes(u))
-  );
-}
-
 async function resolveStudentDoc(user, username) {
+  if (user?.student && typeof user.student === "object") return user.student;
   const profile = user?.profile || {};
-  let doc =
-    (await fetchOneById("/students", profile.studentId || profile.id)) ||
-    (await searchFirst("/students", { roll: profile.rollNo })) ||
-    (await searchFirst("/students", { rollNo: username })) ||
-    (await searchFirst("/students", { q: username }));
-  if (!doc && profile.name) {
-    const alt = await searchFirst("/students", { q: profile.name });
-    if (alt && docMatchesUsername(alt, username)) doc = alt;
+
+  const candidates = await Promise.allSettled([
+    profile.studentId || profile.id ? fetchOneById("/students", profile.studentId || profile.id) : null,
+    profile.rollNo ? searchFirst("/students", { roll: profile.rollNo }) : null,
+    username ? searchFirst("/students", { rollNo: username }) : null,
+    username ? searchFirst("/students", { q: username }) : null,
+    profile.name ? searchFirst("/students", { q: profile.name }) : null,
+  ]);
+
+  for (const res of candidates) {
+    if (res.status === "fulfilled" && res.value) {
+      return res.value;
+    }
   }
-  return doc;
+  return null;
 }
 
 async function resolveStaffDoc(user, username) {
+  if (user?.staff && typeof user.staff === "object") return user.staff;
   const profile = user?.profile || {};
-  let doc =
-    (await fetchOneById("/staff", profile.staffId || profile.id)) ||
-    (await searchFirst("/staff", { id: username })) ||
-    (await searchFirst("/staff", { q: username }));
-  if (!doc && profile.name) {
-    doc = await searchFirst("/staff", { q: profile.name });
+
+  const candidates = await Promise.allSettled([
+    profile.staffId || profile.id ? fetchOneById("/staff", profile.staffId || profile.id) : null,
+    username ? searchFirst("/staff", { id: username }) : null,
+    username ? searchFirst("/staff", { q: username }) : null,
+    profile.name ? searchFirst("/staff", { q: profile.name }) : null,
+  ]);
+
+  for (const res of candidates) {
+    if (res.status === "fulfilled" && res.value) {
+      return res.value;
+    }
   }
-  return doc;
+  return null;
 }
 
 async function resolveParentDoc(user, username) {
+  if (user?.parent && typeof user.parent === "object") return user.parent;
   const profile = user?.profile || {};
-  let doc =
-    (await fetchOneById("/parents", profile.parentId || profile.id)) ||
-    (await searchFirst("/parents", { username: username })) ||
-    (await searchFirst("/parents", { wardRollNo: profile.wardRollNo })) ||
-    (await searchFirst("/parents", { q: username }));
-  if (!doc && profile.name) {
-    doc = await searchFirst("/parents", { q: profile.name });
+
+  const candidates = await Promise.allSettled([
+    profile.parentId || profile.id ? fetchOneById("/parents", profile.parentId || profile.id) : null,
+    username ? searchFirst("/parents", { username: username }) : null,
+    profile.wardRollNo ? searchFirst("/parents", { wardRollNo: profile.wardRollNo }) : null,
+    username ? searchFirst("/parents", { q: username }) : null,
+    profile.name ? searchFirst("/parents", { q: profile.name }) : null,
+  ]);
+
+  for (const res of candidates) {
+    if (res.status === "fulfilled" && res.value) {
+      return res.value;
+    }
   }
-  return doc;
+  return null;
 }
 
 async function resolveAdminDoc(user, username) {
+  if (user?.admin && typeof user.admin === "object") return user.admin;
   const profile = user?.profile || {};
-  let doc =
-    (await fetchOneById("/admins", profile.adminId || profile.id)) ||
-    (await searchFirst("/admins", { email: norm(user?.email) }));
-  if (!doc) {
-    doc = await searchFirst("/admins", { q: username });
+
+  const candidates = await Promise.allSettled([
+    profile.adminId || profile.id ? fetchOneById("/admins", profile.adminId || profile.id) : null,
+    user?.email ? searchFirst("/admins", { email: norm(user.email) }) : null,
+    username ? searchFirst("/admins", { q: username }) : null,
+  ]);
+
+  for (const res of candidates) {
+    if (res.status === "fulfilled" && res.value) {
+      return res.value;
+    }
   }
-  return doc;
+  return null;
 }
 
 /**

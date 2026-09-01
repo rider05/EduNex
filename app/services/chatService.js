@@ -1,5 +1,4 @@
 // services/chatService.js
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "./api";
 import { saveUserNotification } from "../utils/notificationUtils";
 
@@ -76,12 +75,12 @@ export function createMessageObject({
 }
 
 /**
- * Check if a message is still editable (within 15 minutes)
+ * Check if a message is still editable (within 15 minutes and sent by the current user)
  */
-export function isMessageEditable(message, currentUserId) {
+export function isMessageEditable(message, isSender = true) {
   if (!message || message.isDeleted || message.deletedForEveryone) return false;
-  if (currentUserId && message.senderId && message.senderId !== currentUserId) return false;
-  const elapsed = Date.now() - (message.timestamp || 0);
+  if (!isSender) return false;
+  const elapsed = Date.now() - (message.timestamp || new Date(message.createdAt || 0).getTime() || 0);
   return elapsed <= EDIT_TIME_LIMIT_MS;
 }
 
@@ -89,8 +88,9 @@ export function isMessageEditable(message, currentUserId) {
  * Get remaining minutes to edit a message
  */
 export function getRemainingEditMinutes(message) {
-  if (!message?.timestamp) return 0;
-  const elapsed = Date.now() - message.timestamp;
+  const ts = message?.timestamp || new Date(message?.createdAt || 0).getTime() || 0;
+  if (!ts) return 0;
+  const elapsed = Date.now() - ts;
   const remaining = Math.max(0, Math.ceil((EDIT_TIME_LIMIT_MS - elapsed) / (60 * 1000)));
   return remaining;
 }
@@ -192,7 +192,7 @@ export function subscribeToTypingStatus(callback) {
   return () => typingListeners.delete(callback);
 }
 
-function notifyChatSubscribers(data) {
+export function notifyChatSubscribers(data) {
   chatMessageListeners.forEach((cb) => {
     try {
       cb(data);
@@ -216,73 +216,183 @@ export function notifyTypingStatus(data) {
  * Helper to compute canonical paired thread key for 2 users
  */
 export function getCanonicalPairKey(id1, id2) {
-  const a = String(id1 || "user_1").trim();
-  const b = String(id2 || "user_2").trim();
+  const a = String(id1 || "user_1").trim().toLowerCase();
+  const b = String(id2 || "user_2").trim().toLowerCase();
   return [a, b].sort().join("__");
 }
 
 /**
- * Mark all incoming unread messages in a thread as 'read'
+ * Send real-time call signaling packet (invite, accept, decline, end)
+ */
+export async function sendCallSignal({
+  type = "call_invite", // "call_invite" | "call_accept" | "call_decline" | "call_end"
+  roomId,
+  caller,
+  recipientId,
+  recipientName,
+  callType = "audio",
+  channelType = "student_staff",
+}) {
+  const payload = {
+    text: `📞 ${type.replace("_", " ").toUpperCase()}`,
+    type: "call_signal",
+    signalType: type,
+    roomId,
+    caller,
+    senderId: caller?.id || "user_current",
+    senderName: caller?.name || "User",
+    senderRole: caller?.role || "student",
+    recipientId,
+    recipientName,
+    callType,
+    channelType,
+    timestamp: Date.now(),
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    api.post("/messages", payload).catch(() => {});
+  } catch {}
+
+  notifyChatSubscribers({
+    type: "call_signal",
+    signalType: type,
+    ...payload,
+  });
+
+  return payload;
+}
+
+/**
+ * Fetch and consolidate thread messages for a contact directly from the Database API
+ */
+export async function fetchThreadMessages({
+  contact,
+  channelType = "student_staff",
+  currentUser,
+}) {
+  try {
+    if (!contact) return [];
+    const contactId = String(contact.id || "").trim().toLowerCase();
+    const contactRoll = String(contact.rollNo || "").trim().toLowerCase();
+    const myId = String(
+      currentUser?.student?.rollNo ||
+        currentUser?.staff?.id ||
+        currentUser?.staffId ||
+        currentUser?.id ||
+        "user_current"
+    ).trim().toLowerCase();
+    const myRoll = String(currentUser?.student?.rollNo || currentUser?.rollNo || "").trim().toLowerCase();
+
+    const candidateContactIds = [contactId, contactRoll].filter(Boolean);
+    const candidateMyIds = [myId, myRoll].filter(Boolean);
+
+    // Fetch live messages directly from the database
+    let dbMessages = [];
+    try {
+      const res = await api
+        .get("/messages", { limit: 300, sort: "createdAt" })
+        .catch(() => null);
+      if (Array.isArray(res?.data)) {
+        dbMessages = res.data;
+      }
+    } catch {}
+
+    const messageMap = new Map();
+
+    for (const msg of dbMessages) {
+      if (!msg) continue;
+      const id = msg.id || msg._id;
+      if (!id) continue;
+
+      // Filter out raw signaling packets and automated call log text from chat stream
+      if (
+        msg.type === "call_signal" ||
+        msg.signalType ||
+        (typeof msg.text === "string" &&
+          (msg.text.startsWith("📞 CALL") ||
+            msg.text.startsWith("📞 INCOMING") ||
+            msg.text.startsWith("📞 Video Call") ||
+            msg.text.startsWith("📹 Video Call") ||
+            msg.text.startsWith("📞 Voice Call") ||
+            msg.text.startsWith("📞 Call ended")))
+      ) {
+        continue;
+      }
+
+      const sId = String(msg.senderId || "").trim().toLowerCase();
+      const rId = String(msg.recipientId || "").trim().toLowerCase();
+      const tKey = String(msg.threadKey || "").trim().toLowerCase();
+
+      const isIncoming = candidateContactIds.includes(sId) && (candidateMyIds.includes(rId) || !rId);
+      const isOutgoing = candidateMyIds.includes(sId) && (candidateContactIds.includes(rId) || !rId);
+      const isThreadKeyMatch = candidateContactIds.includes(tKey) || candidateMyIds.includes(tKey);
+
+      if (isIncoming || isOutgoing || isThreadKeyMatch) {
+        messageMap.set(id, { ...msg, id });
+      }
+    }
+
+    // Sort chronologically
+    const sorted = Array.from(messageMap.values()).sort(
+      (a, b) => (a.timestamp || new Date(a.createdAt || 0).getTime() || 0) - (b.timestamp || new Date(b.createdAt || 0).getTime() || 0)
+    );
+
+    return sorted;
+  } catch (err) {
+    console.warn("fetchThreadMessages error:", err);
+    return [];
+  }
+}
+
+/**
+ * Mark all incoming unread messages in a thread as 'read' directly in DB
  */
 export async function markThreadAsRead({
   threadKey,
   channelType = "student_staff",
   currentUserId,
+  unreadMessageIds = [],
 }) {
   try {
     if (!threadKey) return;
-    const storageKey = `chat_thread_${channelType}_${threadKey}`;
-    let raw = await AsyncStorage.getItem(storageKey);
-    if (!raw) {
-      raw = await AsyncStorage.getItem(`chat_thread_${threadKey}`);
+
+    // 1. Sync read receipt to backend batch endpoint
+    api.post("/messages/read", {
+      threadKey,
+      channelType,
+      readerId: currentUserId,
+      messageIds: unreadMessageIds,
+      readAt: new Date().toISOString(),
+    }).catch(() => {});
+
+    // 2. Individual fallback message updates in DB
+    if (Array.isArray(unreadMessageIds) && unreadMessageIds.length > 0) {
+      unreadMessageIds.slice(0, 10).forEach((msgId) => {
+        if (msgId) {
+          if (typeof api.put === "function") {
+            api.put(`/messages/${msgId}`, { status: "read", isRead: true }).catch(() => {});
+          } else if (typeof api.patch === "function") {
+            api.patch(`/messages/${msgId}`, { status: "read", isRead: true }).catch(() => {});
+          }
+        }
+      });
     }
-    if (!raw) return;
 
-    const list = JSON.parse(raw);
-    let changed = false;
-
-    const updated = list.map((msg) => {
-      // If message was sent to current user and is not read yet
-      if (msg.senderId !== currentUserId && msg.status !== "read") {
-        changed = true;
-        return { ...msg, status: "read" };
-      }
-      return msg;
+    // 3. Broadcast instant subscriber event
+    notifyChatSubscribers({
+      threadKey,
+      action: "read",
+      currentUserId,
+      messageIds: unreadMessageIds,
     });
-
-    if (changed) {
-      await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
-      AsyncStorage.setItem(`chat_thread_${threadKey}`, JSON.stringify(updated)).catch(() => {});
-
-      // If senderId is present on the messages, also update the sender's thread
-      const otherSenderId = list.find((m) => m.senderId && m.senderId !== currentUserId)?.senderId;
-      if (otherSenderId) {
-        const senderStorageKey = `chat_thread_${channelType}_${otherSenderId}`;
-        AsyncStorage.setItem(senderStorageKey, JSON.stringify(updated)).catch(() => {});
-      }
-
-      // Also update canonical pair key
-      if (currentUserId && threadKey) {
-        const pairKey = getCanonicalPairKey(currentUserId, threadKey);
-        AsyncStorage.setItem(`chat_thread_${channelType}_${pairKey}`, JSON.stringify(updated)).catch(() => {});
-      }
-
-      notifyChatSubscribers({ threadKey, updatedList: updated });
-
-      // Sync read receipt to backend
-      api.post("/messages/read", {
-        threadKey,
-        channelType,
-        readerId: currentUserId,
-      }).catch(() => {});
-    }
   } catch (e) {
     console.warn("markThreadAsRead error:", e);
   }
 }
 
 /**
- * Send DM Message strictly between real humans with zero simulated bot responses
+ * Send DM Message strictly between real humans, saved directly into DB
  */
 export async function sendDirectMessage({
   threadKey,
@@ -291,57 +401,53 @@ export async function sendDirectMessage({
   selectedContact,
 }) {
   try {
-    const storageKey = `chat_thread_${channelType}_${threadKey}`;
-    const raw = await AsyncStorage.getItem(storageKey);
-    const list = raw ? JSON.parse(raw) : [];
+    const contactId = String(selectedContact?.id || threadKey || "").trim();
+    const senderId = String(message.senderId || "").trim();
 
-    // 1. Initial State: Delivered
-    const initialMsg = { ...message, status: "delivered" };
-    const updated = [...list, initialMsg];
-
-    // Save in Sender's view
-    await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
-    AsyncStorage.setItem(`chat_thread_${threadKey}`, JSON.stringify(updated)).catch(() => {});
-
-    // Save in Recipient's view so when the other human logs in, the message is there
-    if (message.senderId) {
-      const recipientStorageKey = `chat_thread_${channelType}_${message.senderId}`;
-      AsyncStorage.setItem(recipientStorageKey, JSON.stringify(updated)).catch(() => {});
-      AsyncStorage.setItem(`chat_thread_${message.senderId}`, JSON.stringify(updated)).catch(() => {});
-    }
-
-    // Save in canonical pair key
-    if (message.senderId && threadKey) {
-      const pairKey = getCanonicalPairKey(message.senderId, threadKey);
-      AsyncStorage.setItem(`chat_thread_${channelType}_${pairKey}`, JSON.stringify(updated)).catch(() => {});
-    }
-
-    // Notify live UI subscribers
-    notifyChatSubscribers({ threadKey, message: initialMsg, updatedList: updated });
-
-    // Sync to backend database
-    api.post("/messages", {
-      ...initialMsg,
-      id: initialMsg.id,
-      text: initialMsg.text,
-      senderName: initialMsg.senderName,
-      senderId: initialMsg.senderId,
-      senderRole: initialMsg.senderRole || initialMsg.sender,
-      sender: initialMsg.senderRole || initialMsg.sender,
-      author: initialMsg.senderName,
-      recipientName: selectedContact?.name || initialMsg.recipientName,
-      recipientId: selectedContact?.id || initialMsg.recipientId,
-      recipientRole: initialMsg.recipientRole || selectedContact?.role,
+    // 1. Prepare DB document payload
+    const dbPayload = {
+      ...message,
+      id: message.id,
+      text: message.text,
+      senderName: message.senderName,
+      senderId: message.senderId,
+      senderRole: message.senderRole || message.sender,
+      sender: message.senderRole || message.sender,
+      author: message.senderName,
+      recipientName: selectedContact?.name || message.recipientName,
+      recipientId: selectedContact?.id || message.recipientId,
+      recipientRole: message.recipientRole || selectedContact?.role,
       channelType,
-      threadKey,
-      contactName: selectedContact?.name || initialMsg.recipientName || "Recipient",
-      attachment: initialMsg.attachment,
-      replyTo: initialMsg.replyTo,
-      timestamp: initialMsg.timestamp,
-      createdAt: initialMsg.createdAt || initialMsg.date,
-    }).catch(() => {});
+      threadKey: contactId,
+      contactName: selectedContact?.name || message.recipientName || "Recipient",
+      attachment: message.attachment,
+      replyTo: message.replyTo,
+      timestamp: message.timestamp,
+      createdAt: message.createdAt || message.date,
+      status: "delivered",
+    };
 
-    // Save push notification strictly in recipient's store
+    let createdDoc = dbPayload;
+
+    // Save directly to Backend Database API
+    try {
+      const res = await api.post("/messages", dbPayload);
+      if (res?.data) {
+        createdDoc = { ...dbPayload, ...res.data, id: res.data.id || res.data._id || dbPayload.id };
+      }
+    } catch (apiErr) {
+      console.warn("DB Message post error:", apiErr);
+    }
+
+    // Notify live UI subscribers for immediate real-time chat update
+    notifyChatSubscribers({
+      threadKey: contactId,
+      senderId,
+      recipientId: contactId,
+      message: createdDoc,
+    });
+
+    // Save push notification strictly in recipient's notification store
     const recipientTitle = getRecipientNotificationTitle(message);
     const attachmentPreview = message.attachment
       ? ` [${message.attachment.type === "image" ? "📷 Photo" : message.attachment.type === "video" ? "🎥 Video" : "🎤 Voice Note"}]`
@@ -364,7 +470,7 @@ export async function sendDirectMessage({
       },
     }).catch(() => {});
 
-    return updated;
+    return [createdDoc];
   } catch (err) {
     console.warn("sendDirectMessage error:", err);
     return null;
@@ -372,7 +478,7 @@ export async function sendDirectMessage({
 }
 
 /**
- * Edit an existing message (if within 15 mins)
+ * Edit an existing message (if within 15 mins) directly in DB
  */
 export async function editDirectMessage({
   threadKey,
@@ -381,38 +487,26 @@ export async function editDirectMessage({
   newText,
 }) {
   try {
-    const storageKey = `chat_thread_${channelType}_${threadKey}`;
-    let raw = await AsyncStorage.getItem(storageKey);
-    if (!raw) {
-      raw = await AsyncStorage.getItem(`chat_thread_${threadKey}`);
-    }
-    const list = raw ? JSON.parse(raw) : [];
+    if (!messageId || !newText) return null;
 
-    const updated = list.map((msg) => {
-      if (msg.id === messageId) {
-        if (!isMessageEditable(msg)) {
-          throw new Error("Message edit window has expired (15-minute limit)");
-        }
-        return {
-          ...msg,
-          text: newText.trim(),
-          isEdited: true,
-          editedAt: Date.now(),
-        };
-      }
-      return msg;
-    });
-
-    await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
-    AsyncStorage.setItem(`chat_thread_${threadKey}`, JSON.stringify(updated)).catch(() => {});
-
-    api.put(`/messages/${messageId}`, {
+    const patchPayload = {
       text: newText.trim(),
       isEdited: true,
       editedAt: Date.now(),
-    }).catch(() => {});
+    };
 
-    return updated;
+    try {
+      if (typeof api.put === "function") {
+        await api.put(`/messages/${messageId}`, patchPayload);
+      } else if (typeof api.patch === "function") {
+        await api.patch(`/messages/${messageId}`, patchPayload);
+      }
+    } catch (e) {
+      console.warn("DB edit message error:", e);
+    }
+
+    notifyChatSubscribers({ threadKey, messageId, action: "edit", newText });
+    return true;
   } catch (err) {
     console.warn("editDirectMessage error:", err);
     throw err;
@@ -420,7 +514,7 @@ export async function editDirectMessage({
 }
 
 /**
- * Delete a message (for Everyone or for Me)
+ * Delete a message (for Everyone or for Me) directly in DB
  */
 export async function deleteDirectMessage({
   threadKey,
@@ -429,42 +523,28 @@ export async function deleteDirectMessage({
   deleteForEveryone = false,
 }) {
   try {
-    const storageKey = `chat_thread_${channelType}_${threadKey}`;
-    let raw = await AsyncStorage.getItem(storageKey);
-    if (!raw) {
-      raw = await AsyncStorage.getItem(`chat_thread_${threadKey}`);
-    }
-    const list = raw ? JSON.parse(raw) : [];
+    if (!messageId) return null;
 
-    let updated;
     if (deleteForEveryone) {
-      updated = list.map((msg) => {
-        if (msg.id === messageId) {
-          return {
-            ...msg,
-            text: "🚫 This message was deleted",
-            deletedForEveryone: true,
-            attachment: null,
-          };
+      try {
+        if (typeof api.delete === "function") {
+          await api.delete(`/messages/${messageId}`);
+        } else if (typeof api.del === "function") {
+          await api.del(`/messages/${messageId}`);
         }
-        return msg;
-      });
-    } else {
-      updated = list.filter((msg) => msg.id !== messageId);
-    }
-
-    await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
-    AsyncStorage.setItem(`chat_thread_${threadKey}`, JSON.stringify(updated)).catch(() => {});
-
-    if (deleteForEveryone) {
-      if (typeof api.delete === "function") {
-        api.delete(`/messages/${messageId}`, { data: { deleteForEveryone: true } }).catch(() => {});
-      } else if (typeof api.del === "function") {
-        api.del(`/messages/${messageId}`, { data: { deleteForEveryone: true } }).catch(() => {});
+      } catch (e) {
+        console.warn("DB delete message error:", e);
       }
+    } else {
+      try {
+        if (typeof api.put === "function") {
+          await api.put(`/messages/${messageId}`, { isDeleted: true });
+        }
+      } catch {}
     }
 
-    return updated;
+    notifyChatSubscribers({ threadKey, messageId, action: "delete", deleteForEveryone });
+    return true;
   } catch (err) {
     console.warn("deleteDirectMessage error:", err);
     return null;
@@ -477,6 +557,7 @@ export async function deleteDirectMessage({
 export const DEFAULT_FACULTY_ROSTER = [
   {
     id: "staff_1",
+    staffId: "staff_1",
     name: "Dr. K. Vigneshwaran",
     role: "Class Tutor & HOD",
     badge: "ASSIGNED TUTOR",
@@ -493,6 +574,7 @@ export const DEFAULT_FACULTY_ROSTER = [
   },
   {
     id: "staff_2",
+    staffId: "staff_2",
     name: "Dr. M. Sangeetha",
     role: "Associate Professor",
     badge: "FACULTY",
@@ -509,6 +591,7 @@ export const DEFAULT_FACULTY_ROSTER = [
   },
   {
     id: "staff_3",
+    staffId: "staff_3",
     name: "Prof. R. Ananth",
     role: "Assistant Professor",
     badge: "FACULTY",
@@ -528,6 +611,7 @@ export const DEFAULT_FACULTY_ROSTER = [
 export const DEFAULT_STUDENT_ROSTER = [
   {
     id: "stud_1",
+    rollNo: "22AD012",
     name: "M. Balaji (22AD012)",
     role: "Student · III Year AI & DS",
     badge: "ASSIGNED WARD",
@@ -544,6 +628,7 @@ export const DEFAULT_STUDENT_ROSTER = [
   },
   {
     id: "stud_2",
+    rollNo: "22CS045",
     name: "P. Sneha (22CS045)",
     role: "Student · III Year CSE",
     badge: "STUDENT",
@@ -560,6 +645,7 @@ export const DEFAULT_STUDENT_ROSTER = [
   },
   {
     id: "stud_3",
+    rollNo: "22AD008",
     name: "R. Aravind (22AD008)",
     role: "Student · III Year AI & DS",
     badge: "ASSIGNED WARD",
@@ -646,6 +732,70 @@ export const DEFAULT_ADMIN_ROSTER = [
   },
 ];
 
+/**
+ * Helper to resolve the true specific person name (e.g. Dr. K. Vigneshwaran)
+ * instead of generic titles like "Faculty Member" or "Student"
+ */
+export function resolveHumanDisplayName(id = "", role = "staff", fallbackName = "") {
+  const normId = String(id || "").toLowerCase().trim();
+  const cleanFallback = String(fallbackName || "").trim();
+
+  // If already a valid specific name, return it
+  if (
+    cleanFallback &&
+    !["faculty member", "faculty advisor", "faculty", "staff", "student", "caller", "user", "contact"].includes(cleanFallback.toLowerCase())
+  ) {
+    return cleanFallback;
+  }
+
+  // 1. Check Faculty roster
+  const foundStaff = DEFAULT_FACULTY_ROSTER.find(
+    (s) =>
+      String(s.id).toLowerCase() === normId ||
+      String(s.staffId || "").toLowerCase() === normId ||
+      (s.email && String(s.email).toLowerCase() === normId)
+  );
+  if (foundStaff?.name) return foundStaff.name;
+
+  // 2. Check Student roster
+  const foundStudent = DEFAULT_STUDENT_ROSTER.find(
+    (st) =>
+      String(st.id).toLowerCase() === normId ||
+      String(st.rollNo || "").toLowerCase() === normId ||
+      (st.email && String(st.email).toLowerCase() === normId)
+  );
+  if (foundStudent?.name) return foundStudent.name;
+
+  // 3. Check Parent roster
+  const foundParent = DEFAULT_PARENT_ROSTER.find(
+    (p) =>
+      String(p.id).toLowerCase() === normId ||
+      (p.email && String(p.email).toLowerCase() === normId)
+  );
+  if (foundParent?.name) return foundParent.name;
+
+  // 4. Check Admin roster
+  const foundAdmin = DEFAULT_ADMIN_ROSTER.find(
+    (a) =>
+      String(a.id).toLowerCase() === normId ||
+      (a.email && String(a.email).toLowerCase() === normId)
+  );
+  if (foundAdmin?.name) return foundAdmin.name;
+
+  // 5. Explicit ID matches
+  if (normId === "staff_1" || normId === "stf001" || normId.includes("vignesh")) return "Dr. K. Vigneshwaran (Class Tutor & HOD)";
+  if (normId === "staff_2" || normId === "stf002" || normId.includes("sangeetha")) return "Dr. M. Sangeetha (Associate Prof)";
+  if (normId === "22ad012" || normId === "stud_1") return "M. Balaji (22AD012)";
+  if (normId === "22cs045" || normId === "stud_2") return "P. Sneha (22CS045)";
+  if (normId === "22ad008" || normId === "stud_3") return "R. Aravind (22AD008)";
+  // 6. Non-roster ID-based fallback (never force a wrong name on other IDs)
+  if (cleanFallback) return cleanFallback;
+  if (role === "staff") return id ? `Faculty (${id})` : "Faculty Advisor";
+  if (role === "parent") return id ? `Parent (${id})` : "Parent / Guardian";
+  if (role === "admin") return "Admin Office";
+  return id ? `Student (${id})` : "Student";
+}
+
 export default {
   createMessageObject,
   isMessageEditable,
@@ -655,6 +805,7 @@ export default {
   sendDirectMessage,
   editDirectMessage,
   deleteDirectMessage,
+  resolveHumanDisplayName,
   DEFAULT_FACULTY_ROSTER,
   DEFAULT_STUDENT_ROSTER,
   DEFAULT_PARENT_ROSTER,

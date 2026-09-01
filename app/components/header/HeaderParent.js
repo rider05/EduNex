@@ -181,7 +181,7 @@ export default function HeaderParent() {
       <AssignmentModal visible={activeModal === "assignment"} onClose={closeModal} />
       <FeedbackModal visible={activeModal === "feedback"} onClose={closeModal} />
       <EntryExitModal visible={activeModal === "entryexit"} onClose={closeModal} />
-      <ChatModal visible={activeModal === "chat"} onClose={closeModal} />
+      <ChatModal visible={activeModal === "chat"} onClose={closeModal} userRole="parent" />
     </View>
   );
 }

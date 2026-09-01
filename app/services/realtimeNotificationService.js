@@ -6,6 +6,7 @@ import { resolveIdentity } from "./identityService";
 import { secureGet, secureSet } from "./secureStorage";
 import { showToast } from "../utils/toastService";
 import { saveUserNotification, handleNotificationAction } from "../utils/notificationUtils";
+import { notifyChatSubscribers, resolveHumanDisplayName } from "./chatService";
 
 // Configure expo-notifications presentation behavior in foreground
 Notifications.setNotificationHandler({
@@ -27,6 +28,14 @@ let lastKnownLeaves = new Map(); // id -> status
 let lastKnownNotices = new Set(); // set of notice IDs
 let lastKnownMessages = new Set(); // set of message IDs
 let initializedState = false;
+let activeOpenChatContactId = null;
+
+/**
+ * Set or clear the active chat contact ID currently open on screen
+ */
+export function setActiveOpenChatContact(contactId) {
+  activeOpenChatContactId = contactId ? String(contactId).toLowerCase().trim() : null;
+}
 
 /**
  * Request native notification permissions
@@ -72,6 +81,21 @@ export async function triggerRealtimeNotification({
   try {
     // 0. Ensure notification channel is ready
     await setupPushNotificationPermissions();
+
+    // Suppress popups for the active open chat conversation (pure live chat mode)
+    if (activeOpenChatContactId && (data?.type === "chat" || data?.metadata?.type === "chat")) {
+      const sender = String(data?.senderId || data?.metadata?.senderId || "").toLowerCase().trim();
+      const threadKey = String(data?.threadKey || data?.metadata?.threadKey || "").toLowerCase().trim();
+      const contactId = String(data?.contactId || "").toLowerCase().trim();
+      if (
+        activeOpenChatContactId === sender ||
+        activeOpenChatContactId === threadKey ||
+        activeOpenChatContactId === contactId
+      ) {
+        // Chat is open on screen! Do not show banner or toast popup
+        return;
+      }
+    }
 
     // Suppress self-notifications on sender's device unless forcePopup is requested
     if (data?.senderId && !data?.forcePopup) {
@@ -339,14 +363,32 @@ async function performRealtimeCheck() {
     // =========================================================================
     // D. INCOMING CHAT MESSAGES REALTIME CHECK (STRICTLY FOR OPPOSITE PERSON)
     // =========================================================================
-    const currentUserId =
+    // D. INCOMING CHAT MESSAGES REALTIME CHECK (STRICTLY FOR OPPOSITE PERSON)
+    // =========================================================================
+    const currentUserId = String(
       identity?.student?.rollNo ||
       identity?.staff?.id ||
+      identity?.staff?.staffId ||
       identity?.staffId ||
       identity?.user?.profile?.rollNo ||
       identity?.user?.rollNo ||
       identity?.id ||
-      "";
+      ""
+    ).trim().toLowerCase();
+
+    const currentRollNo = String(
+      identity?.student?.rollNo ||
+      identity?.rollNo ||
+      identity?.user?.rollNo ||
+      ""
+    ).trim().toLowerCase();
+
+    const currentStaffId = String(
+      identity?.staff?.id ||
+      identity?.staff?.staffId ||
+      identity?.staffId ||
+      ""
+    ).trim().toLowerCase();
 
     for (const msg of liveMessages) {
       const id = msg.id || msg._id;
@@ -355,18 +397,57 @@ async function performRealtimeCheck() {
       if (!lastKnownMessages.has(id)) {
         lastKnownMessages.add(id);
 
+        const sId = String(msg.senderId || "").trim().toLowerCase();
+        const rId = String(msg.recipientId || "").trim().toLowerCase();
+
         const isSender =
-          (msg.senderId && currentUserId && String(msg.senderId).toLowerCase() === String(currentUserId).toLowerCase()) ||
+          (sId && (sId === currentUserId || (currentRollNo && sId === currentRollNo) || (currentStaffId && sId === currentStaffId))) ||
           (msg.sender === role && msg.senderRole === role);
 
         const isRecipient =
-          (msg.recipientId && currentUserId && String(msg.recipientId).toLowerCase() === String(currentUserId).toLowerCase()) ||
+          (rId && (rId === currentUserId || (currentRollNo && rId === currentRollNo) || (currentStaffId && rId === currentStaffId))) ||
           (msg.recipientRole && String(msg.recipientRole).toLowerCase() === String(role).toLowerCase()) ||
           (msg.recipient && String(msg.recipient).toLowerCase() === String(role).toLowerCase());
 
         // ONLY trigger push notification popup if the message is from someone else to this user
         if (isRecipient && !isSender) {
-          const senderDisplayName = msg.senderName || (msg.senderRole === "staff" ? "Faculty Advisor" : "Student");
+          // Handle Real-Time Call Signaling Packets
+          if (msg.type === "call_signal") {
+            // Forward directly to in-app listeners (ChatModal)
+            notifyChatSubscribers({
+              type: "call_signal",
+              signalType: msg.signalType || "call_invite",
+              ...msg,
+            });
+
+            if (msg.signalType === "call_invite") {
+              const callerName = resolveHumanDisplayName(
+                msg.senderId || msg.caller?.id,
+                msg.senderRole || msg.caller?.role || "staff",
+                msg.senderName || msg.caller?.name
+              );
+              const callKind = msg.callType === "video" ? "Video Call" : "Voice Call";
+              await triggerRealtimeNotification({
+                title: `📞 Incoming ${callKind}`,
+                body: `${callerName} is calling you. Tap to answer full duplex call.`,
+                type: "warning",
+                data: {
+                  type: "incoming_call",
+                  callType: msg.callType || "audio",
+                  roomId: msg.roomId,
+                  caller: msg.caller || { id: msg.senderId, name: callerName, role: msg.senderRole },
+                  channelType: msg.channelType || "student_staff",
+                },
+              });
+            }
+            continue;
+          }
+
+          const senderDisplayName = resolveHumanDisplayName(
+            msg.senderId,
+            msg.senderRole || "staff",
+            msg.senderName
+          );
           const chatTitle = `💬 ${senderDisplayName}`;
           const chatBody = msg.text || (msg.attachment ? `Sent an attachment (${msg.attachment.type || "file"})` : "New message");
 
@@ -395,7 +476,7 @@ async function performRealtimeCheck() {
 /**
  * Start Real-time Notification Background Watcher
  */
-export function startRealtimeWatcher(intervalMs = 12000) {
+export function startRealtimeWatcher(intervalMs = 2000) {
   if (isWatcherActive) return;
   isWatcherActive = true;
 
@@ -404,7 +485,7 @@ export function startRealtimeWatcher(intervalMs = 12000) {
   // Run immediate first check
   performRealtimeCheck();
 
-  // Periodic polling watcher (4 seconds)
+  // Periodic polling watcher (3 seconds for rapid call signaling)
   watcherInterval = setInterval(() => {
     performRealtimeCheck();
   }, intervalMs);

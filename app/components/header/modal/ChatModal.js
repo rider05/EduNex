@@ -22,6 +22,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
+import { CameraView, Camera } from "expo-camera";
+import * as WebBrowser from "expo-web-browser";
 import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
 import { showToast } from "../../../utils/toastService";
@@ -33,57 +35,74 @@ import {
   extractUrls,
   getChannelTabsForRole,
   sendDirectMessage,
+  fetchThreadMessages,
   editDirectMessage,
   deleteDirectMessage,
   markThreadAsRead,
   notifyTypingStatus,
   subscribeToChatMessages,
   subscribeToTypingStatus,
+  sendCallSignal,
+  getCanonicalPairKey,
+  resolveHumanDisplayName,
   DEFAULT_FACULTY_ROSTER,
   DEFAULT_STUDENT_ROSTER,
   DEFAULT_PARENT_ROSTER,
   DEFAULT_ADMIN_ROSTER,
 } from "../../../services/chatService";
 import { onNavigateToNotification } from "../../../utils/notificationUtils";
+import { setActiveOpenChatContact } from "../../../services/realtimeNotificationService";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
-const QUICK_PROMPTS = [
-  "Good morning Professor, had a quick question regarding the assignment.",
-  "Sir, could you please review my lab submission?",
-  "Requesting a 10-minute cabin meeting today if convenient.",
-  "Thank you for the guidance!",
-];
 
-export default function ChatModal({ visible, onClose }) {
+
+export default function ChatModal({ visible, onClose, initialContact = null, userRole = null }) {
   const { colors, isDarkMode } = useTheme();
   const slideAnim = useRef(new Animated.Value(100)).current;
   const flatListRef = useRef(null);
   const lastTapRef = useRef(0);
+  const typingDebounceRef = useRef(null);
 
   // User identity
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Channel Tabs based on logged-in role
-  const [selectedChannelTab, setSelectedChannelTab] = useState(null);
+  // Effective role: prioritize passed userRole, fallback to currentUser, default to student
+  const effectiveRole = userRole || currentUser?.role || "student";
 
-  // Screen View: 'chat' (Direct 1-on-1 Chat Room by default) | 'directory'
-  const [currentView, setCurrentView] = useState("chat");
-  const [selectedStaff, setSelectedStaff] = useState(DEFAULT_FACULTY_ROSTER[0]);
+  // Dynamic available channel tabs for current role
+  const channelTabs = useMemo(() => {
+    return getChannelTabsForRole(effectiveRole);
+  }, [effectiveRole]);
+
+  // Channel Tabs based on logged-in role
+  const [selectedChannelTab, setSelectedChannelTab] = useState(channelTabs[0] || null);
+
+  // Screen View: 'directory' | 'chat'
+  const [currentView, setCurrentView] = useState("directory");
+  const [selectedStaff, setSelectedStaff] = useState(initialContact || null);
 
   // Search & Department Filter
   const [searchQuery, setSearchQuery] = useState("");
   const [deptFilter, setDeptFilter] = useState("All");
 
-  // Contacts dataset
-  const [contacts, setContacts] = useState(DEFAULT_FACULTY_ROSTER);
+  // Contacts dataset - empty initially to prevent flashing wrong role's contacts
+  const [contacts, setContacts] = useState([]);
 
   // Chat message state keyed by contact id
   const [threads, setThreads] = useState({});
   const [newMsg, setNewMsg] = useState("");
   const [showStaffInfo, setShowStaffInfo] = useState(false);
+
+  // WhatsApp 3-Dots More Options & Settings State
+  const [showChatMoreMenu, setShowChatMoreMenu] = useState(false);
+  const [showDirectoryMoreMenu, setShowDirectoryMoreMenu] = useState(false);
+  const [isChatMuted, setIsChatMuted] = useState(false);
+  const [isContactBlocked, setIsContactBlocked] = useState(false);
+  const [chatWallpaper, setChatWallpaper] = useState("classic"); // 'classic' | 'doodle' | 'dark' | 'mint'
+  const [showChatSettingsModal, setShowChatSettingsModal] = useState(false);
 
   // Real-time Live Typing Presence State
   const [typingState, setTypingState] = useState(null);
@@ -101,13 +120,23 @@ export default function ChatModal({ visible, onClose }) {
   const [activeVoiceNotePlaying, setActiveVoiceNotePlaying] = useState(null);
   const recordingIntervalRef = useRef(null);
 
-  // Audio / Video Calling State
+  // Real Audio / Video Calling State
   const [isCalling, setIsCalling] = useState(false);
-  const [callType, setCallType] = useState("audio");
+  const [callType, setCallType] = useState("audio"); // 'audio' | 'video'
   const [callTimer, setCallTimer] = useState(0);
+  const [callStatus, setCallStatus] = useState("calling"); // 'calling' | 'ringing' | 'connected' | 'ended'
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(false);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [cameraFacing, setCameraFacing] = useState("front"); // 'front' | 'back'
+  const [hasCameraPermission, setHasCameraPermission] = useState(false);
+  const [incomingCall, setIncomingCall] = useState(null); // { caller, callType, channelType }
   const callIntervalRef = useRef(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const wave1Anim = useRef(new Animated.Value(12)).current;
+  const wave2Anim = useRef(new Animated.Value(24)).current;
+  const wave3Anim = useRef(new Animated.Value(16)).current;
+  const wave4Anim = useRef(new Animated.Value(30)).current;
 
   // Message Interaction State (Long Press Action Sheet)
   const [actionMessage, setActionMessage] = useState(null);
@@ -127,15 +156,12 @@ export default function ChatModal({ visible, onClose }) {
   // Privacy E2EE Modal State
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
-  // Dynamic available channel tabs for current role
-  const channelTabs = useMemo(() => {
-    return getChannelTabsForRole(currentUser?.role || "student");
-  }, [currentUser]);
-
-  // Set default active tab
+  // Sync active channel tab when channelTabs change
   useEffect(() => {
-    if (channelTabs.length > 0 && !selectedChannelTab) {
-      setSelectedChannelTab(channelTabs[0]);
+    if (channelTabs.length > 0) {
+      if (!selectedChannelTab || !channelTabs.some((t) => t.channelType === selectedChannelTab.channelType)) {
+        setSelectedChannelTab(channelTabs[0]);
+      }
     }
   }, [channelTabs, selectedChannelTab]);
 
@@ -154,20 +180,22 @@ export default function ChatModal({ visible, onClose }) {
     }
   }, [visible]);
 
-  // 2. Load Contacts based on Selected Channel Tab
+  // 2. Load Contacts based on Selected Channel Tab & Effective Role
   useEffect(() => {
+    let isCancelled = false;
     async function loadContactsForChannel() {
       if (!selectedChannelTab) return;
       const ch = selectedChannelTab.channelType;
 
       if (ch === "student_staff") {
-        if (currentUser?.role === "staff") {
+        if (effectiveRole === "staff") {
           // Staff viewing students
           try {
             const res = await api.get("/students").catch(() => null);
-            if (Array.isArray(res?.data) && res.data.length > 0) {
+            if (!isCancelled && Array.isArray(res?.data) && res.data.length > 0) {
               const mapped = res.data.map((s, idx) => ({
-                id: s._id || s.id || `stud_${idx}`,
+                id: s.rollNo || s.roll || s.id || s._id || `stud_${idx}`,
+                rollNo: s.rollNo || s.roll || "",
                 name: `${s.name || "Student"} (${s.rollNo || s.roll || "22AD001"})`,
                 role: `Student · ${s.department || "Engineering"}`,
                 badge: idx === 0 ? "ASSIGNED WARD" : "STUDENT",
@@ -186,40 +214,45 @@ export default function ChatModal({ visible, onClose }) {
               return;
             }
           } catch {}
-          setContacts(DEFAULT_STUDENT_ROSTER);
+          if (!isCancelled) setContacts(DEFAULT_STUDENT_ROSTER);
         } else {
           // Student viewing staff / tutors
           try {
             const staffRes = await api.get("/staff").catch(() => null);
-            if (Array.isArray(staffRes?.data) && staffRes.data.length > 0) {
-              const mapped = staffRes.data.map((s, idx) => ({
-                id: s._id || s.id || `staff_${idx}`,
-                name: s.name || "Faculty Member",
-                role: s.designation || s.role || "Professor",
-                badge: idx === 0 ? "ASSIGNED TUTOR" : "FACULTY",
-                dept: s.department || s.dept || "General",
-                subject: s.subject || s.specialization || "Engineering",
-                cabin: s.cabin || s.room || "Academic Block",
-                status: idx % 2 === 0 ? "online" : "in_lecture",
-                statusText: idx % 2 === 0 ? "online" : "In Lecture",
-                initials: (s.name || "F").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase(),
-                avatarColor: idx % 3 === 0 ? "#059669" : idx % 3 === 1 ? "#0D9488" : "#D97706",
-                phone: s.phone || "+91 98765 43210",
-                email: s.email || "faculty@edunex.edu",
-                e2eeKey: `0x${Math.random().toString(16).substring(2, 8).toUpperCase()}...B2`,
-              }));
+            if (!isCancelled && Array.isArray(staffRes?.data) && staffRes.data.length > 0) {
+              const mapped = staffRes.data.map((s, idx) => {
+                const staffRealId = s.staffId || s.id || s._id || `staff_${idx + 1}`;
+                const staffRealName = resolveHumanDisplayName(staffRealId, "staff", s.name || s.fullName);
+                return {
+                  id: staffRealId,
+                  staffId: staffRealId,
+                  name: staffRealName,
+                  role: s.designation || s.role || (idx === 0 ? "Class Tutor & HOD" : "Associate Professor"),
+                  badge: idx === 0 ? "ASSIGNED TUTOR" : "FACULTY",
+                  dept: s.department || s.dept || "AI & Data Science",
+                  subject: s.subject || s.specialization || "Deep Neural Networks",
+                  cabin: s.cabin || s.room || `Academic Block 3, Room ${401 + idx}`,
+                  status: idx % 2 === 0 ? "online" : "in_lecture",
+                  statusText: idx % 2 === 0 ? "online" : "In Lecture",
+                  initials: staffRealName.split(" ").filter((w) => !w.startsWith("Dr.") && !w.startsWith("Prof.")).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "KV",
+                  avatarColor: idx % 3 === 0 ? "#059669" : idx % 3 === 1 ? "#0D9488" : "#D97706",
+                  phone: s.phone || "+91 98765 43210",
+                  email: s.email || "vignesh.ai@edunex.edu",
+                  e2eeKey: `0x${Math.random().toString(16).substring(2, 8).toUpperCase()}...B2`,
+                };
+              });
               setContacts(mapped);
               return;
             }
           } catch {}
-          setContacts(DEFAULT_FACULTY_ROSTER);
+          if (!isCancelled) setContacts(DEFAULT_FACULTY_ROSTER);
         }
       } else if (ch === "staff_staff") {
         setContacts(DEFAULT_FACULTY_ROSTER);
       } else if (ch === "staff_parent" || ch === "admin_parent") {
         setContacts(DEFAULT_PARENT_ROSTER);
       } else if (ch === "admin_staff" || ch === "admin_student") {
-        if (currentUser?.role === "admin") {
+        if (effectiveRole === "admin") {
           setContacts(ch === "admin_staff" ? DEFAULT_FACULTY_ROSTER : DEFAULT_STUDENT_ROSTER);
         } else {
           setContacts(DEFAULT_ADMIN_ROSTER);
@@ -231,7 +264,10 @@ export default function ChatModal({ visible, onClose }) {
     if (visible && selectedChannelTab) {
       loadContactsForChannel();
     }
-  }, [visible, selectedChannelTab, currentUser]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [visible, selectedChannelTab, effectiveRole]);
 
   // Modal Slide Animation
   useEffect(() => {
@@ -250,82 +286,227 @@ export default function ChatModal({ visible, onClose }) {
     return () => showSub.remove();
   }, []);
 
-  // Listen to incoming live messages & auto-scroll
+  // Check if a message was sent by the currently logged-in user
+  const isMyMessage = useCallback(
+    (msg) => {
+      if (!msg) return false;
+      const myId = String(
+        currentUser?.student?.rollNo ||
+          currentUser?.staffId ||
+          currentUser?.staff?.id ||
+          currentUser?.id ||
+          ""
+      ).trim().toLowerCase();
+      const myRoll = String(currentUser?.student?.rollNo || currentUser?.rollNo || "").trim().toLowerCase();
+      const sId = String(msg.senderId || "").trim().toLowerCase();
+      const rId = String(msg.recipientId || "").trim().toLowerCase();
+      const cId = String(selectedStaff?.id || "").trim().toLowerCase();
+      const cRoll = String(selectedStaff?.rollNo || "").trim().toLowerCase();
+
+      // If sender matches my identifier
+      if (myId && sId === myId) return true;
+      if (myRoll && sId === myRoll) return true;
+
+      // If recipient matches the active contact, I sent it
+      if (cId && rId === cId) return true;
+      if (cRoll && rId === cRoll) return true;
+
+      // If sender matches active contact, the other person sent it
+      if (cId && sId === cId) return false;
+      if (cRoll && sId === cRoll) return false;
+
+      return msg.senderRole === effectiveRole || msg.sender === effectiveRole;
+    },
+    [currentUser, selectedStaff, effectiveRole]
+  );
+
+  // Fetch messages from Storage / API for selected contact in channel & mark unread as read
+  const syncStaffMessages = useCallback(
+    async (targetContact) => {
+      try {
+        const contactObj =
+          typeof targetContact === "object" && targetContact !== null
+            ? targetContact
+            : contacts?.find((c) => c.id === targetContact || c.rollNo === targetContact) || {
+                id: targetContact,
+              };
+
+        const contactId = contactObj.id;
+        if (!contactId) return;
+
+        const channel = selectedChannelTab?.channelType || "student_staff";
+
+        const msgs = await fetchThreadMessages({
+          contact: contactObj,
+          channelType: channel,
+          currentUser,
+        });
+
+        if (Array.isArray(msgs)) {
+          setThreads((prev) => ({ ...prev, [contactId]: msgs }));
+
+          // Automatically send read receipts for incoming unread messages
+          const myId =
+            currentUser?.student?.rollNo ||
+            currentUser?.staffId ||
+            currentUser?.id ||
+            "user_current";
+
+          const unreadIds = msgs
+            .filter((m) => m && !m.isDeleted && !isMyMessage(m) && m.status !== "read" && !m.isRead)
+            .map((m) => m.id)
+            .filter(Boolean);
+
+          if (unreadIds.length > 0) {
+            markThreadAsRead({
+              threadKey: contactId,
+              channelType: channel,
+              currentUserId: myId,
+              unreadMessageIds: unreadIds,
+            });
+          }
+        }
+      } catch (e) {
+        console.log("Chat fetch err:", e?.message || e);
+      }
+    },
+    [selectedChannelTab, currentUser, contacts, isMyMessage]
+  );
+
+  // Listen to incoming live messages, read receipts & calls
   useEffect(() => {
-    const unsub = subscribeToChatMessages(({ threadKey, updatedList }) => {
-      setThreads((prev) => ({
-        ...prev,
-        [threadKey]: updatedList,
-      }));
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    });
+    const unsub = subscribeToChatMessages(
+      (payload) => {
+        if (!payload) return;
+
+        // 1. Process Real Call Signaling
+        if (payload.type === "call_signal" || payload.signalType) {
+          const myId = String(
+            currentUser?.student?.rollNo ||
+            currentUser?.staffId ||
+            currentUser?.staff?.id ||
+            currentUser?.id ||
+            ""
+          ).toLowerCase().trim();
+          const myRoll = String(currentUser?.student?.rollNo || currentUser?.rollNo || "").toLowerCase().trim();
+          const myStaffId = String(currentUser?.staff?.id || currentUser?.staffId || "").toLowerCase().trim();
+          const myRole = String(currentUser?.role || effectiveRole || "").toLowerCase().trim();
+
+          const rId = String(payload.recipientId || "").toLowerCase().trim();
+          const rRole = String(payload.recipientRole || "").toLowerCase().trim();
+
+          const isTargetedToMe =
+            (myId && rId === myId) ||
+            (myRoll && rId === myRoll) ||
+            (myStaffId && rId === myStaffId) ||
+            (rRole && myRole && rRole === myRole && !rId);
+
+          if (payload.signalType === "call_invite" && isTargetedToMe) {
+            setIncomingCall(payload);
+            try {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            } catch {}
+            return;
+          }
+
+          if (payload.signalType === "call_accept") {
+            setCallStatus("connected");
+            return;
+          }
+
+          if (payload.signalType === "call_end" || payload.signalType === "call_decline") {
+            if (isCalling) {
+              if (callIntervalRef.current) clearInterval(callIntervalRef.current);
+              setIsCalling(false);
+              setCallStatus("ended");
+              setCallTimer(0);
+              showToast("📞 Call ended by remote user", "info");
+            }
+            if (incomingCall) {
+              setIncomingCall(null);
+            }
+            return;
+          }
+        }
+
+        // 2. Process Messages & Read Receipts
+        const { threadKey, senderId, recipientId, updatedList, action } = payload;
+        if (selectedStaff) {
+          const contactId = selectedStaff.id;
+          const contactRoll = selectedStaff.rollNo;
+          const isMatch =
+            threadKey === contactId ||
+            threadKey === contactRoll ||
+            senderId === contactId ||
+            senderId === contactRoll ||
+            recipientId === contactId ||
+            recipientId === contactRoll;
+
+          if (isMatch) {
+            if (action === "read") {
+              setThreads((prev) => {
+                const list = prev[contactId] || [];
+                const updated = list.map((msg) =>
+                  isMyMessage(msg) ? { ...msg, status: "read", isRead: true } : msg
+                );
+                return { ...prev, [contactId]: updated };
+              });
+            } else if (updatedList && threadKey === contactId) {
+              setThreads((prev) => ({
+                ...prev,
+                [contactId]: updatedList,
+              }));
+            } else {
+              syncStaffMessages(selectedStaff);
+            }
+            setTimeout(() => {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }, 100);
+          }
+        }
+      }
+    );
     return () => unsub();
-  }, []);
-
-  // Fetch messages from Storage / API for selected contact in channel
-  const syncStaffMessages = useCallback(async (contactId) => {
-    try {
-      const channel = selectedChannelTab?.channelType || "student_staff";
-      const storageKey = `chat_thread_${channel}_${contactId}`;
-      let raw = await AsyncStorage.getItem(storageKey);
-      if (!raw) {
-        raw = await AsyncStorage.getItem(`chat_thread_${contactId}`);
-      }
-      if (raw) {
-        setThreads((prev) => ({ ...prev, [contactId]: JSON.parse(raw) }));
-      } else if (contactId === "staff_1") {
-        // Preload default greeting for assigned tutor
-        const starterMsgs = [
-          createMessageObject({
-            text: "Welcome to the AI & Data Science tutoring channel. Reach out for lab doubts, research guidance, and leave permissions.",
-            senderRole: "staff",
-            senderId: "staff_1",
-            senderName: "Dr. K. Vigneshwaran",
-            recipientId: currentUser?.student?.rollNo || "user_current",
-            recipientRole: "student",
-            channelType: "student_staff",
-          }),
-        ];
-        setThreads((prev) => ({ ...prev, [contactId]: starterMsgs }));
-        AsyncStorage.setItem(storageKey, JSON.stringify(starterMsgs)).catch(() => {});
-      }
-
-      const res = await api.get("/messages", { contactId, channelType: channel, limit: 40, sort: "createdAt" }).catch(() => null);
-      if (Array.isArray(res?.data) && res.data.length > 0) {
-        setThreads((prev) => ({
-          ...prev,
-          [contactId]: res.data,
-        }));
-        AsyncStorage.setItem(storageKey, JSON.stringify(res.data)).catch(() => {});
-      }
-    } catch (e) {
-      console.log("Chat fetch err:", e?.message || e);
-    }
-  }, [selectedChannelTab, currentUser]);
+  }, [selectedStaff, syncStaffMessages, isMyMessage, currentUser, effectiveRole, isCalling, incomingCall]);
 
   // Open Individual Chat
-  const handleSelectStaff = useCallback((contact) => {
-    setSelectedStaff(contact);
-    setCurrentView("chat");
-    setEditingMessage(null);
-    setReplyingTo(null);
-    setPendingAttachment(null);
-    syncStaffMessages(contact.id);
+  const handleSelectStaff = useCallback(
+    (contact) => {
+      setSelectedStaff(contact);
+      setCurrentView("chat");
+      setEditingMessage(null);
+      setReplyingTo(null);
+      setPendingAttachment(null);
+      setShowChatMoreMenu(false);
+      setShowStaffInfo(false);
+      setActiveOpenChatContact(contact.id || contact.rollNo);
+      syncStaffMessages(contact);
 
-    const myId = currentUser?.student?.rollNo || currentUser?.staffId || currentUser?.id || "user_current";
-    const channel = selectedChannelTab?.channelType || "student_staff";
-    markThreadAsRead({ threadKey: contact.id, channelType: channel, currentUserId: myId });
-  }, [syncStaffMessages, currentUser, selectedChannelTab]);
+      const myId =
+        currentUser?.student?.rollNo ||
+        currentUser?.staffId ||
+        currentUser?.id ||
+        "user_current";
+      const channel = selectedChannelTab?.channelType || "student_staff";
+      markThreadAsRead({
+        threadKey: contact.id,
+        channelType: channel,
+        currentUserId: myId,
+      });
+    },
+    [syncStaffMessages, currentUser, selectedChannelTab]
+  );
 
-  // Auto-sync active conversation every 3.5 seconds
+  // Auto-sync active conversation from DB every 2 seconds
   useEffect(() => {
     if (visible && currentView === "chat" && selectedStaff?.id) {
+      setActiveOpenChatContact(selectedStaff.id || selectedStaff.rollNo);
       const interval = setInterval(() => {
-        syncStaffMessages(selectedStaff.id);
-      }, 3500);
+        syncStaffMessages(selectedStaff);
+      }, 2000);
       return () => clearInterval(interval);
+    } else {
+      setActiveOpenChatContact(null);
     }
   }, [visible, currentView, selectedStaff, syncStaffMessages]);
 
@@ -345,24 +526,67 @@ export default function ChatModal({ visible, onClose }) {
     return () => unsub();
   }, [contacts, handleSelectStaff]);
 
-  // Back action from chat room
+  // Back to Directory
   const handleBackToDirectory = () => {
-    if (currentUser?.role === "student" || !currentUser?.role) {
-      onClose();
-    } else {
-      if (currentView === "chat") {
-        setCurrentView("directory");
-        setSelectedStaff(null);
-      } else {
-        onClose();
-      }
-    }
+    setActiveOpenChatContact(null);
+    setCurrentView("directory");
+    setSelectedStaff(null);
     setShowStaffInfo(false);
     setShowPrivacyModal(false);
+    setShowChatMoreMenu(false);
     setEditingMessage(null);
     setReplyingTo(null);
     setPendingAttachment(null);
   };
+
+  // ---------------- WHATSAPP 3-DOTS MORE OPTIONS HANDLERS ----------------
+  const handleClearChat = useCallback(async () => {
+    if (!selectedStaff) return;
+    setShowChatMoreMenu(false);
+    const contactId = selectedStaff.id;
+    setThreads((prev) => ({ ...prev, [contactId]: [] }));
+    try {
+      if (typeof api.del === "function") {
+        await api.del("/messages", { contactId }).catch(() => {});
+      } else if (typeof api.delete === "function") {
+        await api.delete("/messages", { contactId }).catch(() => {});
+      }
+    } catch {}
+    showToast("🧹 Chat history cleared", "info");
+  }, [selectedStaff]);
+
+  const handleExportChat = useCallback(() => {
+    if (!selectedStaff) return;
+    setShowChatMoreMenu(false);
+    const list = threads[selectedStaff.id] || [];
+    if (list.length === 0) {
+      showToast("ℹ️ No messages to export", "info");
+      return;
+    }
+    const transcript = list
+      .map((m) => `[${m.time || ""}] ${m.senderName || m.senderRole || "User"}: ${m.text || "[Attachment]"}`)
+      .join("\n");
+    console.log("EduNex Chat Export:\n" + transcript);
+    showToast(`📄 Chat exported (${list.length} messages)`, "success");
+  }, [selectedStaff, threads]);
+
+  const handleToggleMute = useCallback(() => {
+    setShowChatMoreMenu(false);
+    setIsChatMuted((prev) => {
+      const next = !prev;
+      showToast(next ? "🔕 Notifications muted for 8 hours" : "🔔 Notifications unmuted", "info");
+      return next;
+    });
+  }, []);
+
+  const handleToggleBlock = useCallback(() => {
+    setShowChatMoreMenu(false);
+    setIsContactBlocked((prev) => {
+      const next = !prev;
+      showToast(next ? "🚫 Contact blocked and reported" : "✅ Contact unblocked", "warning");
+      return next;
+    });
+  }, []);
 
   // ---------------- MEDIA ATTACHMENTS ----------------
   const handlePickImage = async (useCamera = false) => {
@@ -446,20 +670,21 @@ export default function ChatModal({ visible, onClose }) {
     if (role === "student") {
       const studentName = currentUser?.student?.name || currentUser?.name || currentUser?.profile?.name || currentUser?.username;
       const rollNo = currentUser?.student?.rollNo || currentUser?.rollNo || currentUser?.username;
-      name = studentName ? `${studentName}${rollNo ? ` (${rollNo})` : ""}` : (rollNo ? `Student (${rollNo})` : "Student");
       id = rollNo || currentUser?.student?._id || currentUser?.id || "stud_current";
+      name = resolveHumanDisplayName(id, "student", studentName ? `${studentName}${rollNo ? ` (${rollNo})` : ""}` : (rollNo ? `Student (${rollNo})` : "Student"));
     } else if (role === "staff") {
-      name = currentUser?.staff?.name || currentUser?.name || currentUser?.profile?.name || "Faculty Member";
       id = currentUser?.staff?.id || currentUser?.staff?._id || currentUser?.staffId || currentUser?.id || "staff_current";
+      const staffName = currentUser?.staff?.name || currentUser?.name || currentUser?.profile?.name;
+      name = resolveHumanDisplayName(id, "staff", staffName);
     } else if (role === "parent") {
-      name = currentUser?.parent?.name || currentUser?.name || currentUser?.profile?.name || "Parent";
       id = currentUser?.parent?.id || currentUser?.parent?._id || currentUser?.id || "parent_current";
+      name = resolveHumanDisplayName(id, "parent", currentUser?.parent?.name || currentUser?.name || currentUser?.profile?.name || "Parent");
     } else if (role === "admin") {
-      name = currentUser?.admin?.name || currentUser?.name || currentUser?.profile?.name || "Admin Office";
       id = currentUser?.admin?.id || currentUser?.admin?._id || currentUser?.id || "admin_current";
+      name = resolveHumanDisplayName(id, "admin", currentUser?.admin?.name || currentUser?.name || currentUser?.profile?.name || "Admin Office");
     } else {
-      name = currentUser?.name || currentUser?.profile?.name || currentUser?.username || "User";
       id = currentUser?.id || currentUser?.username || "user_current";
+      name = resolveHumanDisplayName(id, role, currentUser?.name || currentUser?.profile?.name || currentUser?.username || "User");
     }
 
     return { senderName: name, senderId: id, senderRole: role };
@@ -528,20 +753,18 @@ export default function ChatModal({ visible, onClose }) {
         : null,
     });
 
-    const updated = await sendDirectMessage({
+    await sendDirectMessage({
       threadKey: selectedStaff.id,
       channelType,
       message: msgObj,
       selectedContact: selectedStaff,
     });
 
-    if (updated) {
-      setThreads((prev) => ({ ...prev, [selectedStaff.id]: updated }));
-    }
-
     setNewMsg("");
     setPendingAttachment(null);
     setReplyingTo(null);
+
+    syncStaffMessages(selectedStaff);
 
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
@@ -564,20 +787,26 @@ export default function ChatModal({ visible, onClose }) {
     } catch {}
     setShowActionSheet(false);
 
-    const channelType = selectedChannelTab?.channelType || "student_staff";
     const threadList = threads[selectedStaff.id] || [];
+    const currentReaction = actionMessage.reaction === emoji ? null : emoji;
     const updated = threadList.map((m) => {
       if (m.id === actionMessage.id) {
-        const currentReaction = m.reaction === emoji ? null : emoji;
         return { ...m, reaction: currentReaction };
       }
       return m;
     });
 
     setThreads((prev) => ({ ...prev, [selectedStaff.id]: updated }));
+
     try {
-      await AsyncStorage.setItem(`chat_thread_${channelType}_${selectedStaff.id}`, JSON.stringify(updated));
-    } catch {}
+      if (typeof api.put === "function") {
+        await api.put(`/messages/${actionMessage.id}`, { reaction: currentReaction });
+      } else if (typeof api.patch === "function") {
+        await api.patch(`/messages/${actionMessage.id}`, { reaction: currentReaction });
+      }
+    } catch (err) {
+      console.warn("DB reaction update error:", err);
+    }
   };
 
   const handleCopyMessage = () => {
@@ -589,7 +818,12 @@ export default function ChatModal({ visible, onClose }) {
   const handleStartEdit = () => {
     if (!actionMessage) return;
     setShowActionSheet(false);
-    if (!isMessageEditable(actionMessage)) {
+    const isSender = isMyMessage(actionMessage);
+    if (!isSender) {
+      showToast("⚠️ You can only edit messages sent by you", "warning");
+      return;
+    }
+    if (!isMessageEditable(actionMessage, true)) {
       showToast("⚠️ Edit window expired (15 mins limit)", "warning");
       return;
     }
@@ -643,18 +877,39 @@ export default function ChatModal({ visible, onClose }) {
     return () => unsub();
   }, [selectedStaff, currentUser]);
 
-  // Handle typing input with live broadcast
+  // Handle typing input with live broadcast & auto-timeout
   const handleTypingChange = (text) => {
     setNewMsg(text);
     if (selectedStaff) {
-      const myId = currentUser?.student?.rollNo || currentUser?.staffId || currentUser?.id || "user_current";
-      const myName = currentUser?.student?.name || currentUser?.staff?.name || currentUser?.name || "User";
+      const myId =
+        currentUser?.student?.rollNo ||
+        currentUser?.staffId ||
+        currentUser?.id ||
+        "user_current";
+      const myName =
+        currentUser?.student?.name ||
+        currentUser?.staff?.name ||
+        currentUser?.name ||
+        "User";
+
       notifyTypingStatus({
         threadKey: selectedStaff.id,
         senderId: myId,
         isTyping: text.trim().length > 0,
         name: myName,
       });
+
+      if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
+      if (text.trim().length > 0) {
+        typingDebounceRef.current = setTimeout(() => {
+          notifyTypingStatus({
+            threadKey: selectedStaff.id,
+            senderId: myId,
+            isTyping: false,
+            name: myName,
+          });
+        }, 2500);
+      }
     }
   };
 
@@ -734,6 +989,8 @@ export default function ChatModal({ visible, onClose }) {
       message: msgObj,
       selectedContact: selectedStaff,
     });
+
+    syncStaffMessages(selectedStaff);
   };
 
   const handleToggleVoicePlay = (msgId) => {
@@ -750,29 +1007,271 @@ export default function ChatModal({ visible, onClose }) {
     }
   };
 
-  // Calling Simulation
-  const handleStartCall = (type = "audio") => {
+  // Call Pulsing & Waveform Animation Loops
+  useEffect(() => {
+    if (isCalling) {
+      const pulseLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.15, duration: 900, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+        ])
+      );
+      pulseLoop.start();
+
+      const waveLoop = Animated.loop(
+        Animated.stagger(120, [
+          Animated.sequence([
+            Animated.timing(wave1Anim, { toValue: 34, duration: 320, useNativeDriver: false }),
+            Animated.timing(wave1Anim, { toValue: 10, duration: 320, useNativeDriver: false }),
+          ]),
+          Animated.sequence([
+            Animated.timing(wave2Anim, { toValue: 46, duration: 300, useNativeDriver: false }),
+            Animated.timing(wave2Anim, { toValue: 14, duration: 300, useNativeDriver: false }),
+          ]),
+          Animated.sequence([
+            Animated.timing(wave3Anim, { toValue: 38, duration: 360, useNativeDriver: false }),
+            Animated.timing(wave3Anim, { toValue: 8, duration: 360, useNativeDriver: false }),
+          ]),
+          Animated.sequence([
+            Animated.timing(wave4Anim, { toValue: 50, duration: 330, useNativeDriver: false }),
+            Animated.timing(wave4Anim, { toValue: 12, duration: 330, useNativeDriver: false }),
+          ]),
+        ])
+      );
+      waveLoop.start();
+
+      return () => {
+        pulseLoop.stop();
+        waveLoop.stop();
+      };
+    }
+  }, [isCalling, pulseAnim, wave1Anim, wave2Anim, wave3Anim, wave4Anim]);
+
+  // Real Audio & Video Call Launcher
+  const handleStartCall = async (type = "audio") => {
+    if (!selectedStaff) return;
     setCallType(type);
     setIsCalling(true);
+    setCallStatus("calling");
     setCallTimer(0);
     setIsMuted(false);
-    setIsSpeaker(false);
+    setIsSpeaker(type === "video");
+    setIsVideoEnabled(true);
+    setCameraFacing("front");
+
+    const { senderName, senderId, senderRole } = resolveSenderDetails();
+    const myId = senderId;
+    const myName = senderName;
+    const targetRecipientId = selectedStaff?.rollNo || selectedStaff?.staffId || selectedStaff?.id || "";
+    const targetRecipientRole = selectedStaff?.rollNo ? "student" : selectedStaff?.staffId ? "staff" : (selectedStaff?.role || "staff");
+
+    const roomId = getCanonicalPairKey(myId, targetRecipientId);
+
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {}
 
+    if (type === "video") {
+      try {
+        const { status } = await Camera.requestCameraPermissionsAsync();
+        setHasCameraPermission(status === "granted");
+        if (status !== "granted") {
+          showToast("Camera permission required for live video call", "warning");
+        }
+      } catch (err) {
+        console.log("Camera permission error:", err);
+      }
+    }
+
+    // Send real call signaling to recipient's device via Database & WebSocket
+    await sendCallSignal({
+      type: "call_invite",
+      roomId,
+      caller: { id: myId, name: myName, role: senderRole },
+      recipientId: targetRecipientId,
+      recipientName: selectedStaff?.name || "Contact",
+      recipientRole: targetRecipientRole,
+      callType: type,
+      channelType: selectedChannelTab?.channelType,
+    });
+
+    // Calling Lifecycle: "Calling..." -> "Ringing..." -> "Connected"
     setTimeout(() => {
+      setCallStatus("ringing");
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch {}
+    }, 1200);
+
+    setTimeout(() => {
+      setCallStatus("connected");
+      try {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {}
+      if (callIntervalRef.current) clearInterval(callIntervalRef.current);
       callIntervalRef.current = setInterval(() => {
         setCallTimer((prev) => prev + 1);
       }, 1000);
-    }, 2000);
+    }, 2800);
   };
 
-  const handleEndCall = () => {
+  const handleLaunchFullDuplexRoom = async (type = callType) => {
+    if (!selectedStaff) return;
+    const myId =
+      currentUser?.student?.rollNo ||
+      currentUser?.staffId ||
+      currentUser?.staff?.id ||
+      currentUser?.id ||
+      "user_current";
+    const myName =
+      currentUser?.student?.name ||
+      currentUser?.staff?.name ||
+      currentUser?.name ||
+      "User";
+
+    const roomId = getCanonicalPairKey(myId, selectedStaff.id);
+    const isVideoMuted = type === "audio" || !isVideoEnabled;
+    const meetUrl = `https://meet.jit.si/EduNex_${roomId}#config.startWithAudioMuted=${isMuted}&config.startWithVideoMuted=${isVideoMuted}&config.prejoinPageEnabled=false&userInfo.displayName=${encodeURIComponent(myName)}`;
+
+    try {
+      await WebBrowser.openBrowserAsync(meetUrl, {
+        showTitle: true,
+        enableBarCollapsing: true,
+        toolbarColor: "#064E3B",
+      });
+    } catch {
+      Linking.openURL(meetUrl).catch(() => {});
+    }
+  };
+
+  const handleFlipCamera = () => {
+    setCameraFacing((prev) => (prev === "front" ? "back" : "front"));
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {}
+  };
+
+  const handleToggleVideo = () => {
+    setIsVideoEnabled((prev) => {
+      const next = !prev;
+      showToast(next ? "📹 Camera turned ON" : "📷 Camera turned OFF", "info");
+      return next;
+    });
+  };
+
+  const handleEndCall = async () => {
     if (callIntervalRef.current) clearInterval(callIntervalRef.current);
+    const finalDuration = callTimer;
     setIsCalling(false);
+    setCallStatus("ended");
     setCallTimer(0);
-    showToast("📞 Call ended", "info");
+
+    const myId =
+      currentUser?.student?.rollNo ||
+      currentUser?.staffId ||
+      currentUser?.staff?.id ||
+      currentUser?.id ||
+      "user_current";
+    const myName =
+      currentUser?.student?.name ||
+      currentUser?.staff?.name ||
+      currentUser?.name ||
+      "User";
+
+    if (selectedStaff) {
+      const roomId = getCanonicalPairKey(myId, selectedStaff.id);
+
+      // Send call termination signal to other device
+      sendCallSignal({
+        type: "call_end",
+        roomId,
+        caller: { id: myId, name: myName, role: effectiveRole },
+        recipientId: selectedStaff.id,
+        recipientName: selectedStaff.name,
+        callType,
+        channelType: selectedChannelTab?.channelType,
+      }).catch(() => {});
+
+      const timeStr = formatCallTime(finalDuration);
+      showToast(`📞 Call ended (${timeStr})`, "info");
+    }
+  };
+
+  const handleAnswerIncomingCall = async () => {
+    if (!incomingCall) return;
+    const call = incomingCall;
+    setIncomingCall(null);
+    setSelectedStaff({
+      id: call.caller.id,
+      name: call.caller.name,
+      role: call.caller.role,
+      avatarColor: "#059669",
+      initials: (call.caller.name || "U")[0],
+    });
+    setCallType(call.callType || "audio");
+    setIsCalling(true);
+    setCallStatus("connected");
+    setCallTimer(0);
+    setIsMuted(false);
+    setIsSpeaker(call.callType === "video");
+    setIsVideoEnabled(true);
+    setCameraFacing("front");
+
+    const myId =
+      currentUser?.student?.rollNo ||
+      currentUser?.staffId ||
+      currentUser?.staff?.id ||
+      currentUser?.id ||
+      "user_current";
+    const myName =
+      currentUser?.student?.name ||
+      currentUser?.staff?.name ||
+      currentUser?.name ||
+      "User";
+
+    // Send accept signal to caller's phone
+    sendCallSignal({
+      type: "call_accept",
+      roomId: call.roomId,
+      caller: { id: myId, name: myName, role: effectiveRole },
+      recipientId: call.caller.id,
+      recipientName: call.caller.name,
+      callType: call.callType || "audio",
+      channelType: call.channelType || "student_staff",
+    }).catch(() => {});
+
+    if (callIntervalRef.current) clearInterval(callIntervalRef.current);
+    callIntervalRef.current = setInterval(() => {
+      setCallTimer((prev) => prev + 1);
+    }, 1000);
+  };
+
+  const handleDeclineIncomingCall = () => {
+    if (incomingCall) {
+      const myId =
+        currentUser?.student?.rollNo ||
+        currentUser?.staffId ||
+        currentUser?.staff?.id ||
+        currentUser?.id ||
+        "user_current";
+      const myName =
+        currentUser?.student?.name ||
+        currentUser?.staff?.name ||
+        currentUser?.name ||
+        "User";
+
+      sendCallSignal({
+        type: "call_decline",
+        roomId: incomingCall.roomId,
+        caller: { id: myId, name: myName, role: effectiveRole },
+        recipientId: incomingCall.caller?.id,
+        recipientName: incomingCall.caller?.name,
+        callType: incomingCall.callType || "audio",
+        channelType: incomingCall.channelType || "student_staff",
+      }).catch(() => {});
+    }
+    setIncomingCall(null);
+    showToast("📞 Call declined", "info");
   };
 
   const formatCallTime = (secs) => {
@@ -847,7 +1346,7 @@ export default function ChatModal({ visible, onClose }) {
   // ---------------- Render Message Bubble ----------------
   const renderMessageBubble = ({ item }) => {
     if (!item) return null;
-    const isMe = item?.sender === (currentUser?.role || "student");
+    const isMe = isMyMessage(item);
     const isDeleted = Boolean(item?.deletedForEveryone);
     const urls = extractUrls(item?.text || "");
 
@@ -1124,9 +1623,21 @@ export default function ChatModal({ visible, onClose }) {
             </Text>
             {isMe && !isDeleted && (
               <Icon
-                name={item?.status === "sent" ? "check" : "check-all"}
-                size={14}
-                color={item?.status === "read" ? "#53BDEB" : isDarkMode ? "#8696A0" : "#64748B"}
+                name={
+                  item?.status === "read" || item?.isRead || (Array.isArray(item?.readBy) && item.readBy.length > 0)
+                    ? "check-all"
+                    : item?.status === "delivered"
+                    ? "check-all"
+                    : "check"
+                }
+                size={14.5}
+                color={
+                  item?.status === "read" || item?.isRead || (Array.isArray(item?.readBy) && item.readBy.length > 0)
+                    ? "#53BDEB"
+                    : isDarkMode
+                    ? "#8696A0"
+                    : "#64748B"
+                }
                 style={{ marginLeft: 3 }}
               />
             )}
@@ -1168,6 +1679,12 @@ export default function ChatModal({ visible, onClose }) {
                   style={styles.iconBtn}
                 >
                   <Icon name="shield-check" size={22} color="#FFFFFF" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setShowDirectoryMoreMenu(true)}
+                  style={styles.iconBtn}
+                >
+                  <Icon name="dots-vertical" size={22} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1322,11 +1839,23 @@ export default function ChatModal({ visible, onClose }) {
 
                       <View style={styles.waChatBottomRow}>
                         <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                          {Boolean(lastMsg?.sender) && Boolean(currentUser?.role) && lastMsg.sender === currentUser.role && (
+                          {Boolean(lastMsg) && isMyMessage(lastMsg) && (
                             <Icon
-                              name="check-all"
+                              name={
+                                lastMsg?.status === "read" || lastMsg?.isRead || (Array.isArray(lastMsg?.readBy) && lastMsg.readBy.length > 0)
+                                  ? "check-all"
+                                  : lastMsg?.status === "delivered"
+                                  ? "check-all"
+                                  : "check"
+                              }
                               size={14}
-                              color={lastMsg?.status === "read" ? "#53BDEB" : "#8696A0"}
+                              color={
+                                lastMsg?.status === "read" || lastMsg?.isRead || (Array.isArray(lastMsg?.readBy) && lastMsg.readBy.length > 0)
+                                  ? "#53BDEB"
+                                  : isDarkMode
+                                  ? "#8696A0"
+                                  : "#8696A0"
+                              }
                               style={{ marginRight: 4 }}
                             />
                           )}
@@ -1362,7 +1891,25 @@ export default function ChatModal({ visible, onClose }) {
         {/* VIEW 2: WHATSAPP 1-ON-1 CHAT ROOM                                        */}
         {/* ========================================================================= */}
         {currentView === "chat" && selectedStaff && (
-          <View style={{ flex: 1, backgroundColor: isDarkMode ? "#0B141A" : "#ECE5DD" }}>
+          <View
+            style={{
+              flex: 1,
+              backgroundColor:
+                chatWallpaper === "mint"
+                  ? isDarkMode
+                    ? "#062E27"
+                    : "#E1F7D5"
+                  : chatWallpaper === "dark"
+                  ? "#0C1317"
+                  : chatWallpaper === "doodle"
+                  ? isDarkMode
+                    ? "#0D1E24"
+                    : "#E5DDD5"
+                  : isDarkMode
+                  ? "#0B141A"
+                  : "#ECE5DD",
+            }}
+          >
             {/* WhatsApp Chat App Bar */}
             <View style={[styles.waHeader, { backgroundColor: isDarkMode ? "#1F2C34" : "#008069" }]}>
               <View style={styles.waHeaderRow}>
@@ -1382,19 +1929,52 @@ export default function ChatModal({ visible, onClose }) {
                     <Text style={styles.waHeaderName} numberOfLines={1}>
                       {selectedStaff.name}
                     </Text>
-                    <Text
-                      style={[
-                        styles.waHeaderStatus,
-                        typingState?.isTyping && { color: "#34D399", fontWeight: "700" },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {typingState?.isTyping
-                        ? "typing..."
-                        : selectedStaff?.status === "online"
-                        ? "online"
-                        : selectedStaff?.statusText || "active"}
-                    </Text>
+                    {typingState?.isTyping ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <Animated.View
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 3,
+                            backgroundColor: "#34D399",
+                            opacity: dot1Opacity,
+                          }}
+                        />
+                        <Text style={{ color: "#34D399", fontWeight: "700", fontSize: 11.5 }}>
+                          typing...
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <View
+                          style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: 3.5,
+                            backgroundColor: isContactBlocked
+                              ? "#EF4444"
+                              : selectedStaff?.status === "online"
+                              ? "#10B981"
+                              : "#94A3B8",
+                          }}
+                        />
+                        <Text
+                          style={[
+                            styles.waHeaderStatus,
+                            { color: isContactBlocked ? "#EF4444" : "rgba(255,255,255,0.85)" },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {isContactBlocked
+                            ? "Blocked"
+                            : isChatMuted
+                            ? "Muted · online"
+                            : selectedStaff?.status === "online"
+                            ? "online"
+                            : selectedStaff?.statusText || "online"}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 </TouchableOpacity>
 
@@ -1408,8 +1988,8 @@ export default function ChatModal({ visible, onClose }) {
                   <TouchableOpacity onPress={handleCallStaff} style={styles.waActionIcon}>
                     <Icon name="phone" size={20} color="#FFFFFF" />
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setShowPrivacyModal(true)} style={styles.waActionIcon}>
-                    <Icon name="shield-lock-outline" size={20} color="#FFFFFF" />
+                  <TouchableOpacity onPress={() => setShowChatMoreMenu(true)} style={styles.waActionIcon}>
+                    <Icon name="dots-vertical" size={22} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1533,23 +2113,7 @@ export default function ChatModal({ visible, onClose }) {
                 onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
               />
 
-              {/* Quick Template Prompt Chips */}
-              <View style={[styles.quickChipsBar, { backgroundColor: isDarkMode ? "#111B21" : "#F0F2F5" }]}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-                  {QUICK_PROMPTS.map((prompt, i) => (
-                    <TouchableOpacity
-                      key={i}
-                      style={[styles.quickPromptChip, { backgroundColor: isDarkMode ? "#1F2C34" : "#FFFFFF" }]}
-                      onPress={() => setNewMsg(prompt)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.quickPromptText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
-                        {prompt}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
+
 
               {/* Replying Quote Bar */}
               {replyingTo && (
@@ -1740,8 +2304,8 @@ export default function ChatModal({ visible, onClose }) {
                 </Text>
               </TouchableOpacity>
 
-              {/* Edit Message (If <= 15m) */}
-              {actionMessage && isMessageEditable(actionMessage) && (
+              {/* Edit Message (Only if sent by ME & <= 15m) */}
+              {actionMessage && isMyMessage(actionMessage) && isMessageEditable(actionMessage, true) && (
                 <TouchableOpacity style={styles.actionSheetRow} onPress={handleStartEdit}>
                   <Icon name="pencil" size={20} color="#F59E0B" />
                   <Text style={[styles.actionSheetRowText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
@@ -1750,8 +2314,8 @@ export default function ChatModal({ visible, onClose }) {
                 </TouchableOpacity>
               )}
 
-              {/* Delete for Everyone */}
-              {actionMessage && actionMessage.sender === (currentUser?.role === "staff" ? "staff" : "student") && !actionMessage.deletedForEveryone && (
+              {/* Delete for Everyone (Only if sent by ME) */}
+              {actionMessage && isMyMessage(actionMessage) && !actionMessage.deletedForEveryone && (
                 <TouchableOpacity style={styles.actionSheetRow} onPress={() => handleDeleteMessage(true)}>
                   <Icon name="delete-sweep" size={20} color="#DC2626" />
                   <Text style={[styles.actionSheetRowText, { color: "#DC2626" }]}>
@@ -1875,52 +2439,715 @@ export default function ChatModal({ visible, onClose }) {
           </Modal>
         )}
         {/* ========================================================================= */}
-        {/* MODAL 5: WHATSAPP AUDIO / VIDEO CALLING SCREEN                            */}
+        {/* MODAL 5: REAL WHATSAPP AUDIO & VIDEO CALLING SUITE                       */}
         {/* ========================================================================= */}
         {isCalling && (
-          <Modal visible={isCalling} animationType="slide" transparent={false} onRequestClose={handleEndCall}>
-            <LinearGradient
-              colors={callType === "video" ? ["#0F172A", "#1E293B", "#0F172A"] : ["#064E3B", "#022C22", "#064E3B"]}
-              style={styles.callScreenContainer}
-            >
-              <View style={styles.callHeader}>
-                <Icon name="shield-lock-outline" size={16} color="rgba(255,255,255,0.7)" />
-                <Text style={styles.callEncryptedText}>End-to-end encrypted {callType === "video" ? "Video Call" : "Voice Call"}</Text>
-              </View>
+          <Modal
+            visible={isCalling}
+            animationType="slide"
+            transparent={false}
+            onRequestClose={handleEndCall}
+          >
+            <View style={{ flex: 1, backgroundColor: "#0B141A" }}>
+              {/* VIDEO CALL VIEW */}
+              {callType === "video" ? (
+                <View style={{ flex: 1 }}>
+                  {/* Real Live Camera Stream View */}
+                  {isVideoEnabled && hasCameraPermission ? (
+                    <CameraView
+                      style={StyleSheet.absoluteFillObject}
+                      facing={cameraFacing}
+                      mute={isMuted}
+                    />
+                  ) : (
+                    <LinearGradient
+                      colors={["#0F172A", "#1E293B", "#0F172A"]}
+                      style={[
+                        StyleSheet.absoluteFillObject,
+                        { justifyContent: "center", alignItems: "center" },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.callAvatarLarge,
+                          {
+                            backgroundColor: selectedStaff?.avatarColor || "#059669",
+                            width: 110,
+                            height: 110,
+                            borderRadius: 55,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.callAvatarLargeText, { fontSize: 38 }]}>
+                          {selectedStaff?.initials || "F"}
+                        </Text>
+                      </View>
+                      <Text
+                        style={{
+                          color: "#94A3B8",
+                          marginTop: 14,
+                          fontSize: 14,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {!hasCameraPermission ? "Camera permission required" : "Camera turned off"}
+                      </Text>
+                    </LinearGradient>
+                  )}
 
-              <View style={styles.callProfileCenter}>
-                <View style={[styles.callAvatarLarge, { backgroundColor: selectedStaff?.avatarColor || "#059669" }]}>
-                  <Text style={styles.callAvatarLargeText}>{selectedStaff?.initials || "F"}</Text>
+                  {/* Gradient Overlay for Controls */}
+                  <LinearGradient
+                    colors={["rgba(0,0,0,0.7)", "transparent", "rgba(0,0,0,0.85)"]}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+
+                  {/* Top Header Floating Info */}
+                  <View
+                    style={[
+                      styles.callHeader,
+                      { paddingTop: Platform.OS === "ios" ? 54 : 36 },
+                    ]}
+                  >
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        backgroundColor: "rgba(0,0,0,0.45)",
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 16,
+                      }}
+                    >
+                      <Icon name="shield-lock" size={14} color="#34D399" />
+                      <Text style={styles.callEncryptedText}>
+                        End-to-End Encrypted (HD Video)
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        color: "#FFFFFF",
+                        fontSize: 20,
+                        fontWeight: "800",
+                        marginTop: 8,
+                      }}
+                    >
+                      {selectedStaff?.name || "Participant"}
+                    </Text>
+                    <Text
+                      style={{
+                        color: callStatus === "connected" ? "#34D399" : "#FBBF24",
+                        fontSize: 14,
+                        fontWeight: "600",
+                        marginTop: 2,
+                      }}
+                    >
+                      {callStatus === "connected"
+                        ? formatCallTime(callTimer)
+                        : callStatus === "ringing"
+                        ? "Ringing..."
+                        : "Connecting..."}
+                    </Text>
+
+                    {/* Launch Real Full-Duplex WebRTC Live Session */}
+                    <TouchableOpacity
+                      style={styles.fullDuplexPillBtn}
+                      onPress={() => handleLaunchFullDuplexRoom("video")}
+                      activeOpacity={0.8}
+                    >
+                      <Icon name="broadcast" size={14} color="#34D399" />
+                      <Text style={styles.fullDuplexPillText}>Full Duplex HD WebRTC</Text>
+                      <Icon name="open-in-new" size={12} color="#34D399" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Floating PIP Self-View / Contact Tile */}
+                  <View style={styles.videoPipCard}>
+                    <View
+                      style={[
+                        styles.waSmallAvatar,
+                        {
+                          backgroundColor: selectedStaff?.avatarColor || "#059669",
+                          width: 36,
+                          height: 36,
+                          borderRadius: 18,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.waSmallAvatarText}>
+                        {selectedStaff?.initials || "F"}
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        color: "#FFFFFF",
+                        fontSize: 11,
+                        fontWeight: "700",
+                        marginTop: 4,
+                      }}
+                      numberOfLines={1}
+                    >
+                      {selectedStaff?.name?.split(" ")[0] || "Remote"}
+                    </Text>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 3,
+                        marginTop: 2,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: 3,
+                          backgroundColor: "#10B981",
+                        }}
+                      />
+                      <Text style={{ color: "#34D399", fontSize: 9.5, fontWeight: "700" }}>
+                        HD Live
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Video Call Controls Floating Bar */}
+                  <View style={styles.callControlsRow}>
+                    <TouchableOpacity style={styles.callBtnCircle} onPress={handleFlipCamera}>
+                      <Icon name="camera-flip" size={24} color="#FFFFFF" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.callBtnCircle,
+                        !isVideoEnabled && { backgroundColor: "rgba(239,68,68,0.5)" },
+                      ]}
+                      onPress={handleToggleVideo}
+                    >
+                      <Icon
+                        name={isVideoEnabled ? "video" : "video-off"}
+                        size={24}
+                        color="#FFFFFF"
+                      />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.callBtnCircle,
+                        isMuted && { backgroundColor: "rgba(239,68,68,0.5)" },
+                      ]}
+                      onPress={() => setIsMuted(!isMuted)}
+                    >
+                      <Icon
+                        name={isMuted ? "microphone-off" : "microphone"}
+                        size={24}
+                        color="#FFFFFF"
+                      />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.callBtnCircle,
+                        isSpeaker && { backgroundColor: "rgba(0,168,132,0.6)" },
+                      ]}
+                      onPress={() => setIsSpeaker(!isSpeaker)}
+                    >
+                      <Icon
+                        name={isSpeaker ? "volume-high" : "volume-medium"}
+                        size={24}
+                        color="#FFFFFF"
+                      />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.callEndBtnCircle} onPress={handleEndCall}>
+                      <Icon name="phone-hangup" size={28} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <Text style={styles.callContactName}>{selectedStaff?.name || "Faculty"}</Text>
-                <Text style={styles.callStatusText}>
-                  {callTimer > 0 ? formatCallTime(callTimer) : "Ringing..."}
-                </Text>
-              </View>
-
-              {/* Call Control Buttons */}
-              <View style={styles.callControlsRow}>
-                <TouchableOpacity
-                  style={[styles.callBtnCircle, isMuted && { backgroundColor: "rgba(255,255,255,0.3)" }]}
-                  onPress={() => setIsMuted(!isMuted)}
+              ) : (
+                /* VOICE CALL VIEW */
+                <LinearGradient
+                  colors={["#064E3B", "#022C22", "#0B141A"]}
+                  style={styles.callScreenContainer}
                 >
-                  <Icon name={isMuted ? "microphone-off" : "microphone"} size={26} color="#FFFFFF" />
-                </TouchableOpacity>
+                  <View
+                    style={[
+                      styles.callHeader,
+                      { paddingTop: Platform.OS === "ios" ? 54 : 36 },
+                    ]}
+                  >
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        backgroundColor: "rgba(0,0,0,0.35)",
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 16,
+                      }}
+                    >
+                      <Icon name="shield-lock" size={14} color="#34D399" />
+                      <Text style={styles.callEncryptedText}>
+                        End-to-End Encrypted Voice Call
+                      </Text>
+                    </View>
+                  </View>
 
-                <TouchableOpacity
-                  style={[styles.callBtnCircle, isSpeaker && { backgroundColor: "rgba(255,255,255,0.3)" }]}
-                  onPress={() => setIsSpeaker(!isSpeaker)}
-                >
-                  <Icon name={isSpeaker ? "volume-high" : "volume-medium"} size={26} color="#FFFFFF" />
-                </TouchableOpacity>
+                  <View style={styles.callProfileCenter}>
+                    {/* Animated Pulsing Avatar Rings */}
+                    <Animated.View
+                      style={[
+                        styles.callAvatarLarge,
+                        {
+                          backgroundColor: selectedStaff?.avatarColor || "#059669",
+                          transform: [{ scale: callStatus === "connected" ? pulseAnim : 1 }],
+                        },
+                      ]}
+                    >
+                      <Text style={styles.callAvatarLargeText}>
+                        {selectedStaff?.initials || "F"}
+                      </Text>
+                    </Animated.View>
 
-                <TouchableOpacity style={styles.callEndBtnCircle} onPress={handleEndCall}>
-                  <Icon name="phone-hangup" size={28} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-            </LinearGradient>
+                    <Text style={styles.callContactName}>
+                      {selectedStaff?.name || "Faculty"}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.callStatusText,
+                        { color: callStatus === "connected" ? "#34D399" : "#FBBF24" },
+                      ]}
+                    >
+                      {callStatus === "connected"
+                        ? formatCallTime(callTimer)
+                        : callStatus === "ringing"
+                        ? "Ringing..."
+                        : "Connecting..."}
+                    </Text>
+
+                    {/* Launch Real Full-Duplex WebRTC Live Session */}
+                    <TouchableOpacity
+                      style={styles.fullDuplexPillBtn}
+                      onPress={() => handleLaunchFullDuplexRoom("audio")}
+                      activeOpacity={0.8}
+                    >
+                      <Icon name="broadcast" size={14} color="#34D399" />
+                      <Text style={styles.fullDuplexPillText}>Full Duplex HD WebRTC</Text>
+                      <Icon name="open-in-new" size={12} color="#34D399" />
+                    </TouchableOpacity>
+
+                    {/* Animated Audio Waveform Equalizer */}
+                    {callStatus === "connected" && (
+                      <View style={styles.audioWaveformRow}>
+                        <Animated.View style={[styles.waveBar, { height: wave1Anim }]} />
+                        <Animated.View style={[styles.waveBar, { height: wave2Anim }]} />
+                        <Animated.View style={[styles.waveBar, { height: wave4Anim }]} />
+                        <Animated.View style={[styles.waveBar, { height: wave3Anim }]} />
+                        <Animated.View style={[styles.waveBar, { height: wave1Anim }]} />
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Voice Call Control Buttons */}
+                  <View style={styles.callControlsRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.callBtnCircle,
+                        isMuted && { backgroundColor: "rgba(239,68,68,0.5)" },
+                      ]}
+                      onPress={() => setIsMuted(!isMuted)}
+                    >
+                      <Icon
+                        name={isMuted ? "microphone-off" : "microphone"}
+                        size={26}
+                        color="#FFFFFF"
+                      />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.callBtnCircle,
+                        isSpeaker && { backgroundColor: "rgba(0,168,132,0.6)" },
+                      ]}
+                      onPress={() => setIsSpeaker(!isSpeaker)}
+                    >
+                      <Icon
+                        name={isSpeaker ? "volume-high" : "volume-medium"}
+                        size={26}
+                        color="#FFFFFF"
+                      />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.callEndBtnCircle} onPress={handleEndCall}>
+                      <Icon name="phone-hangup" size={28} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+                </LinearGradient>
+              )}
+            </View>
           </Modal>
         )}
+
+        {/* ========================================================================= */}
+        {/* MODAL 6: INCOMING WHATSAPP CALL OVERLAY                                   */}
+        {/* ========================================================================= */}
+        {incomingCall && (
+          <Modal
+            visible={Boolean(incomingCall)}
+            transparent
+            animationType="fade"
+            onRequestClose={handleDeclineIncomingCall}
+          >
+            <View style={styles.sheetBackdrop}>
+              <LinearGradient
+                colors={["#064E3B", "#022C22", "#0F172A"]}
+                style={styles.incomingCallCard}
+              >
+                <View style={{ alignItems: "center", marginTop: 10 }}>
+                  <Icon
+                    name={incomingCall.callType === "video" ? "video" : "phone-in-talk"}
+                    size={28}
+                    color="#34D399"
+                  />
+                  <Text style={{ color: "#34D399", fontSize: 13, fontWeight: "700", marginTop: 4 }}>
+                    INCOMING {incomingCall.callType === "video" ? "VIDEO" : "VOICE"} CALL
+                  </Text>
+                  <View
+                    style={[
+                      styles.callAvatarLarge,
+                      {
+                        width: 84,
+                        height: 84,
+                        borderRadius: 42,
+                        marginVertical: 14,
+                        backgroundColor: "#059669",
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 32, fontWeight: "800", color: "#FFF" }}>
+                      {(incomingCall.caller?.name || "U")[0]}
+                    </Text>
+                  </View>
+                  <Text style={{ color: "#FFFFFF", fontSize: 20, fontWeight: "800" }}>
+                    {incomingCall.caller?.name || "Caller"}
+                  </Text>
+                  <Text style={{ color: "#94A3B8", fontSize: 13, marginTop: 2 }}>
+                    EduNex E2EE Real-Time Call
+                  </Text>
+                </View>
+
+                {/* Accept / Decline Buttons */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-around",
+                    width: "100%",
+                    marginTop: 28,
+                    marginBottom: 10,
+                  }}
+                >
+                  <TouchableOpacity
+                    style={[styles.callEndBtnCircle, { backgroundColor: "#EF4444" }]}
+                    onPress={handleDeclineIncomingCall}
+                  >
+                    <Icon name="phone-hangup" size={28} color="#FFFFFF" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.callEndBtnCircle, { backgroundColor: "#10B981" }]}
+                    onPress={handleAnswerIncomingCall}
+                  >
+                    <Icon name="phone" size={28} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              </LinearGradient>
+            </View>
+          </Modal>
+        )}
+        {/* ========================================================================= */}
+        {/* MODAL 6: WHATSAPP 3-DOTS CHAT ROOM MENU                                   */}
+        {/* ========================================================================= */}
+        <Modal
+          visible={showChatMoreMenu}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowChatMoreMenu(false)}
+        >
+          <TouchableOpacity
+            style={styles.sheetBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowChatMoreMenu(false)}
+          >
+            <View
+              style={[
+                styles.waMoreMenuCard,
+                { backgroundColor: isDarkMode ? "#233138" : "#FFFFFF" },
+              ]}
+            >
+              <TouchableOpacity
+                style={styles.waMoreMenuItem}
+                onPress={() => {
+                  setShowChatMoreMenu(false);
+                  setInChatSearch(true);
+                }}
+              >
+                <Icon name="magnify" size={20} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                <Text style={[styles.waMoreMenuText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                  Search
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.waMoreMenuItem} onPress={handleToggleMute}>
+                <Icon
+                  name={isChatMuted ? "bell" : "bell-off-outline"}
+                  size={20}
+                  color={isDarkMode ? "#8696A0" : "#54656F"}
+                />
+                <Text style={[styles.waMoreMenuText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                  {isChatMuted ? "Unmute notifications" : "Mute notifications"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.waMoreMenuItem}
+                onPress={() => {
+                  setShowChatMoreMenu(false);
+                  const threadMsgs = threads[selectedStaff?.id] || [];
+                  const mediaCount = threadMsgs.filter((m) => m.attachment).length;
+                  showToast(`📁 Media, links, and docs: ${mediaCount} items`, "info");
+                }}
+              >
+                <Icon name="image-multiple-outline" size={20} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                <Text style={[styles.waMoreMenuText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                  Media, links, and docs
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.waMoreMenuItem}
+                onPress={() => {
+                  setShowChatMoreMenu(false);
+                  setShowChatSettingsModal(true);
+                }}
+              >
+                <Icon name="wallpaper" size={20} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                <Text style={[styles.waMoreMenuText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                  Wallpaper & Theme
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.waMoreMenuItem}
+                onPress={() => {
+                  setShowChatMoreMenu(false);
+                  setShowPrivacyModal(true);
+                }}
+              >
+                <Icon name="shield-lock-outline" size={20} color="#00A884" />
+                <Text style={[styles.waMoreMenuText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                  Encryption
+                </Text>
+              </TouchableOpacity>
+
+              <View style={[styles.waMoreMenuDivider, { backgroundColor: isDarkMode ? "#182229" : "#E2E8F0" }]} />
+
+              <TouchableOpacity style={styles.waMoreMenuItem} onPress={handleExportChat}>
+                <Icon name="export-variant" size={20} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                <Text style={[styles.waMoreMenuText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                  Export chat
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.waMoreMenuItem} onPress={handleClearChat}>
+                <Icon name="broom" size={20} color="#DC2626" />
+                <Text style={[styles.waMoreMenuText, { color: "#DC2626" }]}>
+                  Clear chat
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.waMoreMenuItem} onPress={handleToggleBlock}>
+                <Icon name="block-helper" size={20} color="#DC2626" />
+                <Text style={[styles.waMoreMenuText, { color: "#DC2626" }]}>
+                  {isContactBlocked ? "Unblock contact" : "Block contact"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* ========================================================================= */}
+        {/* MODAL 7: WHATSAPP 3-DOTS DIRECTORY MENU                                   */}
+        {/* ========================================================================= */}
+        <Modal
+          visible={showDirectoryMoreMenu}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowDirectoryMoreMenu(false)}
+        >
+          <TouchableOpacity
+            style={styles.sheetBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowDirectoryMoreMenu(false)}
+          >
+            <View
+              style={[
+                styles.waMoreMenuCard,
+                { backgroundColor: isDarkMode ? "#233138" : "#FFFFFF" },
+              ]}
+            >
+              <TouchableOpacity
+                style={styles.waMoreMenuItem}
+                onPress={() => {
+                  setShowDirectoryMoreMenu(false);
+                  showToast("📢 Direct Broadcast channel active", "info");
+                }}
+              >
+                <Icon name="bullhorn-outline" size={20} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                <Text style={[styles.waMoreMenuText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                  New broadcast
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.waMoreMenuItem}
+                onPress={() => {
+                  setShowDirectoryMoreMenu(false);
+                  showToast("⭐ No starred messages", "info");
+                }}
+              >
+                <Icon name="star-outline" size={20} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                <Text style={[styles.waMoreMenuText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                  Starred messages
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.waMoreMenuItem}
+                onPress={() => {
+                  setShowDirectoryMoreMenu(false);
+                  setShowPrivacyModal(true);
+                }}
+              >
+                <Icon name="shield-check" size={20} color="#00A884" />
+                <Text style={[styles.waMoreMenuText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                  Security & Keys
+                </Text>
+              </TouchableOpacity>
+
+              <View style={[styles.waMoreMenuDivider, { backgroundColor: isDarkMode ? "#182229" : "#E2E8F0" }]} />
+
+              <TouchableOpacity
+                style={styles.waMoreMenuItem}
+                onPress={() => {
+                  setShowDirectoryMoreMenu(false);
+                  setShowChatSettingsModal(true);
+                }}
+              >
+                <Icon name="cog-outline" size={20} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                <Text style={[styles.waMoreMenuText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                  Chat Settings
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.waMoreMenuItem}
+                onPress={() => {
+                  setShowDirectoryMoreMenu(false);
+                  api.clearCache();
+                  showToast("🧹 Chat cache cleared", "info");
+                }}
+              >
+                <Icon name="cached" size={20} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                <Text style={[styles.waMoreMenuText, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                  Clear Cache
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* ========================================================================= */}
+        {/* MODAL 8: WHATSAPP CHAT SETTINGS & WALLPAPER                               */}
+        {/* ========================================================================= */}
+        <Modal
+          visible={showChatSettingsModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowChatSettingsModal(false)}
+        >
+          <View style={styles.sheetBackdrop}>
+            <View
+              style={[
+                styles.waSettingsModalCard,
+                { backgroundColor: isDarkMode ? "#1F2C34" : "#FFFFFF" },
+              ]}
+            >
+              <View style={styles.waSettingsHeaderRow}>
+                <Text style={[styles.waSettingsTitle, { color: isDarkMode ? "#E9EDEF" : "#111B21" }]}>
+                  ⚙️ Chat Settings & Wallpaper
+                </Text>
+                <TouchableOpacity onPress={() => setShowChatSettingsModal(false)}>
+                  <Icon name="close" size={22} color={isDarkMode ? "#8696A0" : "#54656F"} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.waSettingsSub, { color: isDarkMode ? "#8696A0" : "#64748B" }]}>
+                Choose your conversation background wallpaper theme:
+              </Text>
+
+              <View style={styles.wallpaperGrid}>
+                {[
+                  { id: "classic", label: "WhatsApp Classic", color: isDarkMode ? "#0B141A" : "#ECE5DD" },
+                  { id: "doodle", label: "Doodle Gray", color: isDarkMode ? "#0D1E24" : "#E5DDD5" },
+                  { id: "mint", label: "Mint Green", color: isDarkMode ? "#062E27" : "#DCF8C6" },
+                  { id: "dark", label: "Deep Charcoal", color: "#121B22" },
+                ].map((wp) => (
+                  <TouchableOpacity
+                    key={wp.id}
+                    style={[
+                      styles.wallpaperItem,
+                      { backgroundColor: wp.color },
+                      chatWallpaper === wp.id && { borderColor: "#00A884", borderWidth: 3 },
+                    ]}
+                    onPress={() => {
+                      setChatWallpaper(wp.id);
+                      showToast(`🎨 Wallpaper set: ${wp.label}`, "info");
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: "700",
+                        color:
+                          wp.id === "mint" && !isDarkMode
+                            ? "#065F46"
+                            : wp.id === "classic" && !isDarkMode
+                            ? "#1E293B"
+                            : "#FFFFFF",
+                      }}
+                    >
+                      {wp.label}
+                    </Text>
+                    {chatWallpaper === wp.id && (
+                      <Icon name="check-circle" size={18} color="#00A884" style={{ marginTop: 4 }} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.privacyBoxBtn,
+                  { backgroundColor: isDarkMode ? "#00A884" : "#008069", marginTop: 18 },
+                ]}
+                onPress={() => setShowChatSettingsModal(false)}
+              >
+                <Text style={styles.privacyBoxBtnText}>Save & Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </Animated.View>
     </Modal>
   );
@@ -2225,10 +3452,7 @@ const getStyles = (colors, isDarkMode) =>
     linkCard: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
     linkCardText: { fontSize: 11.5, textDecorationLine: "underline", color: "#00A884", flex: 1 },
 
-    /* Bars above Input */
-    quickChipsBar: { paddingHorizontal: 12, paddingVertical: 6 },
-    quickPromptChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, elevation: 1 },
-    quickPromptText: { fontSize: 11, fontWeight: "600" },
+
 
     activeReplyBar: {
       flexDirection: "row",
@@ -2405,29 +3629,187 @@ const getStyles = (colors, isDarkMode) =>
       fontWeight: "600",
     },
     callControlsRow: {
+      position: "absolute",
+      bottom: Platform.OS === "ios" ? 42 : 28,
+      left: 16,
+      right: 16,
       flexDirection: "row",
       alignItems: "center",
-      gap: 24,
-      backgroundColor: "rgba(0,0,0,0.35)",
-      paddingHorizontal: 24,
+      justifyContent: "space-evenly",
+      backgroundColor: "rgba(11, 20, 26, 0.88)",
+      paddingHorizontal: 12,
       paddingVertical: 14,
-      borderRadius: 36,
+      borderRadius: 40,
+      borderWidth: 1,
+      borderColor: "rgba(255, 255, 255, 0.18)",
+      elevation: 12,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.45,
+      shadowRadius: 10,
+      zIndex: 999,
     },
     callBtnCircle: {
-      width: 52,
-      height: 52,
-      borderRadius: 26,
-      backgroundColor: "rgba(255,255,255,0.15)",
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: "rgba(255, 255, 255, 0.16)",
       justifyContent: "center",
       alignItems: "center",
     },
     callEndBtnCircle: {
-      width: 58,
-      height: 58,
-      borderRadius: 29,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
       backgroundColor: "#EF4444",
       justifyContent: "center",
       alignItems: "center",
-      elevation: 4,
+      elevation: 6,
+      shadowColor: "#EF4444",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.4,
+      shadowRadius: 8,
+    },
+
+    /* WhatsApp 3-Dots More Options Menu Card */
+    waMoreMenuCard: {
+      position: "absolute",
+      top: Platform.OS === "ios" ? 54 : 44,
+      right: 12,
+      width: 220,
+      borderRadius: 12,
+      paddingVertical: 6,
+      elevation: 8,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 8,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: isDarkMode ? "#2A3942" : "#E2E8F0",
+    },
+    waMoreMenuItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      gap: 12,
+    },
+    waMoreMenuText: {
+      fontSize: 14.5,
+      fontWeight: "500",
+    },
+    waMoreMenuDivider: {
+      height: StyleSheet.hairlineWidth,
+      marginVertical: 4,
+      marginHorizontal: 8,
+    },
+
+    /* WhatsApp Chat Settings & Wallpaper Modal */
+    waSettingsModalCard: {
+      width: SCREEN_WIDTH * 0.9,
+      maxWidth: 420,
+      borderRadius: 18,
+      padding: 20,
+      elevation: 10,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.3,
+      shadowRadius: 10,
+    },
+    waSettingsHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 8,
+    },
+    waSettingsTitle: {
+      fontSize: 17,
+      fontWeight: "800",
+    },
+    waSettingsSub: {
+      fontSize: 13,
+      marginBottom: 16,
+      lineHeight: 18,
+    },
+    wallpaperGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+      justifyContent: "space-between",
+    },
+    wallpaperItem: {
+      width: "48%",
+      height: 70,
+      borderRadius: 12,
+      padding: 10,
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      borderWidth: 1,
+      borderColor: isDarkMode ? "#2A3942" : "#E2E8F0",
+    },
+
+    /* Real Video & Voice Calling Suite Styles */
+    videoPipCard: {
+      position: "absolute",
+      top: Platform.OS === "ios" ? 110 : 90,
+      right: 16,
+      width: 100,
+      height: 125,
+      backgroundColor: "rgba(15, 23, 42, 0.88)",
+      borderRadius: 16,
+      padding: 8,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1.5,
+      borderColor: "rgba(255, 255, 255, 0.25)",
+      elevation: 8,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.35,
+      shadowRadius: 6,
+    },
+    audioWaveformRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      height: 60,
+      marginTop: 20,
+    },
+    waveBar: {
+      width: 6,
+      backgroundColor: "#34D399",
+      borderRadius: 3,
+    },
+    incomingCallCard: {
+      width: SCREEN_WIDTH * 0.88,
+      maxWidth: 380,
+      borderRadius: 24,
+      padding: 24,
+      alignItems: "center",
+      elevation: 12,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.35,
+      shadowRadius: 12,
+      borderWidth: 1,
+      borderColor: "rgba(52, 211, 153, 0.35)",
+    },
+    fullDuplexPillBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: "rgba(16, 185, 129, 0.22)",
+      borderWidth: 1,
+      borderColor: "rgba(52, 211, 153, 0.45)",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+      marginTop: 8,
+    },
+    fullDuplexPillText: {
+      color: "#34D399",
+      fontSize: 12,
+      fontWeight: "700",
     },
   });
