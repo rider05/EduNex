@@ -17,6 +17,7 @@ import Constants from "expo-constants";
 
 // Memory cache for instantaneous sync reads
 const memoryCache = new Map();
+const parsedObjectCache = new Map();
 
 // Magic header prefix to identify encrypted blobs
 const ENCRYPTED_PREFIX = "_EDUNEX_ENC_V1_::";
@@ -297,12 +298,21 @@ export async function secureSet(key, value) {
   if (!key) return false;
   try {
     const stringVal = typeof value === "string" ? value : JSON.stringify(value);
-    // Instant in-memory cache update
+    
+    // Instant 0ms in-memory cache update
     memoryCache.set(key, stringVal);
+    parsedObjectCache.set(key, value);
 
-    // Encrypt for disk persistence
-    const cipherBlob = encryptPayload(stringVal);
-    await AsyncStorage.setItem(key, cipherBlob);
+    // Encrypt & persist to disk asynchronously in background (non-blocking)
+    (async () => {
+      try {
+        const cipherBlob = encryptPayload(stringVal);
+        await AsyncStorage.setItem(key, cipherBlob);
+      } catch (err) {
+        console.warn(`Async persist error for [${key}]:`, err);
+      }
+    })();
+
     return true;
   } catch (err) {
     console.warn(`secureSet error for [${key}]:`, err);
@@ -316,12 +326,19 @@ export async function secureSet(key, value) {
 export async function secureGet(key, fallback = null) {
   if (!key) return fallback;
 
-  // 1. Instant 0ms memory cache hit
+  // 1. Instant 0ms memory cache hit (returns pre-parsed object directly)
+  if (parsedObjectCache.has(key)) {
+    return parsedObjectCache.get(key);
+  }
+
   if (memoryCache.has(key)) {
     const cached = memoryCache.get(key);
     try {
-      return JSON.parse(cached);
+      const parsed = JSON.parse(cached);
+      parsedObjectCache.set(key, parsed);
+      return parsed;
     } catch {
+      parsedObjectCache.set(key, cached);
       return cached;
     }
   }
@@ -338,8 +355,11 @@ export async function secureGet(key, fallback = null) {
     memoryCache.set(key, decrypted);
 
     try {
-      return JSON.parse(decrypted);
+      const parsed = JSON.parse(decrypted);
+      parsedObjectCache.set(key, parsed);
+      return parsed;
     } catch {
+      parsedObjectCache.set(key, decrypted);
       return decrypted;
     }
   } catch (err) {
@@ -355,6 +375,7 @@ export async function secureRemove(key) {
   if (!key) return false;
   try {
     memoryCache.delete(key);
+    parsedObjectCache.delete(key);
     await AsyncStorage.removeItem(key);
     return true;
   } catch (err) {
@@ -372,10 +393,14 @@ export async function secureMultiGet(keys) {
   const missingDiskKeys = [];
 
   for (const k of keys) {
-    if (memoryCache.has(k)) {
+    if (parsedObjectCache.has(k)) {
+      results[k] = parsedObjectCache.get(k);
+    } else if (memoryCache.has(k)) {
       const cached = memoryCache.get(k);
       try {
-        results[k] = JSON.parse(cached);
+        const parsed = JSON.parse(cached);
+        parsedObjectCache.set(k, parsed);
+        results[k] = parsed;
       } catch {
         results[k] = cached;
       }
@@ -393,7 +418,9 @@ export async function secureMultiGet(keys) {
           if (decrypted != null) {
             memoryCache.set(k, decrypted);
             try {
-              results[k] = JSON.parse(decrypted);
+              const parsed = JSON.parse(decrypted);
+              parsedObjectCache.set(k, parsed);
+              results[k] = parsed;
             } catch {
               results[k] = decrypted;
             }
@@ -418,6 +445,7 @@ export async function secureMultiGet(keys) {
 export async function secureClearEduNex() {
   try {
     memoryCache.clear();
+    parsedObjectCache.clear();
     const allKeys = await AsyncStorage.getAllKeys();
     const edunexKeys = allKeys.filter(
       (k) =>

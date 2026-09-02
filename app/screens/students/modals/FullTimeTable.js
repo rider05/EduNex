@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   Modal,
   TouchableWithoutFeedback,
@@ -13,6 +12,7 @@ import {
   Linking,
   ActivityIndicator,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { secureGet } from "../../../services/secureStorage";
 import { useTheme } from "../../../context/ThemeContext";

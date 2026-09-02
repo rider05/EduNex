@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
-import { SkeletonAttendanceScreen } from "../../components/common/SkeletonLoader";
+import { SkeletonAttendanceScreen, SkeletonListItem } from "../../components/common/SkeletonLoader";
 import {
   getFacultyRoster,
   submitAttendanceBatch,
@@ -426,6 +426,7 @@ export default function AttendanceStaff() {
             progressBackgroundColor={colors.cardBackground}
           />
         }
+      >
         {isLoading ? (
           <SkeletonAttendanceScreen />
         ) : (

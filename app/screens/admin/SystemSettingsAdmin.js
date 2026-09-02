@@ -8,11 +8,11 @@ import {
   TouchableOpacity,
   Modal,
   Pressable,
-  SafeAreaView,
   RefreshControl,
   TextInput,
   ActivityIndicator,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { secureGet, secureSet } from "../../services/secureStorage";
 import { useTheme } from "../../context/ThemeContext";

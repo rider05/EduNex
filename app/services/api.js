@@ -1,7 +1,7 @@
 import { secureGet, secureSet, secureRemove, secureClearEduNex } from "./secureStorage";
 
 export const BASE_URL = "https://edunex-backend-rmvx.onrender.com/api/v1";
-const TIMEOUT_MS = 12000;
+const TIMEOUT_MS = 8000;
 
 // High-speed In-Memory Cache & In-Flight Request Deduplication
 let inMemoryToken = null;
@@ -10,8 +10,8 @@ let isTokenLoaded = false;
 const responseCache = new Map(); // key -> { data, timestamp, ttl }
 const inFlightRequests = new Map(); // key -> Promise
 
-const DEFAULT_CACHE_TTL_MS = 4000; // 4 seconds fast TTL for live data
-const STATIC_CACHE_TTL_MS = 15000; // 15 seconds for catalogs (subjects, rosters, departments)
+const DEFAULT_CACHE_TTL_MS = 10000; // 10 seconds fast TTL for live data
+const STATIC_CACHE_TTL_MS = 60000; // 60 seconds for catalogs (subjects, rosters, departments)
 
 // Listeners for unauthorized (401) logout events
 const authListeners = new Set();

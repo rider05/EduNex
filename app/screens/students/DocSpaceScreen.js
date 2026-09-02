@@ -178,6 +178,7 @@ export default function DocSpaceScreen() {
   const { colors, isDarkMode } = useTheme();
   const styles = getStyles(colors, isDarkMode);
 
+  const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [documents, setDocuments] = useState([]);
   const [studentName, setStudentName] = useState("Velu");
@@ -326,6 +327,8 @@ export default function DocSpaceScreen() {
       await secureSet("student_verified_documents_v4", mergedList);
     } catch (err) {
       console.warn("DocSpace loadDocuments error:", err);
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 

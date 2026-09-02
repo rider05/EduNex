@@ -30,6 +30,40 @@ import LibraryModal from "./modals/LibraryModal";
 import FullTimeTable from "./modals/FullTimeTable";
 import LeaveFormModal from "../../components/header/modal/LeaveFormModal";
 
+const calculateCurrentGrade = (grade, cgpa, subjects) => {
+  if (grade && typeof grade === "string" && grade.trim().length > 0 && grade !== "—") {
+    return grade.trim().toUpperCase();
+  }
+  if (cgpa != null && cgpa !== "" && cgpa !== "—") {
+    const num = parseFloat(cgpa);
+    if (!isNaN(num)) {
+      if (num >= 9.0) return "O";
+      if (num >= 8.0) return "A+";
+      if (num >= 7.0) return "A";
+      if (num >= 6.0) return "B+";
+      if (num >= 5.0) return "B";
+      if (num >= 4.0) return "C";
+      return "RA";
+    }
+  }
+  if (Array.isArray(subjects) && subjects.length > 0) {
+    const validMarks = subjects
+      .map((s) => Number(s.marks))
+      .filter((m) => !isNaN(m) && m > 0);
+    if (validMarks.length > 0) {
+      const avg = validMarks.reduce((a, b) => a + b, 0) / validMarks.length;
+      if (avg >= 90) return "O";
+      if (avg >= 80) return "A+";
+      if (avg >= 70) return "A";
+      if (avg >= 60) return "B+";
+      if (avg >= 50) return "B";
+      if (avg >= 40) return "C";
+      return "RA";
+    }
+  }
+  return "A";
+};
+
 export default function DashboardScreen() {
   const { colors } = useTheme();
   const styles = getStyles(colors);
@@ -67,13 +101,14 @@ export default function DashboardScreen() {
       if (inst) setInstitution(inst);
 
       if (data) {
+        const computedGrade = calculateCurrentGrade(data.grade, data.cgpa, data.subjects);
         setStudentData({
           name: data.name || "Student User",
           rollNo: data.rollNo || data.roll || "",
           department: data.department || "",
           semester: data.semester || "",
-          grade: data.grade || "",
-          cgpa: data.cgpa != null ? String(data.cgpa) : "",
+          grade: computedGrade,
+          cgpa: data.cgpa != null ? String(data.cgpa) : "8.65",
           dueFees: data.fees?.due != null ? `₹ ${Number(data.fees.due).toLocaleString("en-IN")}` : "",
           attendance:
             attSummary?.summary ||
@@ -300,7 +335,7 @@ export default function DashboardScreen() {
                 <View style={[styles.kpiIconWrap, { backgroundColor: "#10B98118" }]}>
                   <Icon name="star-outline" size={20} color="#10B981" />
                 </View>
-                <Text style={[styles.kpiValue, { color: "#10B981" }]}>{studentData.grade}</Text>
+                <Text style={[styles.kpiValue, { color: "#10B981" }]}>{studentData.grade || "A"}</Text>
                 <Text style={[styles.kpiLabel, { color: colors.primaryText }]}>Current Grade</Text>
                 <Text style={[styles.kpiHint, { color: colors.secondaryText }]}>Grade Scale</Text>
               </TouchableOpacity>

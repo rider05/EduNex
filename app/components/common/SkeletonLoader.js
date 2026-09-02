@@ -1,9 +1,30 @@
-import React, { useEffect, useRef } from "react";
+import React from "react";
 import { View, StyleSheet, Animated, Easing } from "react-native";
 import { useTheme } from "../../context/ThemeContext";
 
+// Single synchronized hardware-accelerated native shimmer driver
+const sharedShimmerAnim = new Animated.Value(0.35);
+
+const shimmerLoop = Animated.loop(
+  Animated.sequence([
+    Animated.timing(sharedShimmerAnim, {
+      toValue: 0.85,
+      duration: 750,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: true,
+    }),
+    Animated.timing(sharedShimmerAnim, {
+      toValue: 0.35,
+      duration: 750,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: true,
+    }),
+  ])
+);
+shimmerLoop.start();
+
 /**
- * Base Shimmer Box with smooth pulsating animation
+ * Base Shimmer Box with smooth pulsating animation (0 JS overhead)
  */
 export function SkeletonBox({
   width = "100%",
@@ -12,29 +33,6 @@ export function SkeletonBox({
   style,
 }) {
   const { colors } = useTheme();
-  const shimmerAnim = useRef(new Animated.Value(0.35)).current;
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmerAnim, {
-          toValue: 0.85,
-          duration: 750,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmerAnim, {
-          toValue: 0.35,
-          duration: 750,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [shimmerAnim]);
-
   const baseBg = colors.cardHighlight || "rgba(148, 163, 184, 0.16)";
 
   return (
@@ -45,7 +43,7 @@ export function SkeletonBox({
           height,
           borderRadius,
           backgroundColor: baseBg,
-          opacity: shimmerAnim,
+          opacity: sharedShimmerAnim,
         },
         style,
       ]}
