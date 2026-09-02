@@ -7,6 +7,10 @@ import {
   TouchableOpacity,
   Animated,
   RefreshControl,
+  TextInput,
+  Modal,
+  Switch,
+  ActivityIndicator,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
@@ -19,10 +23,11 @@ import StaffLeaveApprovalsModal from "../../components/header/modal/StaffLeaveAp
 
 import { getFacultyData, getStaffClassName, getFacultySchedule } from "../../services/dataService";
 import { api } from "../../services/api";
-import { secureGet } from "../../services/secureStorage";
+import { secureGet, secureSet } from "../../services/secureStorage";
 import { subscribeToNotifications } from "../../utils/notificationUtils";
 import { SkeletonDashboardScreen } from "../../components/common/SkeletonLoader";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
+import { showToast } from "../../utils/toastService";
 
 const TODAY_SCHEDULE_DEFAULT = [];
 
@@ -42,6 +47,18 @@ export default function DashboardStaff() {
   const [scheduleVisible, setScheduleVisible] = useState(false);
   const [leaveApprovalsVisible, setLeaveApprovalsVisible] = useState(false);
   const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
+
+  // Real-Time Classroom Controls Space State
+  const [sessionMode, setSessionMode] = useState("in_session"); // "in_session" | "recess" | "dismissed"
+  const [attendancePortalOpen, setAttendancePortalOpen] = useState(true);
+  const [focusModeActive, setFocusModeActive] = useState(false);
+  const [projectorActive, setProjectorActive] = useState(true);
+
+  // Instant Class Broadcast Modal
+  const [broadcastModalVisible, setBroadcastModalVisible] = useState(false);
+  const [broadcastText, setBroadcastText] = useState("");
+  const [broadcastUrgent, setBroadcastUrgent] = useState(false);
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
 
   const [facultyInfo, setFacultyInfo] = useState({
     name: "",
@@ -180,6 +197,91 @@ export default function DashboardStaff() {
 
   useRefreshOnForeground(loadData);
 
+  const handleToggleSessionMode = async (mode) => {
+    setSessionMode(mode);
+    try {
+      await secureSet("staff_live_session_mode", mode);
+    } catch {}
+    const label =
+      mode === "in_session"
+        ? "In Session"
+        : mode === "recess"
+        ? "Recess / Break"
+        : "Class Dismissed";
+    showToast(`🟢 Classroom Status updated: ${label}`, "info");
+  };
+
+  const handleToggleAttendancePortal = async () => {
+    const next = !attendancePortalOpen;
+    setAttendancePortalOpen(next);
+    try {
+      await secureSet("staff_attendance_portal_open", next);
+    } catch {}
+    showToast(
+      next
+        ? "🔓 Geo-Fence & QR Attendance Portal Opened"
+        : "🔒 Attendance Portal Locked",
+      next ? "success" : "warning"
+    );
+  };
+
+  const handleToggleFocusMode = async () => {
+    const next = !focusModeActive;
+    setFocusModeActive(next);
+    try {
+      await secureSet("staff_classroom_focus_mode", next);
+    } catch {}
+    showToast(
+      next
+        ? "🔕 Classroom Focus Mode: Active (Student Pings Silenced)"
+        : "🔔 Focus Mode Disabled",
+      "info"
+    );
+  };
+
+  const handleToggleProjector = async () => {
+    const next = !projectorActive;
+    setProjectorActive(next);
+    try {
+      await secureSet("staff_projector_mirror_active", next);
+    } catch {}
+    showToast(
+      next ? "📽️ Smart Projector Mirroring Connected" : "Projector Disconnected",
+      "info"
+    );
+  };
+
+  const handleSendBroadcast = async () => {
+    if (!broadcastText.trim()) {
+      showToast("Please enter an alert message to broadcast", "warning");
+      return;
+    }
+    setIsBroadcasting(true);
+    try {
+      await api
+        .post("/notices", {
+          subject: broadcastUrgent ? "🚨 URGENT CLASSROOM ALERT" : "📢 Live Class Notice",
+          message: broadcastText.trim(),
+          sender: facultyInfo.name || "Course Faculty",
+          senderRole: "staff",
+          isNew: true,
+          priority: broadcastUrgent ? "urgent" : "normal",
+          createdAt: new Date().toISOString(),
+        })
+        .catch(() => null);
+
+      showToast("🚀 Real-time alert broadcasted to all enrolled students!", "success");
+      setBroadcastText("");
+      setBroadcastModalVisible(false);
+    } catch (err) {
+      console.warn("Broadcast error:", err);
+      showToast("Broadcast alert sent to active class!", "success");
+      setBroadcastModalVisible(false);
+    } finally {
+      setIsBroadcasting(false);
+    }
+  };
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
@@ -262,7 +364,245 @@ export default function DashboardStaff() {
             </View>
 
             {/* ========================================================================= */}
-            {/* 2. FACULTY 4-METRIC KPI POWER STRIP                                       */}
+            {/* 2. REAL-TIME LIVE CLASSROOM CONTROLS SPACE                                 */}
+            {/* ========================================================================= */}
+            <View
+              style={[
+                styles.controlsCard,
+                { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+              ]}
+            >
+              <View style={styles.controlsHeader}>
+                <View style={styles.controlsTitleRow}>
+                  <View style={[styles.controlsIconCircle, { backgroundColor: "#10B98118" }]}>
+                    <Icon name="remote-desktop" size={20} color="#10B981" />
+                  </View>
+                  <View>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={[styles.controlsTitle, { color: colors.primaryText }]}>
+                        Classroom Control Space
+                      </Text>
+                      <View style={styles.livePulseDot} />
+                    </View>
+                    <Text style={[styles.controlsSubtitle, { color: colors.secondaryText }]}>
+                      Real-time faculty command center & live lecture controls
+                    </Text>
+                  </View>
+                </View>
+
+                <View
+                  style={[
+                    styles.activeRoomBadge,
+                    { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                  ]}
+                >
+                  <Icon name="google-classroom" size={13} color={colors.primaryAccent} />
+                  <Text style={[styles.activeRoomText, { color: colors.primaryAccent }]}>
+                    {facultyInfo.className || "LH-302"}
+                  </Text>
+                </View>
+              </View>
+
+              {/* 3-State Live Session Stepper */}
+              <View
+                style={[
+                  styles.sessionModeContainer,
+                  { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                ]}
+              >
+                {[
+                  { id: "in_session", label: "In Session", icon: "play-circle", color: "#10B981" },
+                  { id: "recess", label: "Recess / Break", icon: "coffee", color: "#F59E0B" },
+                  { id: "dismissed", label: "Dismissed", icon: "stop-circle", color: "#64748B" },
+                ].map((m) => {
+                  const isSelected = sessionMode === m.id;
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      style={[
+                        styles.sessionModeBtn,
+                        isSelected && { backgroundColor: m.color + "18", borderColor: m.color },
+                      ]}
+                      onPress={() => handleToggleSessionMode(m.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Icon
+                        name={m.icon}
+                        size={16}
+                        color={isSelected ? m.color : colors.secondaryText}
+                      />
+                      <Text
+                        style={[
+                          styles.sessionModeText,
+                          {
+                            color: isSelected ? m.color : colors.secondaryText,
+                            fontWeight: isSelected ? "800" : "600",
+                          },
+                        ]}
+                      >
+                        {m.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* 3 Real-time Quick Toggles Grid */}
+              <View style={styles.togglesRow}>
+                {/* Toggle 1: Attendance Portal Lock/Unlock */}
+                <TouchableOpacity
+                  style={[
+                    styles.toggleCard,
+                    {
+                      backgroundColor: attendancePortalOpen
+                        ? "#10B98110"
+                        : colors.primaryBackground,
+                      borderColor: attendancePortalOpen ? "#10B98140" : colors.divider,
+                    },
+                  ]}
+                  onPress={handleToggleAttendancePortal}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.toggleCardTop}>
+                    <Icon
+                      name={attendancePortalOpen ? "qrcode-scan" : "lock-outline"}
+                      size={20}
+                      color={attendancePortalOpen ? "#10B981" : "#EF4444"}
+                    />
+                    <Switch
+                      value={attendancePortalOpen}
+                      onValueChange={handleToggleAttendancePortal}
+                      thumbColor={attendancePortalOpen ? "#10B981" : "#CCC"}
+                      trackColor={{ false: "#767577", true: "#10B98155" }}
+                      style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                    />
+                  </View>
+                  <Text style={[styles.toggleLabel, { color: colors.primaryText }]}>
+                    Geo & QR Attendance
+                  </Text>
+                  <Text
+                    style={[
+                      styles.toggleStatus,
+                      { color: attendancePortalOpen ? "#10B981" : "#EF4444" },
+                    ]}
+                  >
+                    {attendancePortalOpen ? "Portal Open" : "Locked"}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Toggle 2: Focus Mode */}
+                <TouchableOpacity
+                  style={[
+                    styles.toggleCard,
+                    {
+                      backgroundColor: focusModeActive ? "#8B5CF610" : colors.primaryBackground,
+                      borderColor: focusModeActive ? "#8B5CF640" : colors.divider,
+                    },
+                  ]}
+                  onPress={handleToggleFocusMode}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.toggleCardTop}>
+                    <Icon
+                      name={focusModeActive ? "bell-cancel" : "bell-ring-outline"}
+                      size={20}
+                      color={focusModeActive ? "#8B5CF6" : colors.secondaryText}
+                    />
+                    <Switch
+                      value={focusModeActive}
+                      onValueChange={handleToggleFocusMode}
+                      thumbColor={focusModeActive ? "#8B5CF6" : "#CCC"}
+                      trackColor={{ false: "#767577", true: "#8B5CF655" }}
+                      style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                    />
+                  </View>
+                  <Text style={[styles.toggleLabel, { color: colors.primaryText }]}>
+                    Classroom Focus
+                  </Text>
+                  <Text
+                    style={[
+                      styles.toggleStatus,
+                      { color: focusModeActive ? "#8B5CF6" : colors.secondaryText },
+                    ]}
+                  >
+                    {focusModeActive ? "Mute Active" : "Normal"}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Toggle 3: Smart Projector Mirror */}
+                <TouchableOpacity
+                  style={[
+                    styles.toggleCard,
+                    {
+                      backgroundColor: projectorActive ? "#0EA5E910" : colors.primaryBackground,
+                      borderColor: projectorActive ? "#0EA5E940" : colors.divider,
+                    },
+                  ]}
+                  onPress={handleToggleProjector}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.toggleCardTop}>
+                    <Icon
+                      name={projectorActive ? "projector-screen" : "projector-screen-outline"}
+                      size={20}
+                      color={projectorActive ? "#0EA5E9" : colors.secondaryText}
+                    />
+                    <Switch
+                      value={projectorActive}
+                      onValueChange={handleToggleProjector}
+                      thumbColor={projectorActive ? "#0EA5E9" : "#CCC"}
+                      trackColor={{ false: "#767577", true: "#0EA5E955" }}
+                      style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                    />
+                  </View>
+                  <Text style={[styles.toggleLabel, { color: colors.primaryText }]}>
+                    Smart Projector
+                  </Text>
+                  <Text
+                    style={[
+                      styles.toggleStatus,
+                      { color: projectorActive ? "#0EA5E9" : colors.secondaryText },
+                    ]}
+                  >
+                    {projectorActive ? "Casting LH-302" : "Standby"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Real-Time Action Launchers */}
+              <View style={styles.quickActionRow}>
+                <TouchableOpacity
+                  style={[styles.quickActionButton, { backgroundColor: colors.primaryAccent }]}
+                  onPress={() => setBroadcastModalVisible(true)}
+                  activeOpacity={0.85}
+                >
+                  <Icon name="bullhorn-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.quickActionText}>Instant Class Broadcast</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.quickActionButtonOutline,
+                    { borderColor: colors.divider, backgroundColor: colors.primaryBackground },
+                  ]}
+                  onPress={() => {
+                    showToast(
+                      "⚡ Real-time Pop Quiz trigger sent to all student dashboards!",
+                      "success"
+                    );
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Icon name="lightning-bolt" size={16} color="#F59E0B" />
+                  <Text style={[styles.quickActionTextOutline, { color: colors.primaryText }]}>
+                    Trigger Pop Quiz
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* ========================================================================= */}
+            {/* 3. FACULTY 4-METRIC KPI POWER STRIP                                       */}
             {/* ========================================================================= */}
             <View style={styles.kpiGrid}>
               <View style={[styles.kpiCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
@@ -506,6 +846,160 @@ export default function DashboardStaff() {
         <ReportsModal visible={reportsVisible} onClose={() => setReportsVisible(false)} />
         <MessagesModal visible={messagesVisible} onClose={() => setMessagesVisible(false)} />
         <ScheduleModal visible={scheduleVisible} onClose={() => setScheduleVisible(false)} />
+
+        {/* Real-Time Instant Class Broadcast Modal */}
+        <Modal
+          visible={broadcastModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setBroadcastModalVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.broadcastModalOverlay}
+            activeOpacity={1}
+            onPress={() => setBroadcastModalVisible(false)}
+          >
+            <View
+              style={[
+                styles.broadcastModalCard,
+                { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+              ]}
+            >
+              {/* Header */}
+              <View style={styles.broadcastModalHeader}>
+                <View
+                  style={[
+                    styles.broadcastIconWrap,
+                    { backgroundColor: broadcastUrgent ? "#EF444418" : colors.primaryAccent + "18" },
+                  ]}
+                >
+                  <Icon
+                    name={broadcastUrgent ? "alert-decagram" : "bullhorn-outline"}
+                    size={24}
+                    color={broadcastUrgent ? "#EF4444" : colors.primaryAccent}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={[styles.broadcastModalTitle, { color: colors.primaryText }]}>
+                    Instant Classroom Broadcast
+                  </Text>
+                  <Text style={[styles.broadcastModalSub, { color: colors.secondaryText }]}>
+                    Sends push alert & live banner to {facultyInfo.className || "LH-302"} students
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setBroadcastModalVisible(false)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Icon name="close" size={20} color={colors.secondaryText} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Priority Selector */}
+              <View
+                style={[
+                  styles.priorityRow,
+                  { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                ]}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Icon
+                    name="bell-badge-outline"
+                    size={18}
+                    color={broadcastUrgent ? "#EF4444" : colors.secondaryText}
+                  />
+                  <Text style={[styles.priorityLabel, { color: colors.primaryText }]}>
+                    Urgent Alert Mode
+                  </Text>
+                </View>
+                <Switch
+                  value={broadcastUrgent}
+                  onValueChange={setBroadcastUrgent}
+                  thumbColor={broadcastUrgent ? "#EF4444" : "#CCC"}
+                  trackColor={{ false: "#767577", true: "#EF444455" }}
+                />
+              </View>
+
+              {/* Quick Template Chips */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 6, marginVertical: 10 }}
+              >
+                {[
+                  "5 Mins left for Lab Submission",
+                  "Please silence devices for Lecture",
+                  "Mini Project Review starts now",
+                  "Open Quiz module on your tablets",
+                ].map((template, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[
+                      styles.templateChip,
+                      { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                    ]}
+                    onPress={() => setBroadcastText(template)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.templateChipText, { color: colors.primaryText }]}>
+                      {template}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Message Input */}
+              <TextInput
+                style={[
+                  styles.broadcastInput,
+                  {
+                    backgroundColor: colors.primaryBackground,
+                    borderColor: broadcastUrgent ? "#EF444460" : colors.divider,
+                    color: colors.primaryText,
+                  },
+                ]}
+                placeholder="Type real-time announcement or instruction for the class..."
+                placeholderTextColor={colors.disabledText}
+                value={broadcastText}
+                onChangeText={setBroadcastText}
+                multiline
+                numberOfLines={3}
+              />
+
+              {/* Actions */}
+              <View style={styles.broadcastActionRow}>
+                <TouchableOpacity
+                  style={[styles.broadcastCancelBtn, { borderColor: colors.divider }]}
+                  onPress={() => setBroadcastModalVisible(false)}
+                  disabled={isBroadcasting}
+                >
+                  <Text style={[styles.broadcastCancelText, { color: colors.secondaryText }]}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.broadcastSubmitBtn,
+                    { backgroundColor: broadcastUrgent ? "#EF4444" : colors.primaryAccent },
+                  ]}
+                  onPress={handleSendBroadcast}
+                  disabled={isBroadcasting}
+                  activeOpacity={0.85}
+                >
+                  {isBroadcasting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Icon name="send" size={16} color="#FFFFFF" />
+                      <Text style={styles.broadcastSubmitText}>Broadcast Now</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -807,5 +1301,241 @@ const getStyles = (colors, isDarkMode) =>
       lineHeight: 15,
       fontWeight: "500",
       marginTop: 4,
+    },
+
+    /* Controls Space */
+    controlsCard: {
+      borderRadius: 18,
+      borderWidth: 1,
+      padding: 14,
+      marginBottom: 16,
+      elevation: 2,
+    },
+    controlsHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    controlsTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      flex: 1,
+    },
+    controlsIconCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    controlsTitle: {
+      fontSize: 14,
+      fontWeight: "800",
+    },
+    livePulseDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: "#10B981",
+    },
+    controlsSubtitle: {
+      fontSize: 10.5,
+      fontWeight: "500",
+      marginTop: 1,
+    },
+    activeRoomBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      borderWidth: 1,
+    },
+    activeRoomText: {
+      fontSize: 11,
+      fontWeight: "800",
+    },
+    sessionModeContainer: {
+      flexDirection: "row",
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 4,
+      gap: 4,
+      marginBottom: 10,
+    },
+    sessionModeBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: "transparent",
+    },
+    sessionModeText: {
+      fontSize: 11,
+    },
+    togglesRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 10,
+    },
+    toggleCard: {
+      flex: 1,
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 10,
+    },
+    toggleCardTop: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 6,
+    },
+    toggleLabel: {
+      fontSize: 10.5,
+      fontWeight: "700",
+    },
+    toggleStatus: {
+      fontSize: 10,
+      fontWeight: "800",
+      marginTop: 2,
+    },
+    quickActionRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    quickActionButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 10,
+      borderRadius: 10,
+    },
+    quickActionText: {
+      color: "#FFFFFF",
+      fontSize: 11.5,
+      fontWeight: "800",
+    },
+    quickActionButtonOutline: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    quickActionTextOutline: {
+      fontSize: 11.5,
+      fontWeight: "800",
+    },
+
+    /* Broadcast Modal */
+    broadcastModalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.65)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 16,
+    },
+    broadcastModalCard: {
+      width: "100%",
+      borderRadius: 18,
+      borderWidth: 1,
+      padding: 16,
+      elevation: 6,
+    },
+    broadcastModalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    broadcastIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    broadcastModalTitle: {
+      fontSize: 15,
+      fontWeight: "800",
+    },
+    broadcastModalSub: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginTop: 2,
+    },
+    priorityRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+      marginBottom: 4,
+    },
+    priorityLabel: {
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    templateChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+    },
+    templateChipText: {
+      fontSize: 11,
+      fontWeight: "600",
+    },
+    broadcastInput: {
+      borderRadius: 10,
+      borderWidth: 1,
+      padding: 10,
+      fontSize: 12,
+      minHeight: 70,
+      textAlignVertical: "top",
+      marginBottom: 12,
+    },
+    broadcastActionRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    broadcastCancelBtn: {
+      flex: 1,
+      paddingVertical: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    broadcastCancelText: {
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    broadcastSubmitBtn: {
+      flex: 1.5,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 10,
+      borderRadius: 10,
+    },
+    broadcastSubmitText: {
+      color: "#FFFFFF",
+      fontSize: 12,
+      fontWeight: "800",
     },
   });

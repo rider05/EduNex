@@ -18,12 +18,13 @@ import ClassTestModal from "./modal/ClassTestModal";
 import CommunityModal from "./modal/CommunityModal";
 import ClassGroupMsgModal from "./modal/ClassGroupMsgModal";
 import StaffLeaveApprovalsModal from "./modal/StaffLeaveApprovalsModal";
+import NotificationModal from "./modal/NotificationModal";
 import ChatModal from "./modal/ChatModal";
 import { showToast } from "../../utils/toastService";
 import { resolveIdentity } from "../../services/identityService";
 import { api } from "../../services/api";
 import { secureGet } from "../../services/secureStorage";
-import { subscribeToNotifications, onNavigateToNotification } from "../../utils/notificationUtils";
+import { subscribeToNotifications, onNavigateToNotification, getUserNotifications } from "../../utils/notificationUtils";
 
 export default function HeaderStaff() {
   const { colors, isDarkMode } = useTheme();
@@ -34,6 +35,7 @@ export default function HeaderStaff() {
   const [userLabel, setUserLabel] = useState("");
   const [staffName, setStaffName] = useState("");
   const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
+  const [unreadNotifsCount, setUnreadNotifsCount] = useState(0);
 
   const bottomExpand = useRef(new Animated.Value(0)).current;
 
@@ -46,6 +48,16 @@ export default function HeaderStaff() {
       const res = await api.get("/leaves", { status: "pending", limit: 50 }).catch(() => null);
       if (Array.isArray(res?.data)) {
         setPendingLeavesCount(res.data.length);
+      }
+    } catch (_e) {}
+  }, []);
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const id = await resolveIdentity();
+      const notifs = await getUserNotifications("staff", id?.staff?.id || id?.id || id?.username);
+      if (Array.isArray(notifs)) {
+        setUnreadNotifsCount(notifs.filter((n) => n.isNew || !n.read).length);
       }
     } catch (_e) {}
   }, []);
@@ -65,11 +77,13 @@ export default function HeaderStaff() {
     })();
 
     fetchPendingLeaves();
+    fetchNotifications();
 
     const unsubscribe = subscribeToNotifications((notif) => {
       if (notif.targetRole === "staff" || notif.title?.toLowerCase().includes("leave")) {
         fetchPendingLeaves();
       }
+      fetchNotifications();
     });
 
     const unsubNav = onNavigateToNotification(({ target }) => {
@@ -80,7 +94,9 @@ export default function HeaderStaff() {
         target === "test" ||
         target === "community" ||
         target === "groupMsg" ||
-        target === "chat"
+        target === "chat" ||
+        target === "notify" ||
+        target === "notification"
       ) {
         setActiveModal(target);
       }
@@ -90,7 +106,7 @@ export default function HeaderStaff() {
       unsubscribe();
       unsubNav();
     };
-  }, [fetchPendingLeaves]);
+  }, [fetchPendingLeaves, fetchNotifications]);
 
   const handleMenuPress = () => {
     Animated.spring(bottomExpand, {
@@ -114,6 +130,7 @@ export default function HeaderStaff() {
   const closeModal = () => {
     setActiveModal(null);
     fetchPendingLeaves();
+    fetchNotifications();
   };
 
   return (
@@ -152,10 +169,24 @@ export default function HeaderStaff() {
               style={styles.actionBtn}
               activeOpacity={0.7}
             >
-              <Icon name="clipboard-check-outline" size={22} color="#FFFFFF" />
+              <Icon name="clipboard-check-outline" size={21} color="#FFFFFF" />
               {pendingLeavesCount > 0 && (
                 <View style={styles.badgePill}>
                   <Text style={styles.badgePillText}>{pendingLeavesCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Notifications Icon */}
+            <TouchableOpacity
+              onPress={() => handleIconPress("notify")}
+              style={styles.actionBtn}
+              activeOpacity={0.7}
+            >
+              <Icon name="bell-outline" size={21} color="#FFFFFF" />
+              {unreadNotifsCount > 0 && (
+                <View style={[styles.badgePill, { backgroundColor: "#EF4444" }]}>
+                  <Text style={styles.badgePillText}>{unreadNotifsCount}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -165,7 +196,7 @@ export default function HeaderStaff() {
               style={styles.actionBtn}
               activeOpacity={0.7}
             >
-              <Icon name="chat-processing-outline" size={22} color="#FFFFFF" />
+              <Icon name="chat-processing-outline" size={21} color="#FFFFFF" />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -173,7 +204,7 @@ export default function HeaderStaff() {
               style={styles.actionBtn}
               activeOpacity={0.7}
             >
-              <Icon name="bullhorn-outline" size={22} color="#FFFFFF" />
+              <Icon name="bullhorn-outline" size={21} color="#FFFFFF" />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -181,11 +212,11 @@ export default function HeaderStaff() {
               style={styles.actionBtn}
               activeOpacity={0.7}
             >
-              <Icon name="account-group-outline" size={22} color="#FFFFFF" />
+              <Icon name="account-group-outline" size={21} color="#FFFFFF" />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.menuIcon} onPress={handleMenuPress} activeOpacity={0.8}>
-              <Icon name={isExpanded ? "chevron-up" : "dots-vertical"} size={24} color="#FFFFFF" />
+              <Icon name={isExpanded ? "chevron-up" : "dots-vertical"} size={22} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
@@ -200,14 +231,30 @@ export default function HeaderStaff() {
                 activeOpacity={0.8}
               >
                 <View style={[styles.quickActionIcon, { backgroundColor: "#F59E0B" }]}>
-                  <Icon name="clipboard-check" size={20} color="#FFFFFF" />
+                  <Icon name="clipboard-check" size={19} color="#FFFFFF" />
                   {pendingLeavesCount > 0 && (
                     <View style={styles.drawerBadge}>
                       <Text style={styles.drawerBadgeText}>{pendingLeavesCount}</Text>
                     </View>
                   )}
                 </View>
-                <Text style={styles.quickActionLabel}>Leave Approvals</Text>
+                <Text style={styles.quickActionLabel}>Leaves</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
+                onPress={() => handleIconPress("notify")}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: "#EF4444" }]}>
+                  <Icon name="bell-ring-outline" size={19} color="#FFFFFF" />
+                  {unreadNotifsCount > 0 && (
+                    <View style={styles.drawerBadge}>
+                      <Text style={styles.drawerBadgeText}>{unreadNotifsCount}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.quickActionLabel}>Notices</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -216,9 +263,9 @@ export default function HeaderStaff() {
                 activeOpacity={0.8}
               >
                 <View style={[styles.quickActionIcon, { backgroundColor: "#4F46E5" }]}>
-                  <Icon name="chat-outline" size={20} color="#FFFFFF" />
+                  <Icon name="chat-outline" size={19} color="#FFFFFF" />
                 </View>
-                <Text style={styles.quickActionLabel}>Student DMs</Text>
+                <Text style={styles.quickActionLabel}>DMs</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -227,7 +274,7 @@ export default function HeaderStaff() {
                 activeOpacity={0.8}
               >
                 <View style={styles.quickActionIcon}>
-                  <Icon name="clipboard-text-clock" size={20} color="#FFFFFF" />
+                  <Icon name="clipboard-text-clock" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>CIA Reports</Text>
               </TouchableOpacity>
@@ -238,7 +285,7 @@ export default function HeaderStaff() {
                 activeOpacity={0.8}
               >
                 <View style={styles.quickActionIcon}>
-                  <Icon name="message-broadcast" size={20} color="#FFFFFF" />
+                  <Icon name="message-broadcast" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Broadcast</Text>
               </TouchableOpacity>
@@ -249,9 +296,9 @@ export default function HeaderStaff() {
                 activeOpacity={0.8}
               >
                 <View style={styles.quickActionIcon}>
-                  <Icon name="file-document-edit-outline" size={20} color="#FFFFFF" />
+                  <Icon name="file-document-edit-outline" size={19} color="#FFFFFF" />
                 </View>
-                <Text style={styles.quickActionLabel}>Assignments</Text>
+                <Text style={styles.quickActionLabel}>Coursework</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -260,6 +307,7 @@ export default function HeaderStaff() {
 
       {/* Header Modals */}
       <StaffLeaveApprovalsModal visible={activeModal === "leaveApprovals" || activeModal === "staff_leave"} onClose={closeModal} />
+      <NotificationModal visible={activeModal === "notify" || activeModal === "notification"} onClose={closeModal} />
       <ChatModal visible={activeModal === "chat"} onClose={closeModal} userRole="staff" />
       <ClassTestModal visible={activeModal === "classtest" || activeModal === "test"} onClose={closeModal} />
       <ClassGroupMsgModal visible={activeModal === "broadcast" || activeModal === "groupMsg"} onClose={closeModal} />

@@ -15,6 +15,8 @@ import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
 import { showToast } from "../../../utils/toastService";
 
+import { getFacultyData, getFacultyAssignedSubjects } from "../../../services/dataService";
+
 const DEFAULT_REPORTS = [];
 
 export default function AssignmentReportModal({ visible, onClose, colors: propColors }) {
@@ -31,22 +33,49 @@ export default function AssignmentReportModal({ visible, onClose, colors: propCo
 
   const loadReports = useCallback(async () => {
     try {
+      const facData = await getFacultyData();
+      const subjects = await getFacultyAssignedSubjects(facData);
+
       const res = await api.get("/assignments", { sort: "-createdAt", limit: 100 });
-      if (Array.isArray(res?.data) && res.data.length > 0) {
+      const rawList = Array.isArray(res?.data) ? res.data : [];
+
+      // Scoping: Staff only views submissions for their assigned subjects
+      const scopedList = rawList.filter((a) => {
+        const asgSubName = String(a.subject || a.course || a.courseName || "").toLowerCase();
+        const asgSubCode = String(a.subjectCode || a.code || "").toLowerCase();
+        const assignedBy = String(a.assignedBy || "").toLowerCase();
+        const facName = String(facData?.name || "").toLowerCase();
+        const facId = String(facData?.staffId || "").toLowerCase();
+
+        if (facName && assignedBy && (assignedBy.includes(facName) || facName.includes(assignedBy))) return true;
+        if (facId && String(a.facultyId || "").toLowerCase() === facId) return true;
+
+        return subjects.some((sub) => {
+          const sName = String(sub.name || "").toLowerCase();
+          const sCode = String(sub.code || "").toLowerCase();
+          if (sCode && asgSubCode && (sCode === asgSubCode || asgSubCode.includes(sCode))) return true;
+          if (sName && asgSubName && (asgSubName.includes(sName) || sName.includes(asgSubName))) return true;
+          return false;
+        });
+      });
+
+      if (scopedList.length > 0) {
         setReports(
-          res.data.map((a, idx) => ({
+          scopedList.map((a, idx) => ({
             id: a.id || a._id || String(idx + 1),
             name: a.studentName || [a.name, a.roll ? `(${a.roll})` : ""].filter(Boolean).join(" ") || "Student",
-            topic: a.title || a.topic || "Practical Coursework Report",
+            topic: `${a.subjectCode || a.code ? `${a.subjectCode || a.code} · ` : ""}${a.title || a.topic || "Practical Coursework Report"}`,
             submittedOn: a.dueDate || a.createdAt?.slice(0, 10) || "—",
             status: a.status?.toLowerCase().includes("graded") ? "Graded" : "Pending",
-            marks: a.marks ? `${a.marks}/50` : "Needs Grading",
+            marks: a.obtainedMarks != null ? `${a.obtainedMarks}/${a.totalMarks || 50}` : a.marks ? `${a.marks}/50` : "Needs Grading",
             color: a.status?.toLowerCase().includes("graded") ? "#10B981" : "#F59E0B",
           }))
         );
+      } else {
+        setReports([]);
       }
     } catch {
-      // Use fallback reports
+      setReports([]);
     }
   }, []);
 
