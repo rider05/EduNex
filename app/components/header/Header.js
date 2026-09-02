@@ -7,6 +7,7 @@ import {
   Animated,
   Platform,
   StatusBar,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -141,14 +142,18 @@ export default function Header() {
         {/* Expandable Quick Actions Tray */}
         <Animated.View style={[styles.expandArea, { height: bottomExpand }]}>
           {isExpanded && (
-            <View style={styles.quickActionsRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickActionsScroll}
+            >
               <TouchableOpacity
                 style={styles.quickActionItem}
                 onPress={() => handleOpenModal("leave")}
                 activeOpacity={0.8}
               >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="file-document-edit-outline" size={20} color="#FFFFFF" />
+                <View style={[styles.quickActionIcon, { backgroundColor: "#10B981" }]}>
+                  <Icon name="file-document-edit-outline" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Leave / OD</Text>
               </TouchableOpacity>
@@ -158,8 +163,8 @@ export default function Header() {
                 onPress={() => handleOpenModal("hostel")}
                 activeOpacity={0.8}
               >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="home-export-outline" size={20} color="#FFFFFF" />
+                <View style={[styles.quickActionIcon, { backgroundColor: "#F59E0B" }]}>
+                  <Icon name="home-export-outline" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Gate Pass</Text>
               </TouchableOpacity>
@@ -169,8 +174,8 @@ export default function Header() {
                 onPress={() => handleOpenModal("bus")}
                 activeOpacity={0.8}
               >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="bus-clock" size={20} color="#FFFFFF" />
+                <View style={[styles.quickActionIcon, { backgroundColor: "#0EA5E9" }]}>
+                  <Icon name="bus-clock" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Bus Tracker</Text>
               </TouchableOpacity>
@@ -180,12 +185,34 @@ export default function Header() {
                 onPress={() => handleOpenModal("mess")}
                 activeOpacity={0.8}
               >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="silverware-fork-knife" size={20} color="#FFFFFF" />
+                <View style={[styles.quickActionIcon, { backgroundColor: "#F43F5E" }]}>
+                  <Icon name="silverware-fork-knife" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Mess Menu</Text>
               </TouchableOpacity>
-            </View>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
+                onPress={() => handleOpenModal("notify")}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: "#EF4444" }]}>
+                  <Icon name="bell-ring-outline" size={19} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionLabel}>Notices</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
+                onPress={() => handleOpenModal("chat")}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: "#8B5CF6" }]}>
+                  <Icon name="message-text-lock-outline" size={19} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionLabel}>Campus DMs</Text>
+              </TouchableOpacity>
+            </ScrollView>
           )}
         </Animated.View>
       </LinearGradient>
@@ -311,6 +338,16 @@ const getStyles = (colors, isDarkMode) =>
       overflow: "hidden",
       marginTop: 4,
     },
+    quickActionsScroll: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      paddingHorizontal: 6,
+      paddingTop: 10,
+      paddingBottom: 4,
+      borderTopWidth: 1,
+      borderTopColor: "rgba(255, 255, 255, 0.2)",
+    },
     quickActionsRow: {
       flexDirection: "row",
       justifyContent: "space-around",
@@ -321,6 +358,7 @@ const getStyles = (colors, isDarkMode) =>
     },
     quickActionItem: {
       alignItems: "center",
+      minWidth: 56,
     },
     quickActionIcon: {
       width: 38,

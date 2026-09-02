@@ -8,6 +8,7 @@ import {
   Platform,
   StatusBar,
   Alert,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -115,71 +116,45 @@ export default function HeaderAdmin() {
             <Text style={styles.subtitle}>Institution Master Operations & Security</Text>
           </View>
 
-          {/* Right Action Icons */}
+          {/* Right Action Icons (Diagnostics, DMs, and Expandable Drawer) */}
           <View style={styles.iconGroup}>
-            <TouchableOpacity
-              style={styles.actionBtn}
-              onPress={() => setChatModal(true)}
-              activeOpacity={0.7}
-            >
-              <Icon name="chat-outline" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionBtn}
-              onPress={() => setManageModal(true)}
-              activeOpacity={0.7}
-            >
-              <Icon name="account-plus-outline" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-
             <TouchableOpacity
               style={styles.actionBtn}
               onPress={handleSystemDiagnostics}
               activeOpacity={0.7}
             >
-              <Icon name="pulse" size={22} color="#10B981" />
+              <Icon name="pulse" size={21} color="#10B981" />
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.actionBtn}
-              onPress={() => setSettingsModal(true)}
+              onPress={() => setChatModal(true)}
               activeOpacity={0.7}
             >
-              <Icon name="cog-outline" size={22} color="#FFFFFF" />
+              <Icon name="chat-outline" size={21} color="#FFFFFF" />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.menuIcon} onPress={handleMenuPress} activeOpacity={0.8}>
-              <Icon name={isExpanded ? "chevron-up" : "dots-vertical"} size={24} color="#FFFFFF" />
+              <Icon name={isExpanded ? "chevron-up" : "dots-vertical"} size={22} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Expandable Quick Actions Tray */}
+        {/* Expandable Quick Actions Tray with Colorful Action Icons */}
         <Animated.View style={[styles.expandArea, { height: bottomExpand }]}>
           {isExpanded && (
-            <View style={styles.quickActionsRow}>
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => {
-                  setIsExpanded(false);
-                  setChatModal(true);
-                }}
-                activeOpacity={0.8}
-              >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="chat-outline" size={20} color="#FFFFFF" />
-                </View>
-                <Text style={styles.quickActionLabel}>Campus DMs</Text>
-              </TouchableOpacity>
-
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickActionsScroll}
+            >
               <TouchableOpacity
                 style={styles.quickActionItem}
                 onPress={() => handleIconPress("Add User")}
                 activeOpacity={0.8}
               >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="account-plus-outline" size={20} color="#FFFFFF" />
+                <View style={[styles.quickActionIcon, { backgroundColor: "#10B981" }]}>
+                  <Icon name="account-plus-outline" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Add User</Text>
               </TouchableOpacity>
@@ -189,8 +164,8 @@ export default function HeaderAdmin() {
                 onPress={() => handleIconPress("Reports")}
                 activeOpacity={0.8}
               >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="file-chart-outline" size={20} color="#FFFFFF" />
+                <View style={[styles.quickActionIcon, { backgroundColor: "#F59E0B" }]}>
+                  <Icon name="file-chart-outline" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Reports</Text>
               </TouchableOpacity>
@@ -200,12 +175,54 @@ export default function HeaderAdmin() {
                 onPress={() => handleIconPress("Backup")}
                 activeOpacity={0.8}
               >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="cloud-upload-outline" size={20} color="#FFFFFF" />
+                <View style={[styles.quickActionIcon, { backgroundColor: "#0EA5E9" }]}>
+                  <Icon name="cloud-upload-outline" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Backup</Text>
               </TouchableOpacity>
-            </View>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
+                onPress={() => {
+                  setIsExpanded(false);
+                  setSettingsModal(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: "#6366F1" }]}>
+                  <Icon name="cog-outline" size={19} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionLabel}>Settings</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
+                onPress={() => {
+                  setIsExpanded(false);
+                  setChatModal(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: "#8B5CF6" }]}>
+                  <Icon name="chat-outline" size={19} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionLabel}>Campus DMs</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
+                onPress={() => {
+                  setIsExpanded(false);
+                  handleSystemDiagnostics();
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: "#EC4899" }]}>
+                  <Icon name="pulse" size={19} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionLabel}>Diagnostics</Text>
+              </TouchableOpacity>
+            </ScrollView>
           )}
         </Animated.View>
       </LinearGradient>
@@ -316,6 +333,16 @@ const getStyles = (colors, isDarkMode) =>
       overflow: "hidden",
       marginTop: 4,
     },
+    quickActionsScroll: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      paddingHorizontal: 6,
+      paddingTop: 10,
+      paddingBottom: 4,
+      borderTopWidth: 1,
+      borderTopColor: "rgba(255, 255, 255, 0.2)",
+    },
     quickActionsRow: {
       flexDirection: "row",
       justifyContent: "space-around",
@@ -326,6 +353,7 @@ const getStyles = (colors, isDarkMode) =>
     },
     quickActionItem: {
       alignItems: "center",
+      minWidth: 54,
     },
     quickActionIcon: {
       width: 38,

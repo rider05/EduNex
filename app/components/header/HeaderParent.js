@@ -138,8 +138,8 @@ export default function HeaderParent() {
                 onPress={() => handleIconPress("assignment")}
                 activeOpacity={0.8}
               >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="calendar-text-outline" size={20} color="#FFFFFF" />
+                <View style={[styles.quickActionIcon, { backgroundColor: "#8B5CF6" }]}>
+                  <Icon name="calendar-text-outline" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Exam Portions</Text>
               </TouchableOpacity>
@@ -149,8 +149,8 @@ export default function HeaderParent() {
                 onPress={() => handleIconPress("chat")}
                 activeOpacity={0.8}
               >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="chat-outline" size={20} color="#FFFFFF" />
+                <View style={[styles.quickActionIcon, { backgroundColor: "#4F46E5" }]}>
+                  <Icon name="chat-outline" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Tutor DM</Text>
               </TouchableOpacity>
@@ -160,8 +160,8 @@ export default function HeaderParent() {
                 onPress={() => handleIconPress("feedback")}
                 activeOpacity={0.8}
               >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="message-draw" size={20} color="#FFFFFF" />
+                <View style={[styles.quickActionIcon, { backgroundColor: "#F59E0B" }]}>
+                  <Icon name="message-draw" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Feedback Query</Text>
               </TouchableOpacity>
@@ -171,8 +171,8 @@ export default function HeaderParent() {
                 onPress={() => handleIconPress("entryexit")}
                 activeOpacity={0.8}
               >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="shield-account-outline" size={20} color="#FFFFFF" />
+                <View style={[styles.quickActionIcon, { backgroundColor: "#10B981" }]}>
+                  <Icon name="shield-account-outline" size={19} color="#FFFFFF" />
                 </View>
                 <Text style={styles.quickActionLabel}>Gate Pass Log</Text>
               </TouchableOpacity>

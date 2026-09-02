@@ -7,6 +7,7 @@ import {
   Animated,
   Platform,
   StatusBar,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -161,9 +162,9 @@ export default function HeaderStaff() {
             <Text style={styles.subtitle}>{userLabel || ""}</Text>
           </View>
 
-          {/* Right Action Icons */}
+          {/* Right Action Icons (Essential 3 Priority Actions + Drawer Menu) */}
           <View style={styles.iconGroup}>
-            {/* Student Leaves Approvals Icon */}
+            {/* 1. Student Leaves Approvals Icon */}
             <TouchableOpacity
               onPress={() => handleIconPress("leaveApprovals")}
               style={styles.actionBtn}
@@ -177,7 +178,7 @@ export default function HeaderStaff() {
               )}
             </TouchableOpacity>
 
-            {/* Notifications Icon */}
+            {/* 2. Notifications Icon */}
             <TouchableOpacity
               onPress={() => handleIconPress("notify")}
               style={styles.actionBtn}
@@ -191,6 +192,7 @@ export default function HeaderStaff() {
               )}
             </TouchableOpacity>
 
+            {/* 3. Direct Messaging (Chat) */}
             <TouchableOpacity
               onPress={() => handleIconPress("chat")}
               style={styles.actionBtn}
@@ -199,32 +201,65 @@ export default function HeaderStaff() {
               <Icon name="chat-processing-outline" size={21} color="#FFFFFF" />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => handleIconPress("broadcast")}
-              style={styles.actionBtn}
-              activeOpacity={0.7}
-            >
-              <Icon name="bullhorn-outline" size={21} color="#FFFFFF" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => handleIconPress("community")}
-              style={styles.actionBtn}
-              activeOpacity={0.7}
-            >
-              <Icon name="account-group-outline" size={21} color="#FFFFFF" />
-            </TouchableOpacity>
-
+            {/* 4. Expandable Drawer Menu */}
             <TouchableOpacity style={styles.menuIcon} onPress={handleMenuPress} activeOpacity={0.8}>
               <Icon name={isExpanded ? "chevron-up" : "dots-vertical"} size={22} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Expandable Quick Drawer */}
+        {/* Expandable Quick Drawer (Contains All Faculty Tools Neatly) */}
         <Animated.View style={[styles.expandArea, { height: bottomExpand }]}>
           {isExpanded && (
-            <View style={styles.quickActionsRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickActionsScroll}
+            >
+              <TouchableOpacity
+                style={styles.quickActionItem}
+                onPress={() => handleIconPress("broadcast")}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: "#0284C7" }]}>
+                  <Icon name="message-broadcast" size={19} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionLabel}>Broadcast</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
+                onPress={() => handleIconPress("assignment")}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: "#8B5CF6" }]}>
+                  <Icon name="file-document-edit-outline" size={19} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionLabel}>Coursework</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
+                onPress={() => handleIconPress("classtest")}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: "#E67E22" }]}>
+                  <Icon name="clipboard-text-clock" size={19} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionLabel}>CIA Reports</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickActionItem}
+                onPress={() => handleIconPress("community")}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: "#0D9488" }]}>
+                  <Icon name="account-group-outline" size={19} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionLabel}>Community</Text>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 style={styles.quickActionItem}
                 onPress={() => handleIconPress("leaveApprovals")}
@@ -267,40 +302,7 @@ export default function HeaderStaff() {
                 </View>
                 <Text style={styles.quickActionLabel}>DMs</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => handleIconPress("classtest")}
-                activeOpacity={0.8}
-              >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="clipboard-text-clock" size={19} color="#FFFFFF" />
-                </View>
-                <Text style={styles.quickActionLabel}>CIA Reports</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => handleIconPress("broadcast")}
-                activeOpacity={0.8}
-              >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="message-broadcast" size={19} color="#FFFFFF" />
-                </View>
-                <Text style={styles.quickActionLabel}>Broadcast</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => handleIconPress("assignment")}
-                activeOpacity={0.8}
-              >
-                <View style={styles.quickActionIcon}>
-                  <Icon name="file-document-edit-outline" size={19} color="#FFFFFF" />
-                </View>
-                <Text style={styles.quickActionLabel}>Coursework</Text>
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
           )}
         </Animated.View>
       </LinearGradient>
@@ -415,6 +417,16 @@ const getStyles = (colors, isDarkMode) =>
       overflow: "hidden",
       marginTop: 4,
     },
+    quickActionsScroll: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      paddingHorizontal: 4,
+      paddingTop: 10,
+      paddingBottom: 4,
+      borderTopWidth: 1,
+      borderTopColor: "rgba(255, 255, 255, 0.2)",
+    },
     quickActionsRow: {
       flexDirection: "row",
       justifyContent: "space-around",
@@ -425,6 +437,7 @@ const getStyles = (colors, isDarkMode) =>
     },
     quickActionItem: {
       alignItems: "center",
+      minWidth: 54,
     },
     quickActionIcon: {
       width: 38,
