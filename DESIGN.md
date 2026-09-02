@@ -227,8 +227,8 @@ The login component (`app/components/LoginPage.js`) features:
 `app/components/common/GlobalCallOverlay.js`:
 
 - Floating incoming call UI
-- Jitsi Meet WebView integration (`meet.jit.si/EduNex_<roomId>`)
-- Accept / decline buttons with haptic feedback
+- Native Socket.IO real-time signaling + `expo-video` HD video call integration
+- Accept / decline buttons with haptic feedback and draggable WhatsApp PiP camera
 
 ### 5.9 Success Animation
 

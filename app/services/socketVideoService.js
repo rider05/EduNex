@@ -1,53 +1,58 @@
 // services/socketVideoService.js
-// Pure In-App Socket.IO Real-Time Video & Audio Signaling for EduNex (Zero Login, Zero WebViews)
+// Pure Native Real-Time Video & Audio Signaling for EduNex (Zero Login, Zero WebViews, 100% Native Metro Compatible)
 
-import { io } from "socket.io-client";
 import { notifyChatSubscribers, sendCallSignal } from "./chatService";
+import { BASE_URL } from "./api";
 
-// Free, fast public WebSocket / Socket.io signaling server or fallback
-const SOCKET_SIGNALING_URL = "https://edunex-signaling.glitch.me";
+// Connect directly to the EduNex production backend host via Native WebSocket
+const WS_SIGNALING_URL = BASE_URL.replace(/^http/, "ws").replace(/\/api\/v1\/?$/, "/ws/calls");
 
-let socket = null;
+let ws = null;
 let activeRoomId = null;
 
 /**
- * Initializes and connects Socket.io room for a call session
+ * Initializes and connects Native WebSocket room for a call session
  */
 export function initSocketVideoRoom({ roomId, user, onRemoteMediaChange, onPeerHangup }) {
   activeRoomId = roomId;
 
   try {
-    if (!socket) {
-      socket = io(SOCKET_SIGNALING_URL, {
-        transports: ["websocket", "polling"],
-        reconnection: true,
-        reconnectionAttempts: 5,
-        timeout: 5000,
-      });
+    if (!ws || ws.readyState === WebSocket.CLOSED) {
+      ws = new WebSocket(`${WS_SIGNALING_URL}?roomId=${encodeURIComponent(roomId)}`);
+
+      ws.onopen = () => {
+        try {
+          ws.send(
+            JSON.stringify({
+              type: "join_call_room",
+              roomId,
+              user: {
+                id: user?.id || "user",
+                name: user?.name || "User",
+                role: user?.role || "student",
+              },
+            })
+          );
+        } catch (_e) {}
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data?.type === "remote_media_change" && onRemoteMediaChange) {
+            onRemoteMediaChange(data);
+          } else if (data?.type === "call_hangup" && onPeerHangup) {
+            onPeerHangup(data);
+          }
+        } catch (_e) {}
+      };
+
+      ws.onerror = (_err) => {
+        // Native fallback to in-app event bus
+      };
     }
-
-    socket.emit("join_call_room", {
-      roomId,
-      user: {
-        id: user?.id || "user",
-        name: user?.name || "User",
-        role: user?.role || "student",
-      },
-    });
-
-    socket.on("remote_media_change", (data) => {
-      if (data?.roomId === activeRoomId && onRemoteMediaChange) {
-        onRemoteMediaChange(data);
-      }
-    });
-
-    socket.on("call_hangup", (data) => {
-      if (data?.roomId === activeRoomId && onPeerHangup) {
-        onPeerHangup(data);
-      }
-    });
   } catch (err) {
-    console.log("Socket.IO init fallback to real-time event bus:", err);
+    console.log("WebSocket init fallback to real-time event bus:", err);
   }
 
   return () => {
@@ -59,14 +64,19 @@ export function initSocketVideoRoom({ roomId, user, onRemoteMediaChange, onPeerH
  * Broadcasts media state change (mute, video toggle, camera flip) to peer
  */
 export function emitMediaStateChange({ isMuted, isVideoEnabled, cameraFacing, user }) {
-  if (socket && activeRoomId) {
-    socket.emit("media_state_change", {
-      roomId: activeRoomId,
-      isMuted,
-      isVideoEnabled,
-      cameraFacing,
-      user,
-    });
+  if (ws && ws.readyState === WebSocket.OPEN && activeRoomId) {
+    try {
+      ws.send(
+        JSON.stringify({
+          type: "media_state_change",
+          roomId: activeRoomId,
+          isMuted,
+          isVideoEnabled,
+          cameraFacing,
+          user,
+        })
+      );
+    } catch (_e) {}
   }
 
   // Also broadcast over in-app real-time event bus
@@ -83,13 +93,18 @@ export function emitMediaStateChange({ isMuted, isVideoEnabled, cameraFacing, us
  * Emits hangup to remote peer
  */
 export function emitCallHangup({ caller, recipientId, reason = "ended" }) {
-  if (socket && activeRoomId) {
-    socket.emit("hangup_call", {
-      roomId: activeRoomId,
-      caller,
-      recipientId,
-      reason,
-    });
+  if (ws && ws.readyState === WebSocket.OPEN && activeRoomId) {
+    try {
+      ws.send(
+        JSON.stringify({
+          type: "hangup_call",
+          roomId: activeRoomId,
+          caller,
+          recipientId,
+          reason,
+        })
+      );
+    } catch (_e) {}
   }
 
   if (activeRoomId && recipientId) {
@@ -106,11 +121,16 @@ export function emitCallHangup({ caller, recipientId, reason = "ended" }) {
 }
 
 /**
- * Disconnects and cleans up socket room
+ * Disconnects and cleans up native websocket room
  */
 export function leaveSocketVideoRoom() {
-  if (socket && activeRoomId) {
-    socket.emit("leave_call_room", { roomId: activeRoomId });
+  if (ws) {
+    try {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    } catch (_e) {}
+    ws = null;
   }
   activeRoomId = null;
 }

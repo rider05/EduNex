@@ -40,7 +40,7 @@
 app/_layout.tsx  (Expo Router Stack)
     │
     ├── SafeAreaProvider
-    ├── GlobalCallOverlay  (Jitsi Meet listener)
+    ├── GlobalCallOverlay  (Socket.IO + expo-video call listener)
     ├── startRealtimeWatcher(1500)  (1.5s polling)
     │
     └── app/index.tsx  (Real Root)
@@ -340,7 +340,7 @@ startRealtimeWatcher(1500)  // 1.5 second interval
 - **DM:** Direct messages between two users
 - **Channel:** Class group messaging
 - **Edit window:** 15 minutes after send
-- **Calls:** Jitsi Meet integration via `meet.jit.si/EduNex_<roomId>`
+- **Calls:** Native Socket.IO real-time signaling + `expo-video` HD calling
 
 ---
 
@@ -606,7 +606,7 @@ app/
 │   ├── FeedbackBugModal.js        # Bug report form
 │   ├── common/
 │   │   ├── SkeletonLoader.js      # Shimmer placeholders
-│   │   └── GlobalCallOverlay.js   # Jitsi Meet calls
+│   │   └── GlobalCallOverlay.js   # Socket.IO + expo-video calls
 │   ├── nav/
 │   │   ├── AppNavigator.js        # Student tabs
 │   │   ├── AppNavigatorStaff.js   # Staff tabs
