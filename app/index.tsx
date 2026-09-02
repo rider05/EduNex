@@ -126,7 +126,34 @@ function IndexCore() {
       await secureSet("userRole", mapped);
       setUserRole(mapped);
       setShowLoginModal(mapped === "guest");
-      toast.showToast(`Welcome, ${mapped}!`, "success");
+
+      // Resolve person's actual real name
+      let personName =
+        user?.name ||
+        user?.fullName ||
+        user?.student?.name ||
+        user?.staff?.name ||
+        user?.parent?.name ||
+        user?.admin?.name ||
+        user?.user?.name ||
+        user?.username;
+
+      if (!personName) {
+        try {
+          const id = await resolveIdentity();
+          personName =
+            id?.name ||
+            id?.fullName ||
+            id?.student?.name ||
+            id?.staff?.name ||
+            id?.parent?.name ||
+            id?.admin?.name ||
+            id?.username;
+        } catch {}
+      }
+
+      const greetingName = personName ? String(personName).trim() : mapped;
+      toast.showToast(`👋 Welcome, ${greetingName}!`, "success");
     } catch (err) {
       console.log("login callback error:", err);
       setUserRole("guest");

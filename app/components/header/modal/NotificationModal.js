@@ -172,35 +172,38 @@ export default function NotificationModal({ visible, onClose }) {
     }).start();
   }, [visible, translateY]);
 
-  // only the handle (grey bar area) is draggable
+  // Pull-down PanResponder: Supports dragging down across the handle, header, and modal top
   const dragDy = useRef(0);
 
   const handlePan = useRef(
     PanResponder.create({
-      // start responder on a small vertical intent (so taps still work)
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6,
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, g) => {
+        // Activate pull-down drag when user moves downwards
+        return g.dy > 6 && Math.abs(g.dx) < Math.abs(g.dy);
+      },
       onPanResponderMove: (_, g) => {
-        // allow dragging down only
         if (g.dy > 0) {
           dragDy.current = g.dy;
           translateY.setValue(g.dy);
         }
       },
-      onPanResponderRelease: () => {
-        if (dragDy.current > CLOSE_THRESHOLD) {
+      onPanResponderRelease: (_, g) => {
+        if (dragDy.current > CLOSE_THRESHOLD || g.vy > 0.6) {
           Animated.timing(translateY, {
             toValue: height,
-            duration: 220,
+            duration: 200,
             useNativeDriver: true,
           }).start(() => {
             dragDy.current = 0;
             onClose?.();
           });
         } else {
-          // snap back to open
+          // Snap back up smoothly
           Animated.spring(translateY, {
             toValue: 0,
+            tension: 50,
+            friction: 8,
             useNativeDriver: true,
           }).start(() => {
             dragDy.current = 0;
@@ -213,22 +216,35 @@ export default function NotificationModal({ visible, onClose }) {
   const styles = getStyles(colors, isDarkMode);
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
+        {/* Backdrop Tap to Close */}
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+
         <Animated.View style={[styles.bottomSheet, { transform: [{ translateY }] }]}>
-          {/* Pull handle (only this area is draggable) */}
-          <View style={styles.handleWrapper} {...handlePan.panHandlers}>
-            <View style={styles.handle} />
+          {/* Draggable Header & Pull Handle Area */}
+          <View {...handlePan.panHandlers}>
+            <View style={styles.handleWrapper}>
+              <View style={styles.handle} />
+            </View>
+
+            {/* Header */}
+            <View style={styles.header}>
+              <Icon name="bell-ring-outline" size={26} color="#FFF" />
+              <Text style={styles.headerTitle}>Notifications</Text>
+            </View>
           </View>
 
-          {/* Header */}
-          <View style={styles.header}>
-            <Icon name="bell-ring-outline" size={26} color="#FFF" />
-            <Text style={styles.headerTitle}>Notifications</Text>
-          </View>
-
-          {/* List (scrollable, not draggable) */}
-          <ScrollView contentContainerStyle={styles.scrollContainer}>
+          {/* List (scrollable) */}
+          <ScrollView
+            contentContainerStyle={styles.scrollContainer}
+            showsVerticalScrollIndicator={false}
+            bounces={true}
+          >
             {isLoading
               ? Array.from({ length: 4 }).map((_, i) => (
                   <SkeletonNoticeCard key={i} isDarkMode={isDarkMode} />

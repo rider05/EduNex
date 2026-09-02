@@ -24,6 +24,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import { CameraView, Camera } from "expo-camera";
+import { WebView } from "react-native-webview";
 import * as WebBrowser from "expo-web-browser";
 import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
@@ -56,7 +57,121 @@ const PIP_HEIGHT = 155;
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
+function ChatRemoteLiveVideoBackground({
+  callStatus,
+  selectedStaff,
+  pulseAnim,
+  styles,
+  roomId,
+  myName,
+  isMuted,
+  isVideoEnabled,
+}) {
+  const safeName = (myName || "User").replace(/[^a-zA-Z0-9 _-]/g, "");
+  const webrtcUrl = `https://meet.jit.si/EduNex_${roomId || "live"}#config.prejoinPageEnabled=false&config.prejoinConfig.enabled=false&config.disableDeepLinking=true&config.requireDisplayName=false&config.enableWelcomePage=false&config.enableClosePage=false&config.enableLobbyChat=false&config.startWithAudioMuted=${Boolean(isMuted)}&config.startWithVideoMuted=${!Boolean(isVideoEnabled)}&userInfo.displayName="${encodeURIComponent(safeName)}"`;
 
+  const autoJoinScript = `
+    (function() {
+      function autoClick() {
+        const webButtons = Array.from(document.querySelectorAll('a, button, div[role="button"]'));
+        const launchWebBtn = webButtons.find(el => {
+          const txt = (el.innerText || el.textContent || '').toLowerCase();
+          return txt.includes('launch in web') || txt.includes('join in web') || txt.includes('continue on web') || txt.includes('join this meeting using the web');
+        });
+        if (launchWebBtn) launchWebBtn.click();
+
+        const nameInputs = document.querySelectorAll('input');
+        nameInputs.forEach(input => {
+          if (!input.value) {
+            input.value = "${safeName}";
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
+
+        const joinButtons = Array.from(document.querySelectorAll('button, div[role="button"], input[type="submit"]'));
+        const joinBtn = joinButtons.find(el => {
+          const txt = (el.innerText || el.textContent || el.value || '').toLowerCase().trim();
+          return txt.includes('join meeting') || txt.includes('join') || txt === 'enter';
+        });
+        if (joinBtn) joinBtn.click();
+      }
+
+      setInterval(autoClick, 250);
+      autoClick();
+    })();
+    true;
+  `;
+
+  return (
+    <View style={StyleSheet.absoluteFillObject}>
+      {callStatus === "connected" && roomId ? (
+        <WebView
+          source={{ uri: webrtcUrl }}
+          style={StyleSheet.absoluteFillObject}
+          allowsInlineMediaPlayback={true}
+          mediaPlaybackRequiresUserAction={false}
+          mediaCapturePermissionGrantType="grant"
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          injectedJavaScript={autoJoinScript}
+          onPermissionRequest={(request) => {
+            request.grant(request.resources);
+          }}
+          originWhitelist={["*"]}
+          userAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        />
+      ) : (
+        <LinearGradient
+          colors={["#0B141A", "#111B21", "#0B141A"]}
+          style={[
+            StyleSheet.absoluteFillObject,
+            { justifyContent: "center", alignItems: "center" },
+          ]}
+        >
+          <Animated.View
+            style={[
+              styles.callAvatarLarge,
+              {
+                backgroundColor: selectedStaff?.avatarColor || "#059669",
+                width: 120,
+                height: 120,
+                borderRadius: 60,
+                transform: [{ scale: pulseAnim }],
+              },
+            ]}
+          >
+            <Text style={[styles.callAvatarLargeText, { fontSize: 44 }]}>
+              {selectedStaff?.initials || (selectedStaff?.name || "U")[0]}
+            </Text>
+          </Animated.View>
+          <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "800", marginTop: 16 }}>
+            {selectedStaff?.name || "Participant"}
+          </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              marginTop: 8,
+              backgroundColor: "rgba(16,185,129,0.18)",
+              paddingHorizontal: 12,
+              paddingVertical: 5,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: "rgba(52,211,153,0.35)",
+            }}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />
+            <Text style={{ color: "#34D399", fontSize: 12.5, fontWeight: "700" }}>
+              Connecting 2-Way Real Time Camera...
+            </Text>
+          </View>
+        </LinearGradient>
+      )}
+    </View>
+  );
+}
 
 export default function ChatModal({ visible, onClose, initialContact = null, userRole = null }) {
   const { colors, isDarkMode } = useTheme();
@@ -1321,28 +1436,23 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
     setCallStatus("ended");
     setCallTimer(0);
 
-    const myId =
-      currentUser?.student?.rollNo ||
-      currentUser?.staffId ||
-      currentUser?.staff?.id ||
-      currentUser?.id ||
-      "user_current";
-    const myName =
-      currentUser?.student?.name ||
-      currentUser?.staff?.name ||
-      currentUser?.name ||
-      "User";
+    const { senderName, senderId, senderRole } = resolveSenderDetails();
+    const myId = senderId;
+    const myName = senderName;
 
-    if (selectedStaff) {
-      const roomId = getCanonicalPairKey(myId, selectedStaff.id);
+    const targetRecipientId =
+      selectedStaff?.rollNo || selectedStaff?.staffId || selectedStaff?.id || incomingCall?.caller?.id || "";
+
+    if (targetRecipientId) {
+      const roomId = incomingCall?.roomId || getCanonicalPairKey(myId, targetRecipientId);
 
       // Send call termination signal to other device
       sendCallSignal({
         type: "call_end",
         roomId,
-        caller: { id: myId, name: myName, role: effectiveRole },
-        recipientId: selectedStaff.id,
-        recipientName: selectedStaff.name,
+        caller: { id: myId, name: myName, role: senderRole },
+        recipientId: targetRecipientId,
+        recipientName: selectedStaff?.name || incomingCall?.caller?.name || "Contact",
         callType,
         channelType: selectedChannelTab?.channelType,
       }).catch(() => {});
@@ -1350,6 +1460,7 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
       const timeStr = formatCallTime(finalDuration);
       showToast(`📞 Call ended (${timeStr})`, "info");
     }
+    if (incomingCall) setIncomingCall(null);
   };
 
   const handleAnswerIncomingCall = async () => {
@@ -2611,60 +2722,17 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
               {/* VIDEO CALL VIEW WITH DRAGGABLE FLOATING SELF-CAMERA PIP OVERLAY */}
               {callType === "video" ? (
                 <View style={{ flex: 1 }}>
-                  {/* 1. Full Screen Remote Party View (Live Background) */}
-                  <LinearGradient
-                    colors={["#0B141A", "#111B21", "#0B141A"]}
-                    style={[
-                      StyleSheet.absoluteFillObject,
-                      { justifyContent: "center", alignItems: "center" },
-                    ]}
-                  >
-                    <Animated.View
-                      style={[
-                        styles.callAvatarLarge,
-                        {
-                          backgroundColor: selectedStaff?.avatarColor || "#059669",
-                          width: 120,
-                          height: 120,
-                          borderRadius: 60,
-                          transform: [{ scale: callStatus === "connected" ? pulseAnim : 1 }],
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.callAvatarLargeText, { fontSize: 44 }]}>
-                        {selectedStaff?.initials || "F"}
-                      </Text>
-                    </Animated.View>
-                    <Text
-                      style={{
-                        color: "#FFFFFF",
-                        fontSize: 22,
-                        fontWeight: "800",
-                        marginTop: 16,
-                      }}
-                    >
-                      {selectedStaff?.name || "Participant"}
-                    </Text>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 6,
-                        marginTop: 8,
-                        backgroundColor: "rgba(16,185,129,0.18)",
-                        paddingHorizontal: 12,
-                        paddingVertical: 5,
-                        borderRadius: 14,
-                        borderWidth: 1,
-                        borderColor: "rgba(52,211,153,0.35)",
-                      }}
-                    >
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />
-                      <Text style={{ color: "#34D399", fontSize: 12.5, fontWeight: "700" }}>
-                        {callStatus === "connected" ? "Live HD 2-Way Video Call" : "Connecting Live Video..."}
-                      </Text>
-                    </View>
-                  </LinearGradient>
+                  {/* 1. Full Screen Remote Party View (Live 2-Way Camera Stream) */}
+                  <ChatRemoteLiveVideoBackground
+                    callStatus={callStatus}
+                    selectedStaff={selectedStaff}
+                    pulseAnim={pulseAnim}
+                    styles={styles}
+                    roomId={incomingCall?.roomId || getCanonicalPairKey(resolveSenderDetails().senderId, selectedStaff?.rollNo || selectedStaff?.staffId || selectedStaff?.id || "remote")}
+                    myName={resolveSenderDetails().senderName || "User"}
+                    isMuted={isMuted}
+                    isVideoEnabled={isVideoEnabled}
+                  />
 
                   {/* Gradient Overlay for Controls */}
                   <LinearGradient

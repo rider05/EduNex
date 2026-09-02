@@ -29,6 +29,7 @@ export default function Header() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeModal, setActiveModal] = useState(null); // leave | hostel | notify | chat | bus | mess
   const [userLabel, setUserLabel] = useState("");
+  const [studentName, setStudentName] = useState("");
 
   const bottomExpand = useRef(new Animated.Value(0)).current;
 
@@ -36,6 +37,8 @@ export default function Header() {
     (async () => {
       try {
         const id = await resolveIdentity();
+        const name = id?.student?.name || id?.name || id?.fullName || id?.username || "";
+        if (name) setStudentName(name);
         if (id?.student?.name) {
           const parts = [id.student.name];
           if (id.student.course || id.student.department) parts.push(id.student.course || id.student.department);
@@ -61,7 +64,7 @@ export default function Header() {
     return () => unsub();
   }, []);
 
-  const handleAppIconPress = () => showToast("👋 Welcome to EduNex Student Hub!", "info");
+  const handleAppIconPress = () => showToast(`👋 Welcome, ${studentName || "Student"}!`, "info");
 
   const handleMenuPress = () => {
     Animated.spring(bottomExpand, {

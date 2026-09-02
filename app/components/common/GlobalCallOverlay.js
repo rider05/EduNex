@@ -15,6 +15,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { CameraView, Camera } from "expo-camera";
+import { WebView } from "react-native-webview";
 import * as WebBrowser from "expo-web-browser";
 import { resolveIdentity } from "../../services/identityService";
 import {
@@ -28,6 +29,121 @@ import { showToast } from "../../utils/toastService";
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const PIP_WIDTH = 115;
 const PIP_HEIGHT = 155;
+
+function RemoteLiveVideoBackground({
+  callStatus,
+  remoteParty,
+  pulseAnim,
+  roomId,
+  myName,
+  isMuted,
+  isVideoEnabled,
+}) {
+  const safeName = (myName || "User").replace(/[^a-zA-Z0-9 _-]/g, "");
+  const webrtcUrl = `https://meet.jit.si/EduNex_${roomId || "live"}#config.prejoinPageEnabled=false&config.prejoinConfig.enabled=false&config.disableDeepLinking=true&config.requireDisplayName=false&config.enableWelcomePage=false&config.enableClosePage=false&config.enableLobbyChat=false&config.startWithAudioMuted=${Boolean(isMuted)}&config.startWithVideoMuted=${!Boolean(isVideoEnabled)}&userInfo.displayName="${encodeURIComponent(safeName)}"`;
+
+  const autoJoinScript = `
+    (function() {
+      function autoClick() {
+        const webButtons = Array.from(document.querySelectorAll('a, button, div[role="button"]'));
+        const launchWebBtn = webButtons.find(el => {
+          const txt = (el.innerText || el.textContent || '').toLowerCase();
+          return txt.includes('launch in web') || txt.includes('join in web') || txt.includes('continue on web') || txt.includes('join this meeting using the web');
+        });
+        if (launchWebBtn) launchWebBtn.click();
+
+        const nameInputs = document.querySelectorAll('input');
+        nameInputs.forEach(input => {
+          if (!input.value) {
+            input.value = "${safeName}";
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
+
+        const joinButtons = Array.from(document.querySelectorAll('button, div[role="button"], input[type="submit"]'));
+        const joinBtn = joinButtons.find(el => {
+          const txt = (el.innerText || el.textContent || el.value || '').toLowerCase().trim();
+          return txt.includes('join meeting') || txt.includes('join') || txt === 'enter';
+        });
+        if (joinBtn) joinBtn.click();
+      }
+
+      setInterval(autoClick, 250);
+      autoClick();
+    })();
+    true;
+  `;
+
+  return (
+    <View style={StyleSheet.absoluteFillObject}>
+      {callStatus === "connected" && roomId ? (
+        <WebView
+          source={{ uri: webrtcUrl }}
+          style={StyleSheet.absoluteFillObject}
+          allowsInlineMediaPlayback={true}
+          mediaPlaybackRequiresUserAction={false}
+          mediaCapturePermissionGrantType="grant"
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          injectedJavaScript={autoJoinScript}
+          onPermissionRequest={(request) => {
+            request.grant(request.resources);
+          }}
+          originWhitelist={["*"]}
+          userAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        />
+      ) : (
+        <LinearGradient
+          colors={["#0B141A", "#111B21", "#0B141A"]}
+          style={[
+            StyleSheet.absoluteFillObject,
+            { justifyContent: "center", alignItems: "center" },
+          ]}
+        >
+          <Animated.View
+            style={[
+              styles.callAvatarLarge,
+              {
+                backgroundColor: "#059669",
+                width: 120,
+                height: 120,
+                borderRadius: 60,
+                transform: [{ scale: pulseAnim }],
+              },
+            ]}
+          >
+            <Text style={[styles.callAvatarLargeText, { fontSize: 44 }]}>
+              {remoteParty?.initials || "U"}
+            </Text>
+          </Animated.View>
+          <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "800", marginTop: 16 }}>
+            {remoteParty?.name || "Remote User"}
+          </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              marginTop: 8,
+              backgroundColor: "rgba(16,185,129,0.18)",
+              paddingHorizontal: 12,
+              paddingVertical: 5,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: "rgba(52,211,153,0.35)",
+            }}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />
+            <Text style={{ color: "#34D399", fontSize: 12.5, fontWeight: "700" }}>
+              Connecting 2-Way Real Time Camera...
+            </Text>
+          </View>
+        </LinearGradient>
+      )}
+    </View>
+  );
+}
 
 export default function GlobalCallOverlay() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -335,12 +451,17 @@ export default function GlobalCallOverlay() {
   };
 
   const handleEndCall = () => {
+    if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
     if (callIntervalRef.current) clearInterval(callIntervalRef.current);
+    const finalDuration = callTimer;
     setIsCalling(false);
     setCallStatus("ended");
     setCallTimer(0);
 
-    if (remoteParty) {
+    const party = remoteParty || incomingCall?.caller;
+    const targetRecipientId = party?.rollNo || party?.staffId || party?.id;
+
+    if (targetRecipientId) {
       const myId =
         currentUser?.student?.rollNo ||
         currentUser?.staffId ||
@@ -353,18 +474,19 @@ export default function GlobalCallOverlay() {
         currentUser?.name ||
         "User";
 
-      const roomId = getCanonicalPairKey(myId, remoteParty.id);
+      const roomId = incomingCall?.roomId || getCanonicalPairKey(myId, targetRecipientId);
       sendCallSignal({
         type: "call_end",
         roomId,
         caller: { id: myId, name: myName, role: currentUser?.role || "student" },
-        recipientId: remoteParty.id,
-        recipientName: remoteParty.name,
+        recipientId: targetRecipientId,
+        recipientName: party?.name || "Contact",
         callType,
       }).catch(() => {});
-
-      showToast(`📞 Call ended (${formatCallTime(callTimer)})`, "info");
     }
+
+    if (incomingCall) setIncomingCall(null);
+    showToast(`📞 Call ended (${formatCallTime(finalDuration)})`, "info");
   };
 
   const formatCallTime = (secs) => {
@@ -484,53 +606,16 @@ export default function GlobalCallOverlay() {
             {callType === "video" ? (
               /* VIDEO CALL SCREEN WITH DRAGGABLE FLOATING SELF-VIEW PIP OVERLAY */
               <View style={{ flex: 1 }}>
-                {/* 1. Full Screen Remote Party View (Live Background) */}
-                <LinearGradient
-                  colors={["#0B141A", "#111B21", "#0B141A"]}
-                  style={[
-                    StyleSheet.absoluteFillObject,
-                    { justifyContent: "center", alignItems: "center" },
-                  ]}
-                >
-                  <Animated.View
-                    style={[
-                      styles.callAvatarLarge,
-                      {
-                        backgroundColor: "#059669",
-                        width: 120,
-                        height: 120,
-                        borderRadius: 60,
-                        transform: [{ scale: callStatus === "connected" ? pulseAnim : 1 }],
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.callAvatarLargeText, { fontSize: 44 }]}>
-                      {remoteParty?.initials || "U"}
-                    </Text>
-                  </Animated.View>
-                  <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "800", marginTop: 16 }}>
-                    {remoteParty?.name || "Remote User"}
-                  </Text>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 6,
-                      marginTop: 8,
-                      backgroundColor: "rgba(16,185,129,0.18)",
-                      paddingHorizontal: 12,
-                      paddingVertical: 5,
-                      borderRadius: 14,
-                      borderWidth: 1,
-                      borderColor: "rgba(52,211,153,0.35)",
-                    }}
-                  >
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />
-                    <Text style={{ color: "#34D399", fontSize: 12.5, fontWeight: "700" }}>
-                      {callStatus === "connected" ? "Live HD 2-Way Video Call" : "Connecting Live Video..."}
-                    </Text>
-                  </View>
-                </LinearGradient>
+                {/* 1. Full Screen Remote Party View (Live 2-Way Camera Stream) */}
+                <RemoteLiveVideoBackground
+                  callStatus={callStatus}
+                  remoteParty={remoteParty || incomingCall?.caller}
+                  pulseAnim={pulseAnim}
+                  roomId={incomingCall?.roomId || getCanonicalPairKey(currentUser?.student?.rollNo || currentUser?.staffId || currentUser?.staff?.id || currentUser?.id || "user", (remoteParty || incomingCall?.caller)?.id || "remote")}
+                  myName={currentUser?.student?.name || currentUser?.staff?.name || currentUser?.name || "User"}
+                  isMuted={isMuted}
+                  isVideoEnabled={isVideoEnabled}
+                />
 
                 {/* Dark Gradient Overlay for Header & Controls */}
                 <LinearGradient

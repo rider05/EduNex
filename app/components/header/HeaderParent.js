@@ -26,6 +26,7 @@ export default function HeaderParent() {
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeModal, setActiveModal] = useState(null);
+  const [parentName, setParentName] = useState("");
   const [wardDept, setWardDept] = useState("");
   const [wardName, setWardName] = useState("");
   const [rollNo, setRollNo] = useState("");
@@ -34,6 +35,9 @@ export default function HeaderParent() {
 
   useEffect(() => {
     getParentData().then((data) => {
+      if (data?.name || data?.parentName) {
+        setParentName(data.name || data.parentName);
+      }
       if (data?.ward) {
         setWardDept(data.ward.dept || "");
         setWardName(data.ward.name || "");
@@ -86,7 +90,7 @@ export default function HeaderParent() {
         <View style={styles.headerContent}>
           <View style={styles.brandingSection}>
             <TouchableOpacity
-              onPress={() => showToast("👋 Welcome to EduNex Parent Portal", "info")}
+              onPress={() => showToast(`👋 Welcome, ${parentName || (wardName ? `Parent of ${wardName}` : "Parent")}!`, "info")}
               activeOpacity={0.8}
               style={styles.titleRow}
             >

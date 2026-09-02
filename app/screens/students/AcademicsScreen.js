@@ -13,6 +13,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import FullTimetable from "./modals/FullTimeTable";
+import AttendanceModal from "./modals/AttendanceModal";
 import { SkeletonKPIRow, SkeletonListItem } from "../../components/common/SkeletonLoader";
 import { getStudentData, getAssignments, getStudentAttendanceSummary, getSubjects, enrichSubjectFromCatalog } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
@@ -93,6 +94,7 @@ export default function AcademicsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showTimetable, setShowTimetable] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
 
   // Filter & Search
   const [selectedType, setSelectedType] = useState("All Courses");
@@ -301,10 +303,17 @@ export default function AcademicsScreen() {
                   <Text style={[styles.kpiLabel, { color: colors.secondaryText }]}>Credits Earned</Text>
                 </View>
                 <View style={[styles.kpiDivider, { backgroundColor: colors.divider }]} />
-                <View style={styles.kpiItem}>
-                  <Text style={[styles.kpiVal, { color: "#10B981" }]}>{attendance}</Text>
-                  <Text style={[styles.kpiLabel, { color: colors.secondaryText }]}>Overall Attendance</Text>
-                </View>
+                <TouchableOpacity
+                  style={styles.kpiItem}
+                  onPress={() => setShowAttendanceModal(true)}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                    <Text style={[styles.kpiVal, { color: "#10B981" }]}>{attendance}</Text>
+                    <Icon name="calculator-variant" size={13} color="#10B981" />
+                  </View>
+                  <Text style={[styles.kpiLabel, { color: colors.secondaryText }]}>Attendance · Calc</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -492,6 +501,7 @@ export default function AcademicsScreen() {
       {/* 5. FULL TIMETABLE MODAL (DIRECT MOUNT - NO NESTED MODAL WRAPPER)           */}
       {/* ========================================================================= */}
       <FullTimetable visible={showTimetable} onClose={() => setShowTimetable(false)} />
+      <AttendanceModal visible={showAttendanceModal} onClose={() => setShowAttendanceModal(false)} />
 
       {/* ========================================================================= */}
       {/* 6. ASSIGNMENT & PROJECT SUBMISSION STUDIO MODAL                           */}

@@ -19,6 +19,7 @@ import FullSettingsModal from "./settings/FullSettingsModal";
 import ChatModal from "./modal/ChatModal";
 import { showToast } from "../../utils/toastService";
 import { onNavigateToNotification } from "../../utils/notificationUtils";
+import { resolveIdentity } from "../../services/identityService";
 
 export default function HeaderAdmin() {
   const { colors, isDarkMode } = useTheme();
@@ -26,6 +27,7 @@ export default function HeaderAdmin() {
 
   /* Bottom Expand */
   const [isExpanded, setIsExpanded] = useState(false);
+  const [adminName, setAdminName] = useState("");
   const bottomExpand = useRef(new Animated.Value(0)).current;
 
   /* Modals */
@@ -34,6 +36,13 @@ export default function HeaderAdmin() {
   const [chatModal, setChatModal] = useState(false);
 
   useEffect(() => {
+    resolveIdentity()
+      .then((id) => {
+        const name = id?.admin?.name || id?.name || id?.fullName || id?.username || "";
+        if (name) setAdminName(name);
+      })
+      .catch(() => {});
+
     const unsub = onNavigateToNotification(({ target }) => {
       if (target === "chat") {
         setChatModal(true);
@@ -91,7 +100,7 @@ export default function HeaderAdmin() {
         <View style={styles.headerContent}>
           <View style={styles.brandingSection}>
             <TouchableOpacity
-              onPress={() => showToast("👋 Welcome, System Administrator!", "info")}
+              onPress={() => showToast(`👋 Welcome, ${adminName || "Administrator"}!`, "info")}
               activeOpacity={0.8}
               style={styles.titleRow}
             >

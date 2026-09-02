@@ -286,9 +286,19 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
         // Pull this user's live records from MongoDB into the local sync cache
         syncAfterLogin().catch((e) => console.warn("syncAfterLogin err:", e));
 
+        const personName =
+          user?.name ||
+          user?.fullName ||
+          user?.student?.name ||
+          user?.staff?.name ||
+          user?.parent?.name ||
+          user?.admin?.name ||
+          user?.username ||
+          "";
+
         setIsSuccess(true);
         setLoadingTitle("Access Granted");
-        setLoadingSubtitle(`Welcome back to EduNex!`);
+        setLoadingSubtitle(personName ? `Welcome back, ${personName}!` : "Welcome back to EduNex!");
         Animated.spring(successScaleAnim, { toValue: 1, friction: 5, useNativeDriver: true }).start();
 
         setTimeout(() => {

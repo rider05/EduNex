@@ -1,16 +1,35 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Text, View, StyleSheet, TouchableOpacity } from "react-native";
 import { useTheme } from "../context/ThemeContext";
 import { showToast } from "../utils/toastService";
+import { resolveIdentity } from "../services/identityService";
 
 export default function Header() {
   const { colors } = useTheme();
+  const [userName, setUserName] = useState("");
 
   const styles = getStyles(colors);
 
+  useEffect(() => {
+    resolveIdentity()
+      .then((id) => {
+        const name =
+          id?.student?.name ||
+          id?.staff?.name ||
+          id?.parent?.name ||
+          id?.admin?.name ||
+          id?.name ||
+          id?.fullName ||
+          id?.username ||
+          "";
+        if (name) setUserName(name);
+      })
+      .catch(() => {});
+  }, []);
+
   // Show welcome toast on tap
   const handleAppIconPress = () => {
-    showToast("👋 Welcome to EduNex! Enjoy your learning journey.", "success");
+    showToast(`👋 Welcome, ${userName || "User"}! Enjoy your learning journey.`, "success");
   };
 
   const handleMenuPress = () => {

@@ -32,6 +32,7 @@ export default function HeaderStaff() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeModal, setActiveModal] = useState(null);
   const [userLabel, setUserLabel] = useState("");
+  const [staffName, setStaffName] = useState("");
   const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
 
   const bottomExpand = useRef(new Animated.Value(0)).current;
@@ -53,6 +54,8 @@ export default function HeaderStaff() {
     (async () => {
       try {
         const id = await resolveIdentity();
+        const realName = id?.staff?.name || id?.name || id?.fullName || id?.username || "";
+        if (realName) setStaffName(realName);
         if (id?.staff?.name) {
           const parts = [id.staff.name];
           if (id.staff.designation) parts.push(id.staff.designation);
@@ -126,7 +129,7 @@ export default function HeaderStaff() {
         <View style={styles.headerContent}>
           <View style={styles.brandingSection}>
             <TouchableOpacity
-              onPress={() => showToast("👋 Welcome, Professor!", "info")}
+              onPress={() => showToast(`👋 Welcome, ${staffName || "Faculty Member"}!`, "info")}
               activeOpacity={0.8}
               style={styles.titleRow}
             >

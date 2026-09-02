@@ -39,8 +39,8 @@ if (__DEV__) {
 
 export default function RootLayout() {
   useEffect(() => {
-    // Start continuous real-time signaling & notification watcher globally
-    const stopWatcher = startRealtimeWatcher(2500);
+    // Start continuous real-time signaling & notification watcher globally (1.5s fast polling)
+    const stopWatcher = startRealtimeWatcher(1500);
     return () => {
       if (stopWatcher) stopWatcher();
     };

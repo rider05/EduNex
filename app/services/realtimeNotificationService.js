@@ -397,23 +397,28 @@ async function performRealtimeCheck() {
       if (!lastKnownMessages.has(id)) {
         lastKnownMessages.add(id);
 
-        const sId = String(msg.senderId || "").trim().toLowerCase();
+        const sId = String(msg.senderId || msg.caller?.id || "").trim().toLowerCase();
         const rId = String(msg.recipientId || "").trim().toLowerCase();
 
+        // Exact sender & recipient matching (prevent false positives between users of same role)
         const isSender =
-          (sId && (sId === currentUserId || (currentRollNo && sId === currentRollNo) || (currentStaffId && sId === currentStaffId))) ||
-          (msg.sender === role && msg.senderRole === role);
+          sId &&
+          (sId === currentUserId ||
+            (currentRollNo && sId === currentRollNo) ||
+            (currentStaffId && sId === currentStaffId));
 
         const isRecipient =
-          (rId && (rId === currentUserId || (currentRollNo && rId === currentRollNo) || (currentStaffId && rId === currentStaffId))) ||
-          (msg.recipientRole && String(msg.recipientRole).toLowerCase() === String(role).toLowerCase()) ||
-          (msg.recipient && String(msg.recipient).toLowerCase() === String(role).toLowerCase());
+          (rId &&
+            (rId === currentUserId ||
+              (currentRollNo && rId === currentRollNo) ||
+              (currentStaffId && rId === currentStaffId))) ||
+          (!rId && msg.recipientRole && String(msg.recipientRole).toLowerCase() === String(role).toLowerCase()) ||
+          (!rId && msg.recipient && String(msg.recipient).toLowerCase() === String(role).toLowerCase());
 
-        // ONLY trigger push notification popup if the message is from someone else to this user
-        if (isRecipient && !isSender) {
-          // Handle Real-Time Call Signaling Packets
-          if (msg.type === "call_signal") {
-            // Forward directly to in-app listeners (ChatModal)
+        // Handle Real-Time Call Signaling Packets (Invite, Accept, End, Decline)
+        if (msg.type === "call_signal" || msg.signalType) {
+          if (isRecipient && !isSender) {
+            // Forward directly to in-app listeners (ChatModal & GlobalCallOverlay)
             notifyChatSubscribers({
               type: "call_signal",
               signalType: msg.signalType || "call_invite",
@@ -442,8 +447,12 @@ async function performRealtimeCheck() {
                 },
               });
             }
-            continue;
           }
+          continue;
+        }
+
+        // ONLY trigger push notification popup if the message is from someone else to this user
+        if (isRecipient && !isSender) {
 
           const senderDisplayName = resolveHumanDisplayName(
             msg.senderId,
