@@ -43,6 +43,7 @@ export function setActiveOpenChatContact(contactId) {
 export async function setupPushNotificationPermissions() {
   try {
     if (Platform.OS === "android") {
+      // General alerts channel
       await Notifications.setNotificationChannelAsync("edunex_alerts", {
         name: "EduNex Campus & Leave Alerts",
         importance: Notifications.AndroidImportance.MAX,
@@ -52,6 +53,42 @@ export async function setupPushNotificationPermissions() {
         enableVibrate: true,
         showBadge: true,
       });
+
+      // High-priority lockscreen incoming call channel
+      await Notifications.setNotificationChannelAsync("edunex_calls", {
+        name: "EduNex Incoming Audio & Video Calls",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 500, 250, 500, 250, 500, 250, 500],
+        lightColor: "#10B981",
+        sound: "default",
+        enableVibrate: true,
+        showBadge: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: true,
+      });
+    }
+
+    // Configure interactive notification actions (Answer & Decline on Lockscreen)
+    try {
+      await Notifications.setNotificationCategoryAsync("incoming_call_category", [
+        {
+          identifier: "answer",
+          buttonTitle: "📞 Answer Call",
+          options: {
+            opensAppToForeground: true,
+          },
+        },
+        {
+          identifier: "decline",
+          buttonTitle: "❌ Decline",
+          options: {
+            opensAppToForeground: false,
+            isDestructive: true,
+          },
+        },
+      ]);
+    } catch (_catErr) {
+      // Category fallback
     }
 
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -109,9 +146,13 @@ export async function triggerRealtimeNotification({
       } catch (_e) {}
     }
 
+    const isIncomingCall = data?.type === "incoming_call";
+
     // 1. Physical Haptic feedback
     try {
-      if (type === "success") {
+      if (isIncomingCall) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      } else if (type === "success") {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else if (type === "warning" || type === "error") {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -122,7 +163,7 @@ export async function triggerRealtimeNotification({
       // Haptics fallback
     }
 
-    // 2. Native System Push Notification (works across devices/screens)
+    // 2. Native System Push Notification (works across background, lockscreen & off-screen)
     try {
       await Notifications.scheduleNotificationAsync({
         content: {
@@ -131,7 +172,12 @@ export async function triggerRealtimeNotification({
           data,
           sound: "default",
           badge: 1,
-          channelId: "edunex_alerts",
+          channelId: isIncomingCall ? "edunex_calls" : "edunex_alerts",
+          categoryIdentifier: isIncomingCall ? "incoming_call_category" : undefined,
+          priority: isIncomingCall
+            ? Notifications.AndroidNotificationPriority.MAX
+            : Notifications.AndroidNotificationPriority.HIGH,
+          vibrate: isIncomingCall ? [0, 500, 250, 500, 250, 500, 250, 500] : undefined,
         },
         trigger: null, // deliver immediately
       });

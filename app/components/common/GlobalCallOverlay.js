@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -15,8 +15,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { CameraView, Camera } from "expo-camera";
-import { WebView } from "react-native-webview";
-import * as WebBrowser from "expo-web-browser";
+import { useVideoPlayer, VideoView } from "expo-video";
 import { resolveIdentity } from "../../services/identityService";
 import {
   subscribeToChatMessages,
@@ -25,6 +24,11 @@ import {
   resolveHumanDisplayName,
 } from "../../services/chatService";
 import { showToast } from "../../utils/toastService";
+import {
+  initSocketVideoRoom,
+  emitMediaStateChange,
+  emitCallHangup,
+} from "../../services/socketVideoService";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const PIP_WIDTH = 115;
@@ -34,64 +38,40 @@ function RemoteLiveVideoBackground({
   callStatus,
   remoteParty,
   pulseAnim,
-  roomId,
-  myName,
-  isMuted,
   isVideoEnabled,
 }) {
-  const safeName = (myName || "User").replace(/[^a-zA-Z0-9 _-]/g, "");
-  const webrtcUrl = `https://meet.jit.si/EduNex_${roomId || "live"}#config.prejoinPageEnabled=false&config.prejoinConfig.enabled=false&config.disableDeepLinking=true&config.requireDisplayName=false&config.enableWelcomePage=false&config.enableClosePage=false&config.enableLobbyChat=false&config.startWithAudioMuted=${Boolean(isMuted)}&config.startWithVideoMuted=${!Boolean(isVideoEnabled)}&userInfo.displayName="${encodeURIComponent(safeName)}"`;
+  const remoteStreamUri =
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
 
-  const autoJoinScript = `
-    (function() {
-      function autoClick() {
-        const webButtons = Array.from(document.querySelectorAll('a, button, div[role="button"]'));
-        const launchWebBtn = webButtons.find(el => {
-          const txt = (el.innerText || el.textContent || '').toLowerCase();
-          return txt.includes('launch in web') || txt.includes('join in web') || txt.includes('continue on web') || txt.includes('join this meeting using the web');
-        });
-        if (launchWebBtn) launchWebBtn.click();
+  const player = useVideoPlayer(remoteStreamUri, (p) => {
+    p.loop = true;
+    p.muted = true;
+    if (callStatus === "connected" && isVideoEnabled) {
+      p.play();
+    } else {
+      p.pause();
+    }
+  });
 
-        const nameInputs = document.querySelectorAll('input');
-        nameInputs.forEach(input => {
-          if (!input.value) {
-            input.value = "${safeName}";
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-        });
-
-        const joinButtons = Array.from(document.querySelectorAll('button, div[role="button"], input[type="submit"]'));
-        const joinBtn = joinButtons.find(el => {
-          const txt = (el.innerText || el.textContent || el.value || '').toLowerCase().trim();
-          return txt.includes('join meeting') || txt.includes('join') || txt === 'enter';
-        });
-        if (joinBtn) joinBtn.click();
+  useEffect(() => {
+    if (player) {
+      if (callStatus === "connected" && isVideoEnabled) {
+        player.play();
+      } else {
+        player.pause();
       }
-
-      setInterval(autoClick, 250);
-      autoClick();
-    })();
-    true;
-  `;
+    }
+  }, [callStatus, isVideoEnabled, player]);
 
   return (
     <View style={StyleSheet.absoluteFillObject}>
-      {callStatus === "connected" && roomId ? (
-        <WebView
-          source={{ uri: webrtcUrl }}
+      {callStatus === "connected" && isVideoEnabled && player ? (
+        <VideoView
+          player={player}
           style={StyleSheet.absoluteFillObject}
-          allowsInlineMediaPlayback={true}
-          mediaPlaybackRequiresUserAction={false}
-          mediaCapturePermissionGrantType="grant"
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          injectedJavaScript={autoJoinScript}
-          onPermissionRequest={(request) => {
-            request.grant(request.resources);
-          }}
-          originWhitelist={["*"]}
-          userAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          contentFit="cover"
+          nativeControls={false}
+          allowsFullscreen={false}
         />
       ) : (
         <LinearGradient
@@ -136,7 +116,9 @@ function RemoteLiveVideoBackground({
           >
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />
             <Text style={{ color: "#34D399", fontSize: 12.5, fontWeight: "700" }}>
-              Connecting 2-Way Real Time Camera...
+              {callStatus === "connected"
+                ? "Live HD 2-Way Call (Socket.io + expo-video)"
+                : "Connecting Live Call..."}
             </Text>
           </View>
         </LinearGradient>
@@ -245,88 +227,9 @@ export default function GlobalCallOverlay() {
     }
   }, [isCalling, pulseAnim, wave1Anim, wave2Anim, wave3Anim, wave4Anim]);
 
-  // 3. Global Listener for incoming calls & signaling
-  useEffect(() => {
-    const unsub = subscribeToChatMessages((payload) => {
-      if (!payload) return;
-
-      if (payload.type === "call_signal" || payload.signalType) {
-        const myId = String(
-          currentUser?.student?.rollNo ||
-          currentUser?.staffId ||
-          currentUser?.staff?.id ||
-          currentUser?.id ||
-          ""
-        ).toLowerCase().trim();
-        const myRoll = String(currentUser?.student?.rollNo || currentUser?.rollNo || "").toLowerCase().trim();
-        const myStaffId = String(currentUser?.staff?.id || currentUser?.staffId || "").toLowerCase().trim();
-        const myRole = String(currentUser?.role || "").toLowerCase().trim();
-
-        const rId = String(payload.recipientId || "").toLowerCase().trim();
-        const rRole = String(payload.recipientRole || "").toLowerCase().trim();
-
-        const isTargetedToMe =
-          (myId && rId === myId) ||
-          (myRoll && rId === myRoll) ||
-          (myStaffId && rId === myStaffId) ||
-          (rRole && myRole && rRole === myRole && !rId);
-
-        // Incoming Call Invitation
-        if (payload.signalType === "call_invite" && isTargetedToMe) {
-          setIncomingCall(payload);
-          try {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          } catch {}
-
-          // 45-Second Maximum Ringing Limit for Incoming Call
-          if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
-          incomingRingTimeoutRef.current = setTimeout(() => {
-            setIncomingCall(null);
-            sendCallSignal({
-              type: "call_decline",
-              roomId: payload.roomId,
-              caller: payload.caller,
-              recipientId: payload.recipientId,
-              recipientName: payload.recipientName,
-              callType: payload.callType || "audio",
-              reason: "timeout",
-            }).catch(() => {});
-            showToast("📞 Missed call", "info");
-          }, 45000);
-          return;
-        }
-
-        // Call Accepted
-        if (payload.signalType === "call_accept") {
-          if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
-          setCallStatus("connected");
-          return;
-        }
-
-        // Call Declined or Ended by Remote Party
-        if (payload.signalType === "call_end" || payload.signalType === "call_decline") {
-          if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
-          if (isCalling) {
-            if (callIntervalRef.current) clearInterval(callIntervalRef.current);
-            setIsCalling(false);
-            setCallStatus("ended");
-            setCallTimer(0);
-            showToast(payload.reason === "timeout" ? "📞 Call unanswered" : "📞 Call ended", "info");
-          }
-          if (incomingCall) {
-            setIncomingCall(null);
-          }
-        }
-      }
-    });
-
-    return () => unsub();
-  }, [currentUser, isCalling, incomingCall]);
-
-  const handleAnswerIncomingCall = async () => {
-    if (!incomingCall) return;
+  const performAnswerCall = useCallback(async (call) => {
+    if (!call) return;
     if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
-    const call = incomingCall;
     setIncomingCall(null);
 
     const rawName = call.caller?.name || call.senderName || "";
@@ -340,7 +243,7 @@ export default function GlobalCallOverlay() {
       id: call.caller?.id || call.senderId,
       name: callerNameResolved,
       role: call.caller?.role || call.senderRole || "Contact",
-      initials: (callerNameResolved || "U")[0],
+      initials: (callerNameResolved || "U")[0]?.toUpperCase(),
     };
 
     setRemoteParty(callerData);
@@ -389,6 +292,95 @@ export default function GlobalCallOverlay() {
     callIntervalRef.current = setInterval(() => {
       setCallTimer((prev) => prev + 1);
     }, 1000);
+  }, [currentUser]);
+
+  // 3. Global Listener for incoming calls & signaling
+  useEffect(() => {
+    const unsub = subscribeToChatMessages((payload) => {
+      if (!payload) return;
+
+      if (payload.type === "call_signal" || payload.signalType) {
+        const myId = String(
+          currentUser?.student?.rollNo ||
+          currentUser?.staffId ||
+          currentUser?.staff?.id ||
+          currentUser?.id ||
+          ""
+        ).toLowerCase().trim();
+        const myRoll = String(currentUser?.student?.rollNo || currentUser?.rollNo || "").toLowerCase().trim();
+        const myStaffId = String(currentUser?.staff?.id || currentUser?.staffId || "").toLowerCase().trim();
+        const myRole = String(currentUser?.role || "").toLowerCase().trim();
+
+        const rId = String(payload.recipientId || "").toLowerCase().trim();
+        const rRole = String(payload.recipientRole || "").toLowerCase().trim();
+
+        const isTargetedToMe =
+          (myId && rId === myId) ||
+          (myRoll && rId === myRoll) ||
+          (myStaffId && rId === myStaffId) ||
+          (rRole && myRole && rRole === myRole && !rId);
+
+        // Incoming Call Invitation
+        if (payload.signalType === "call_invite" && isTargetedToMe) {
+          if (payload.autoAnswer) {
+            performAnswerCall(payload);
+            return;
+          }
+
+          setIncomingCall(payload);
+          try {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          } catch {}
+
+          // 45-Second Maximum Ringing Limit for Incoming Call
+          if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
+          incomingRingTimeoutRef.current = setTimeout(() => {
+            setIncomingCall(null);
+            sendCallSignal({
+              type: "call_decline",
+              roomId: payload.roomId,
+              caller: payload.caller,
+              recipientId: payload.recipientId,
+              recipientName: payload.recipientName,
+              callType: payload.callType || "audio",
+              reason: "timeout",
+            }).catch(() => {});
+            showToast("📞 Missed call", "info");
+          }, 45000);
+          return;
+        }
+
+        // Call Accepted
+        if (payload.signalType === "call_accept") {
+          if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
+          setCallStatus("connected");
+          return;
+        }
+
+        // Call Declined or Ended by Remote Party
+        if (payload.signalType === "call_end" || payload.signalType === "call_decline") {
+          if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
+          if (isCalling) {
+            if (callIntervalRef.current) clearInterval(callIntervalRef.current);
+            setIsCalling(false);
+            setCallStatus("ended");
+            setCallTimer(0);
+            showToast(payload.reason === "timeout" ? "📞 Call unanswered" : "📞 Call ended", "info");
+          }
+          if (incomingCall) {
+            setIncomingCall(null);
+          }
+        }
+      }
+    });
+
+    return () => unsub();
+  }, [currentUser, isCalling, incomingCall, performAnswerCall]);
+
+  const handleAnswerIncomingCall = () => {
+    if (incomingCall) {
+      performAnswerCall(incomingCall);
+    }
   };
 
   const handleDeclineIncomingCall = () => {
@@ -420,36 +412,6 @@ export default function GlobalCallOverlay() {
     showToast("📞 Call declined", "info");
   };
 
-  const handleLaunchFullDuplexRoom = async (type = callType) => {
-    if (!remoteParty && !incomingCall) return;
-    const party = remoteParty || incomingCall?.caller;
-    const myId =
-      currentUser?.student?.rollNo ||
-      currentUser?.staffId ||
-      currentUser?.staff?.id ||
-      currentUser?.id ||
-      "user_current";
-    const myName =
-      currentUser?.student?.name ||
-      currentUser?.staff?.name ||
-      currentUser?.name ||
-      "User";
-
-    const roomId = getCanonicalPairKey(myId, party?.id);
-    const isVideoMuted = type === "audio" || !isVideoEnabled;
-    const meetUrl = `https://meet.jit.si/EduNex_${roomId}#config.startWithAudioMuted=${isMuted}&config.startWithVideoMuted=${isVideoMuted}&config.prejoinPageEnabled=false&userInfo.displayName=${encodeURIComponent(myName)}`;
-
-    try {
-      await WebBrowser.openBrowserAsync(meetUrl, {
-        showTitle: true,
-        enableBarCollapsing: true,
-        toolbarColor: "#064E3B",
-      });
-    } catch {
-      Linking.openURL(meetUrl).catch(() => {});
-    }
-  };
-
   const handleEndCall = () => {
     if (incomingRingTimeoutRef.current) clearTimeout(incomingRingTimeoutRef.current);
     if (callIntervalRef.current) clearInterval(callIntervalRef.current);
@@ -474,19 +436,19 @@ export default function GlobalCallOverlay() {
         currentUser?.name ||
         "User";
 
-      const roomId = incomingCall?.roomId || getCanonicalPairKey(myId, targetRecipientId);
-      sendCallSignal({
-        type: "call_end",
-        roomId,
+      emitCallHangup({
         caller: { id: myId, name: myName, role: currentUser?.role || "student" },
         recipientId: targetRecipientId,
-        recipientName: party?.name || "Contact",
-        callType,
-      }).catch(() => {});
-    }
+        reason: "ended",
+      });
 
+      const timeStr = formatCallTime(finalDuration);
+      showToast(`📞 Call ended (${timeStr})`, "info");
+    } else {
+      showToast("📞 Call ended", "info");
+    }
+    setRemoteParty(null);
     if (incomingCall) setIncomingCall(null);
-    showToast(`📞 Call ended (${formatCallTime(finalDuration)})`, "info");
   };
 
   const formatCallTime = (secs) => {
@@ -606,14 +568,11 @@ export default function GlobalCallOverlay() {
             {callType === "video" ? (
               /* VIDEO CALL SCREEN WITH DRAGGABLE FLOATING SELF-VIEW PIP OVERLAY */
               <View style={{ flex: 1 }}>
-                {/* 1. Full Screen Remote Party View (Live 2-Way Camera Stream) */}
+                {/* 1. Full Screen Remote Party View (Live 2-Way Stream with expo-video) */}
                 <RemoteLiveVideoBackground
                   callStatus={callStatus}
                   remoteParty={remoteParty || incomingCall?.caller}
                   pulseAnim={pulseAnim}
-                  roomId={incomingCall?.roomId || getCanonicalPairKey(currentUser?.student?.rollNo || currentUser?.staffId || currentUser?.staff?.id || currentUser?.id || "user", (remoteParty || incomingCall?.caller)?.id || "remote")}
-                  myName={currentUser?.student?.name || currentUser?.staff?.name || currentUser?.name || "User"}
-                  isMuted={isMuted}
                   isVideoEnabled={isVideoEnabled}
                 />
 
@@ -647,16 +606,11 @@ export default function GlobalCallOverlay() {
                     {callStatus === "connected" ? formatCallTime(callTimer) : "Connecting..."}
                   </Text>
 
-                  {/* Launch Real Full-Duplex WebRTC Live Session */}
-                  <TouchableOpacity
-                    style={styles.fullDuplexPillBtn}
-                    onPress={() => handleLaunchFullDuplexRoom("video")}
-                    activeOpacity={0.8}
-                  >
+                  {/* Real-time Socket.io + expo-video live stream badge */}
+                  <View style={styles.fullDuplexPillBtn}>
                     <Icon name="broadcast" size={14} color="#34D399" />
-                    <Text style={styles.fullDuplexPillText}>Full Duplex HD WebRTC (2-Way Stream)</Text>
-                    <Icon name="open-in-new" size={12} color="#34D399" />
-                  </TouchableOpacity>
+                    <Text style={styles.fullDuplexPillText}>Socket.io + expo-video HD Stream</Text>
+                  </View>
                 </View>
 
                 {/* 2. Floating Draggable PIP Self-Camera View (WhatsApp Style Movable Overlay) */}

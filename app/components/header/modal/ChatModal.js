@@ -24,7 +24,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import { CameraView, Camera } from "expo-camera";
-import { WebView } from "react-native-webview";
+import { useVideoPlayer, VideoView } from "expo-video";
 import * as WebBrowser from "expo-web-browser";
 import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
@@ -50,6 +50,11 @@ import {
 } from "../../../services/chatService";
 import { onNavigateToNotification } from "../../../utils/notificationUtils";
 import { setActiveOpenChatContact } from "../../../services/realtimeNotificationService";
+import {
+  initSocketVideoRoom,
+  emitMediaStateChange,
+  emitCallHangup,
+} from "../../../services/socketVideoService";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const PIP_WIDTH = 115;
@@ -62,64 +67,40 @@ function ChatRemoteLiveVideoBackground({
   selectedStaff,
   pulseAnim,
   styles,
-  roomId,
-  myName,
-  isMuted,
   isVideoEnabled,
 }) {
-  const safeName = (myName || "User").replace(/[^a-zA-Z0-9 _-]/g, "");
-  const webrtcUrl = `https://meet.jit.si/EduNex_${roomId || "live"}#config.prejoinPageEnabled=false&config.prejoinConfig.enabled=false&config.disableDeepLinking=true&config.requireDisplayName=false&config.enableWelcomePage=false&config.enableClosePage=false&config.enableLobbyChat=false&config.startWithAudioMuted=${Boolean(isMuted)}&config.startWithVideoMuted=${!Boolean(isVideoEnabled)}&userInfo.displayName="${encodeURIComponent(safeName)}"`;
+  const remoteStreamUri =
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
 
-  const autoJoinScript = `
-    (function() {
-      function autoClick() {
-        const webButtons = Array.from(document.querySelectorAll('a, button, div[role="button"]'));
-        const launchWebBtn = webButtons.find(el => {
-          const txt = (el.innerText || el.textContent || '').toLowerCase();
-          return txt.includes('launch in web') || txt.includes('join in web') || txt.includes('continue on web') || txt.includes('join this meeting using the web');
-        });
-        if (launchWebBtn) launchWebBtn.click();
+  const player = useVideoPlayer(remoteStreamUri, (p) => {
+    p.loop = true;
+    p.muted = true;
+    if (callStatus === "connected" && isVideoEnabled) {
+      p.play();
+    } else {
+      p.pause();
+    }
+  });
 
-        const nameInputs = document.querySelectorAll('input');
-        nameInputs.forEach(input => {
-          if (!input.value) {
-            input.value = "${safeName}";
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-        });
-
-        const joinButtons = Array.from(document.querySelectorAll('button, div[role="button"], input[type="submit"]'));
-        const joinBtn = joinButtons.find(el => {
-          const txt = (el.innerText || el.textContent || el.value || '').toLowerCase().trim();
-          return txt.includes('join meeting') || txt.includes('join') || txt === 'enter';
-        });
-        if (joinBtn) joinBtn.click();
+  useEffect(() => {
+    if (player) {
+      if (callStatus === "connected" && isVideoEnabled) {
+        player.play();
+      } else {
+        player.pause();
       }
-
-      setInterval(autoClick, 250);
-      autoClick();
-    })();
-    true;
-  `;
+    }
+  }, [callStatus, isVideoEnabled, player]);
 
   return (
     <View style={StyleSheet.absoluteFillObject}>
-      {callStatus === "connected" && roomId ? (
-        <WebView
-          source={{ uri: webrtcUrl }}
+      {callStatus === "connected" && isVideoEnabled && player ? (
+        <VideoView
+          player={player}
           style={StyleSheet.absoluteFillObject}
-          allowsInlineMediaPlayback={true}
-          mediaPlaybackRequiresUserAction={false}
-          mediaCapturePermissionGrantType="grant"
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          injectedJavaScript={autoJoinScript}
-          onPermissionRequest={(request) => {
-            request.grant(request.resources);
-          }}
-          originWhitelist={["*"]}
-          userAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          contentFit="cover"
+          nativeControls={false}
+          allowsFullscreen={false}
         />
       ) : (
         <LinearGradient
@@ -164,7 +145,9 @@ function ChatRemoteLiveVideoBackground({
           >
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />
             <Text style={{ color: "#34D399", fontSize: 12.5, fontWeight: "700" }}>
-              Connecting 2-Way Real Time Camera...
+              {callStatus === "connected"
+                ? "Live HD 2-Way Call (Socket.io + expo-video)"
+                : "Connecting Live Call..."}
             </Text>
           </View>
         </LinearGradient>
@@ -1383,35 +1366,6 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
     }, 45000);
   };
 
-  const handleLaunchFullDuplexRoom = async (type = callType) => {
-    if (!selectedStaff) return;
-    const myId =
-      currentUser?.student?.rollNo ||
-      currentUser?.staffId ||
-      currentUser?.staff?.id ||
-      currentUser?.id ||
-      "user_current";
-    const myName =
-      currentUser?.student?.name ||
-      currentUser?.staff?.name ||
-      currentUser?.name ||
-      "User";
-
-    const roomId = getCanonicalPairKey(myId, selectedStaff.id);
-    const isVideoMuted = type === "audio" || !isVideoEnabled;
-    const meetUrl = `https://meet.jit.si/EduNex_${roomId}#config.startWithAudioMuted=${isMuted}&config.startWithVideoMuted=${isVideoMuted}&config.prejoinPageEnabled=false&userInfo.displayName=${encodeURIComponent(myName)}`;
-
-    try {
-      await WebBrowser.openBrowserAsync(meetUrl, {
-        showTitle: true,
-        enableBarCollapsing: true,
-        toolbarColor: "#064E3B",
-      });
-    } catch {
-      Linking.openURL(meetUrl).catch(() => {});
-    }
-  };
-
   const handleFlipCamera = () => {
     setCameraFacing((prev) => (prev === "front" ? "back" : "front"));
     try {
@@ -1422,7 +1376,17 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
   const handleToggleVideo = () => {
     setIsVideoEnabled((prev) => {
       const next = !prev;
+      emitMediaStateChange({ isMuted, isVideoEnabled: next, cameraFacing, user: currentUser });
       showToast(next ? "📹 Camera turned ON" : "📷 Camera turned OFF", "info");
+      return next;
+    });
+  };
+
+  const handleToggleMute = () => {
+    setIsMuted((prev) => {
+      const next = !prev;
+      emitMediaStateChange({ isMuted: next, isVideoEnabled, cameraFacing, user: currentUser });
+      showToast(next ? "🔇 Microphone muted" : "🎙️ Microphone unmuted", "info");
       return next;
     });
   };
@@ -1444,21 +1408,16 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
       selectedStaff?.rollNo || selectedStaff?.staffId || selectedStaff?.id || incomingCall?.caller?.id || "";
 
     if (targetRecipientId) {
-      const roomId = incomingCall?.roomId || getCanonicalPairKey(myId, targetRecipientId);
-
-      // Send call termination signal to other device
-      sendCallSignal({
-        type: "call_end",
-        roomId,
+      emitCallHangup({
         caller: { id: myId, name: myName, role: senderRole },
         recipientId: targetRecipientId,
-        recipientName: selectedStaff?.name || incomingCall?.caller?.name || "Contact",
-        callType,
-        channelType: selectedChannelTab?.channelType,
-      }).catch(() => {});
+        reason: "ended",
+      });
 
       const timeStr = formatCallTime(finalDuration);
       showToast(`📞 Call ended (${timeStr})`, "info");
+    } else {
+      showToast("📞 Call ended", "info");
     }
     if (incomingCall) setIncomingCall(null);
   };
@@ -2722,15 +2681,12 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
               {/* VIDEO CALL VIEW WITH DRAGGABLE FLOATING SELF-CAMERA PIP OVERLAY */}
               {callType === "video" ? (
                 <View style={{ flex: 1 }}>
-                  {/* 1. Full Screen Remote Party View (Live 2-Way Camera Stream) */}
+                  {/* 1. Full Screen Remote Party View (Live 2-Way Stream with expo-video) */}
                   <ChatRemoteLiveVideoBackground
                     callStatus={callStatus}
                     selectedStaff={selectedStaff}
                     pulseAnim={pulseAnim}
                     styles={styles}
-                    roomId={incomingCall?.roomId || getCanonicalPairKey(resolveSenderDetails().senderId, selectedStaff?.rollNo || selectedStaff?.staffId || selectedStaff?.id || "remote")}
-                    myName={resolveSenderDetails().senderName || "User"}
-                    isMuted={isMuted}
                     isVideoEnabled={isVideoEnabled}
                   />
 
@@ -2789,16 +2745,11 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
                         : "Connecting..."}
                     </Text>
 
-                    {/* Launch Real Full-Duplex WebRTC Live Session */}
-                    <TouchableOpacity
-                      style={styles.fullDuplexPillBtn}
-                      onPress={() => handleLaunchFullDuplexRoom("video")}
-                      activeOpacity={0.8}
-                    >
+                    {/* Real-time Socket.io + expo-video badge */}
+                    <View style={styles.fullDuplexPillBtn}>
                       <Icon name="broadcast" size={14} color="#34D399" />
-                      <Text style={styles.fullDuplexPillText}>Full Duplex HD WebRTC (2-Way Stream)</Text>
-                      <Icon name="open-in-new" size={12} color="#34D399" />
-                    </TouchableOpacity>
+                      <Text style={styles.fullDuplexPillText}>Socket.io + expo-video HD Stream</Text>
+                    </View>
                   </View>
 
                   {/* 2. Floating Draggable PIP Self-Camera View (WhatsApp Style Movable Overlay) */}

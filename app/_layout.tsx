@@ -1,47 +1,48 @@
 import React, { useEffect } from "react";
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { LogBox } from "react-native";
-import { startRealtimeWatcher } from "./services/realtimeNotificationService";
+import * as Notifications from "expo-notifications";
+import { startRealtimeWatcher, setupPushNotificationPermissions } from "./services/realtimeNotificationService";
+import { notifyChatSubscribers } from "./services/chatService";
 import GlobalCallOverlay from "./components/common/GlobalCallOverlay";
-
-// Ignore known development warnings in Expo Go
-LogBox.ignoreLogs([
-  "expo-notifications: Android Push notifications",
-  "`setBackgroundColorAsync` is not supported with edge-to-edge enabled",
-  "setBackgroundColorAsync",
-]);
-
-if (__DEV__) {
-  const originalConsoleError = console.error;
-  console.error = (...args) => {
-    if (
-      typeof args[0] === "string" &&
-      args[0].includes("expo-notifications: Android Push notifications")
-    ) {
-      return;
-    }
-    originalConsoleError(...args);
-  };
-
-  const originalConsoleWarn = console.warn;
-  console.warn = (...args) => {
-    if (
-      typeof args[0] === "string" &&
-      (args[0].includes("setBackgroundColorAsync") ||
-        args[0].includes("expo-notifications: Android Push notifications"))
-    ) {
-      return;
-    }
-    originalConsoleWarn(...args);
-  };
-}
 
 export default function RootLayout() {
   useEffect(() => {
-    // Start continuous real-time signaling & notification watcher globally (1.5s fast polling)
+    // 1. Setup push permissions and background call channels
+    setupPushNotificationPermissions();
+
+    // 2. Start continuous real-time signaling & notification watcher globally (1.5s fast polling)
     const stopWatcher = startRealtimeWatcher(1500);
+
+    // 3. Listen for background & lockscreen notification taps / Answer / Decline actions
+    const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+      try {
+        const data = response.notification?.request?.content?.data;
+        const actionId = response.actionIdentifier;
+
+        if (data?.type === "incoming_call") {
+          if (actionId === "decline") {
+            notifyChatSubscribers({
+              type: "call_signal",
+              signalType: "call_decline",
+              ...data,
+            });
+          } else {
+            notifyChatSubscribers({
+              type: "call_signal",
+              signalType: "call_invite",
+              autoAnswer: actionId === "answer",
+              ...data,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Notification response error:", err);
+      }
+    });
+
     return () => {
+      responseSub.remove();
       if (stopWatcher) stopWatcher();
     };
   }, []);
