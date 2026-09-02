@@ -19,7 +19,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { showToast } from "../../utils/toastService";
 import { clearAuthSession, api } from "../../services/api";
 import { getInstitutions } from "../../services/dataService";
-import { SkeletonProfileCard, SkeletonListItem } from "../../components/common/SkeletonLoader";
+import { SkeletonScreenLoader } from "../../components/common/SkeletonLoader";
 
 const DEFAULT_SETTINGS = {
   // App & Notifications
@@ -299,12 +299,7 @@ export default function SystemSettingsAdmin({ onLogout }) {
         </View>
 
         {!isLoaded ? (
-          <View style={{ marginTop: 10 }}>
-            <SkeletonProfileCard />
-            <SkeletonListItem />
-            <SkeletonListItem />
-            <SkeletonListItem />
-          </View>
+          <SkeletonScreenLoader mode="generic" />
         ) : (
           <>
             {/* ===== 1. LIVE SERVER & CLOUD STATUS BANNER ===== */}

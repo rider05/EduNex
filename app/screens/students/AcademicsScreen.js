@@ -14,7 +14,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import FullTimetable from "./modals/FullTimeTable";
 import AttendanceModal from "./modals/AttendanceModal";
-import { SkeletonKPIRow, SkeletonListItem } from "../../components/common/SkeletonLoader";
+import { SkeletonAcademicsScreen } from "../../components/common/SkeletonLoader";
 import { getStudentData, getAssignments, getStudentAttendanceSummary, getSubjects, enrichSubjectFromCatalog } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
@@ -264,12 +264,7 @@ export default function AcademicsScreen() {
         </View>
 
         {isLoading ? (
-          <View style={{ marginTop: 10 }}>
-            <SkeletonKPIRow count={2} />
-            <SkeletonListItem />
-            <SkeletonListItem />
-            <SkeletonListItem />
-          </View>
+          <SkeletonAcademicsScreen />
         ) : (
           <>
             {/* ========================================================================= */}

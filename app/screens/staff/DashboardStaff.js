@@ -21,7 +21,7 @@ import { getFacultyData, getStaffClassName, getFacultySchedule } from "../../ser
 import { api } from "../../services/api";
 import { secureGet } from "../../services/secureStorage";
 import { subscribeToNotifications } from "../../utils/notificationUtils";
-import { SkeletonScreenLoader } from "../../components/common/SkeletonLoader";
+import { SkeletonDashboardScreen } from "../../components/common/SkeletonLoader";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
 const TODAY_SCHEDULE_DEFAULT = [];
@@ -203,7 +203,7 @@ export default function DashboardStaff() {
         }
       >
         {isLoading ? (
-          <SkeletonScreenLoader showProfile showKPIs listCount={4} />
+          <SkeletonDashboardScreen />
         ) : (
           <Animated.View style={{ opacity: fadeAnim }}>
             {/* ========================================================================= */}

@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
-import { SkeletonListItem } from "../../components/common/SkeletonLoader";
+import { SkeletonAttendanceScreen } from "../../components/common/SkeletonLoader";
 import {
   getFacultyRoster,
   submitAttendanceBatch,
@@ -426,11 +426,14 @@ export default function AttendanceStaff() {
             progressBackgroundColor={colors.cardBackground}
           />
         }
-      >
-        {/* ========================================================================= */}
-        {/* 1. HEADER & SHARE BUTTON                                                  */}
-        {/* ========================================================================= */}
-        <View style={styles.headerRow}>
+        {isLoading ? (
+          <SkeletonAttendanceScreen />
+        ) : (
+          <>
+            {/* ========================================================================= */}
+            {/* 1. HEADER & SHARE BUTTON                                                  */}
+            {/* ========================================================================= */}
+            <View style={styles.headerRow}>
           <View style={[styles.headerIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
             <Icon name="clipboard-check-outline" size={24} color={colors.primaryAccent} />
           </View>
@@ -913,6 +916,8 @@ export default function AttendanceStaff() {
                 )}
               </View>
             )}
+          </>
+        )}
           </>
         )}
 

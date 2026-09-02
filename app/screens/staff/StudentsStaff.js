@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
-import { SkeletonListItem } from "../../components/common/SkeletonLoader";
+import { SkeletonUserManagementScreen } from "../../components/common/SkeletonLoader";
 import { getFacultyRoster, getStaffClassName, toggleStudentMenteeStatus, subscribeToDataChanges } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
@@ -282,10 +282,14 @@ export default function StudentsStaff() {
           />
         }
       >
-        {/* ========================================================================= */}
-        {/* 1. HEADER                                                                 */}
-        {/* ========================================================================= */}
-        <View style={styles.headerRow}>
+        {isLoading ? (
+          <SkeletonUserManagementScreen />
+        ) : (
+          <>
+            {/* ========================================================================= */}
+            {/* 1. HEADER                                                                 */}
+            {/* ========================================================================= */}
+            <View style={styles.headerRow}>
           <View style={[styles.headerIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
             <Icon name="account-group" size={24} color={colors.primaryAccent} />
           </View>
@@ -619,6 +623,8 @@ export default function StudentsStaff() {
                 );
               })}
             </View>
+          </>
+        )}
           </>
         )}
 

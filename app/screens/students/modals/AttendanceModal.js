@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Dimensions,
   ScrollView,
-  ActivityIndicator,
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -15,6 +14,7 @@ import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from "react-na
 import { LinearGradient as ExpoGradient } from "expo-linear-gradient";
 import { getAttendanceRecords } from "../../../services/dataService";
 import { resolveIdentity } from "../../../services/identityService";
+import { SkeletonAttendanceScreen } from "../../../components/common/SkeletonLoader";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -310,12 +310,7 @@ export default function AttendanceModal({ visible, onClose }) {
 
           {/* Body Content */}
           {isLoading ? (
-            <View style={{ paddingVertical: 40, alignItems: "center" }}>
-              <ActivityIndicator size="large" color={overallColor} />
-              <Text style={{ marginTop: 12, fontSize: 13, color: colors.secondaryText }}>
-                Calculating monthly attendance records...
-              </Text>
-            </View>
+            <SkeletonAttendanceScreen />
           ) : (
             <ScrollView
               contentContainerStyle={styles.scrollContent}

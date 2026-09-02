@@ -18,7 +18,7 @@ import WardModal from "./modals/WardModal";
 import FeesModal from "./modals/FeesModal";
 import MessagesModal from "./modals/MessagesModal";
 import ReportModal from "./modals/ReportModal";
-import { SkeletonScreenLoader } from "../../components/common/SkeletonLoader";
+import { SkeletonDashboardScreen } from "../../components/common/SkeletonLoader";
 import { getParentData } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
@@ -119,7 +119,7 @@ export default function DashboardParent() {
         }
       >
         {isLoading ? (
-          <SkeletonScreenLoader showProfile showKPIs listCount={4} />
+          <SkeletonDashboardScreen />
         ) : (
           <>
             {/* ========================================================================= */}

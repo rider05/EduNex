@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
-import { SkeletonProfileCard, SkeletonKPIRow, SkeletonListItem } from "../../components/common/SkeletonLoader";
+import { SkeletonProfileScreen } from "../../components/common/SkeletonLoader";
 import { getStudentData, getPermits, getSubjects, enrichSubjectFromCatalog } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
@@ -201,12 +201,7 @@ export default function WardDetailsParent() {
         </View>
 
         {isLoading ? (
-          <View style={{ marginTop: 10 }}>
-            <SkeletonProfileCard />
-            <SkeletonKPIRow count={2} />
-            <SkeletonListItem />
-            <SkeletonListItem />
-          </View>
+          <SkeletonProfileScreen />
         ) : (
           <>
             {/* ========================================================================= */}

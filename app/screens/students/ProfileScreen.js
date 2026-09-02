@@ -22,7 +22,7 @@ import ResetPasswordModal from "./ResetPasswordModal";
 import EditProfileModal from "./modals/EditProfileModal";
 import FeedbackBugModal from "../../components/FeedbackBugModal";
 import { showToast } from "../../utils/toastService";
-import { SkeletonProfileCard, SkeletonListItem } from "../../components/common/SkeletonLoader";
+import { SkeletonProfileScreen } from "../../components/common/SkeletonLoader";
 import { getStudentData, getInstitutions } from "../../services/dataService";
 import { api, clearAuthSession } from "../../services/api";
 import { resolveIdentity } from "../../services/identityService";
@@ -340,12 +340,7 @@ export default function ProfileScreen({ onLogout }) {
         </View>
 
         {isLoading ? (
-          <View style={{ marginTop: 10 }}>
-            <SkeletonProfileCard />
-            <SkeletonListItem />
-            <SkeletonListItem />
-            <SkeletonListItem />
-          </View>
+          <SkeletonProfileScreen />
         ) : (
           <>
             {/* ========================================================================= */}

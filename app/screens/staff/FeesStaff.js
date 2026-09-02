@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
-import { SkeletonBox, SkeletonListItem } from "../../components/common/SkeletonLoader";
+import { SkeletonFeesScreen } from "../../components/common/SkeletonLoader";
 import { api } from "../../services/api";
 
 export default function FeesStaff() {
@@ -93,12 +93,7 @@ export default function FeesStaff() {
       <Text style={styles.subHeader}>View & verify student payment details</Text>
 
       {isLoading ? (
-        <View style={{ marginTop: 14 }}>
-          <SkeletonBox height={140} borderRadius={16} style={{ marginBottom: 16 }} />
-          <SkeletonListItem />
-          <SkeletonListItem />
-          <SkeletonListItem />
-        </View>
+        <SkeletonFeesScreen />
       ) : (
         <>
           {/* Summary Section */}

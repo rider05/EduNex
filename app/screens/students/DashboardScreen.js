@@ -611,13 +611,41 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </View>
 
-            {(studentData.subjects || []).map((s, i) => (
-              <View key={i} style={[styles.subjectRow, { borderBottomColor: colors.divider }]}>
-                <Text style={[styles.subjectName, { color: colors.primaryText }]}>{s.name}</Text>
-                <Text style={[styles.subjectMarks, { color: colors.secondaryText }]}>{s.marks}%</Text>
-                <Text style={[styles.subjectGrade, { color: colors.primaryAccent }]}>{s.grade}</Text>
-              </View>
-            ))}
+            {(() => {
+              const validSubjects = (studentData.subjects || []).filter(
+                (s) => s && typeof s.name === "string" && s.name.trim().length > 0
+              );
+
+              if (validSubjects.length === 0) {
+                return (
+                  <View style={{ paddingVertical: 20, alignItems: "center" }}>
+                    <Text style={{ color: colors.secondaryText, fontSize: 13, fontWeight: "600" }}>
+                      No subject records available
+                    </Text>
+                  </View>
+                );
+              }
+
+              return validSubjects.map((s, i) => {
+                const isLast = i === validSubjects.length - 1;
+                return (
+                  <View
+                    key={s.code || s.name || i}
+                    style={[
+                      styles.subjectRow,
+                      {
+                        borderBottomColor: colors.divider,
+                        borderBottomWidth: isLast ? 0 : 1,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.subjectName, { color: colors.primaryText }]}>{s.name}</Text>
+                    <Text style={[styles.subjectMarks, { color: colors.secondaryText }]}>{s.marks != null ? `${s.marks}%` : "—"}</Text>
+                    <Text style={[styles.subjectGrade, { color: colors.primaryAccent }]}>{s.grade || "—"}</Text>
+                  </View>
+                );
+              });
+            })()}
           </View>
         </Animated.View>
       </Modal>
@@ -638,13 +666,75 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </View>
 
-            {(studentData.gradeLevels || []).map((g, i) => (
-              <View key={i} style={[styles.subjectRow, { borderBottomColor: colors.divider }]}>
-                <Text style={[styles.subjectName, { color: colors.primaryText }]}>{g.grade}</Text>
-                <Text style={[styles.subjectMarks, { color: colors.secondaryText }]}>{g.range}</Text>
-                <Text style={[styles.subjectGrade, { color: colors.primaryAccent }]}>{g.meaning}</Text>
-              </View>
-            ))}
+            {/* Structured Table Column Header */}
+            <View
+              style={[
+                styles.gradeTableHeader,
+                { backgroundColor: colors.primaryAccent + "14", borderColor: colors.divider },
+              ]}
+            >
+              <Text style={[styles.gradeColHeader, { color: colors.primaryAccent, flex: 1.1 }]}>GRADE</Text>
+              <Text style={[styles.gradeColHeader, { color: colors.primaryAccent, flex: 1.4, textAlign: "center" }]}>MARKS RANGE</Text>
+              <Text style={[styles.gradeColHeader, { color: colors.primaryAccent, flex: 1.8, textAlign: "right" }]}>MEANING</Text>
+            </View>
+
+            {/* Strictly Valid Non-Empty Grade Items without Trailing Dividers */}
+            {(() => {
+              const defaultScale = [
+                { grade: "O", range: "90 - 100", meaning: "Outstanding" },
+                { grade: "A+", range: "80 - 89", meaning: "Excellent" },
+                { grade: "A", range: "70 - 79", meaning: "Very Good" },
+                { grade: "B+", range: "60 - 69", meaning: "Good" },
+                { grade: "B", range: "50 - 59", meaning: "Above Average" },
+                { grade: "C", range: "40 - 49", meaning: "Average" },
+                { grade: "RA", range: "< 40", meaning: "Reappearance" },
+              ];
+
+              const validGrades = (studentData.gradeLevels || []).filter(
+                (g) => g && typeof g.grade === "string" && g.grade.trim().length > 0
+              );
+
+              const displayList = validGrades.length > 0 ? validGrades : defaultScale;
+
+              return displayList.map((g, i) => {
+                const isLast = i === displayList.length - 1;
+                const gradeStr = String(g.grade || "").trim();
+                const badgeColor =
+                  gradeStr === "O"
+                    ? "#10B981"
+                    : gradeStr === "A+" || gradeStr === "A"
+                    ? "#3B82F6"
+                    : gradeStr === "B+" || gradeStr === "B"
+                    ? "#F59E0B"
+                    : "#EF4444";
+
+                return (
+                  <View
+                    key={g.grade || i}
+                    style={[
+                      styles.subjectRow,
+                      {
+                        borderBottomColor: colors.divider,
+                        borderBottomWidth: isLast ? 0 : 1,
+                        paddingVertical: 9,
+                      },
+                    ]}
+                  >
+                    <View style={{ flex: 1.1, flexDirection: "row", alignItems: "center" }}>
+                      <View style={[styles.gradeBadgePill, { backgroundColor: badgeColor + "18" }]}>
+                        <Text style={[styles.gradeBadgePillText, { color: badgeColor }]}>{gradeStr}</Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.subjectMarks, { color: colors.secondaryText, flex: 1.4 }]}>
+                      {g.range || "—"}
+                    </Text>
+                    <Text style={[styles.subjectGrade, { color: colors.primaryText, flex: 1.8, fontSize: 13 }]}>
+                      {g.meaning || "—"}
+                    </Text>
+                  </View>
+                );
+              });
+            })()}
           </View>
         </Animated.View>
       </Modal>
@@ -1133,6 +1223,32 @@ const getStyles = (colors) =>
     modalTitle: {
       fontSize: 16,
       fontWeight: "800",
+    },
+    gradeTableHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: 7,
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginBottom: 6,
+    },
+    gradeColHeader: {
+      fontSize: 10.5,
+      fontWeight: "800",
+      letterSpacing: 0.5,
+    },
+    gradeBadgePill: {
+      paddingHorizontal: 9,
+      paddingVertical: 3,
+      borderRadius: 10,
+      alignSelf: "flex-start",
+    },
+    gradeBadgePillText: {
+      fontSize: 11.5,
+      fontWeight: "900",
+      textAlign: "center",
     },
     subjectRow: {
       flexDirection: "row",

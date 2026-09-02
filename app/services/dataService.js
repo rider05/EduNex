@@ -442,16 +442,33 @@ export async function getStudentLibrary() {
 }
 
 export async function getGradeLevels() {
-  const list = await ensureCollection("/gradeLevels", [
-    { grade: "O", range: "90-100", meaning: "Outstanding" },
-    { grade: "A+", range: "80-89", meaning: "Excellent" },
-    { grade: "A", range: "70-79", meaning: "Very Good" },
-    { grade: "B+", range: "60-69", meaning: "Good" },
-    { grade: "B", range: "50-59", meaning: "Average" },
-    { grade: "RA", range: "<50", meaning: "Reappearance" },
-  ]);
-  await mergeIntoCache({ gradeLevels: list });
-  return list;
+  const defaultScale = [
+    { grade: "O", range: "90 - 100", meaning: "Outstanding" },
+    { grade: "A+", range: "80 - 89", meaning: "Excellent" },
+    { grade: "A", range: "70 - 79", meaning: "Very Good" },
+    { grade: "B+", range: "60 - 69", meaning: "Good" },
+    { grade: "B", range: "50 - 59", meaning: "Average" },
+    { grade: "C", range: "40 - 49", meaning: "Satisfactory" },
+    { grade: "RA", range: "< 40", meaning: "Reappearance" },
+  ];
+
+  let list = [];
+  try {
+    const rawList = await ensureCollection("/gradeLevels", defaultScale);
+    if (Array.isArray(rawList)) {
+      const seen = new Set();
+      list = rawList.filter((item) => {
+        const g = item?.grade?.trim?.() || "";
+        if (!g || seen.has(g.toUpperCase())) return false;
+        seen.add(g.toUpperCase());
+        return true;
+      });
+    }
+  } catch {}
+
+  const finalList = list.length > 0 ? list : defaultScale;
+  await mergeIntoCache({ gradeLevels: finalList });
+  return finalList;
 }
 
 // ─────────────────────────────────────────────

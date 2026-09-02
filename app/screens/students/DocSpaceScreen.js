@@ -30,6 +30,7 @@ import {
 import { resolveIdentity } from "../../services/identityService";
 import { showToast } from "../../utils/toastService";
 import { shareDocSpaceCertificatePdf } from "../../utils/pdfGenerator";
+import { SkeletonDocSpaceScreen } from "../../components/common/SkeletonLoader";
 
 // ---------------- Fallback Required Doc Definitions ----------------
 const DEFAULT_REQUIRED_DOCS = [
@@ -571,10 +572,14 @@ export default function DocSpaceScreen() {
           />
         }
       >
-        {/* ========================================================================= */}
-        {/* 1. HEADER HUB                                                             */}
-        {/* ========================================================================= */}
-        <View style={styles.header}>
+        {isLoading ? (
+          <SkeletonDocSpaceScreen />
+        ) : (
+          <>
+            {/* ========================================================================= */}
+            {/* 1. HEADER HUB                                                             */}
+            {/* ========================================================================= */}
+            <View style={styles.header}>
           <View style={[styles.headerIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
             <Icon name="folder-account" size={24} color={colors.primaryAccent} />
           </View>
@@ -856,6 +861,8 @@ export default function DocSpaceScreen() {
         </View>
 
         <View style={{ height: 100 }} />
+          </>
+        )}
       </ScrollView>
 
       {/* ========================================================================= */}

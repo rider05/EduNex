@@ -16,7 +16,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { secureGet, secureSet } from "../../services/secureStorage";
 import { useTheme } from "../../context/ThemeContext";
 import { showToast } from "../../utils/toastService";
-import { SkeletonProfileCard, SkeletonListItem } from "../../components/common/SkeletonLoader";
+import { SkeletonProfileScreen } from "../../components/common/SkeletonLoader";
 import { clearAuthSession } from "../../services/api";
 import { getParentData } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
@@ -178,11 +178,7 @@ export default function ProfileParent({ onLogout }) {
         </View>
 
         {isLoading ? (
-          <View style={{ marginTop: 10 }}>
-            <SkeletonProfileCard />
-            <SkeletonListItem />
-            <SkeletonListItem />
-          </View>
+          <SkeletonProfileScreen />
         ) : (
           <>
             {/* ========================================================================= */}

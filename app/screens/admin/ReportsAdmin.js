@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
-import { SkeletonKPIRow, SkeletonListItem } from "../../components/common/SkeletonLoader";
+import { SkeletonDashboardScreen } from "../../components/common/SkeletonLoader";
 import { getAdminStats, getReports } from "../../services/dataService";
 import { showToast } from "../../utils/toastService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
@@ -224,12 +224,7 @@ export default function ReportsAdmin() {
         </ScrollView>
 
         {isLoading ? (
-          <View style={{ marginTop: 15 }}>
-            <SkeletonKPIRow count={2} />
-            <SkeletonKPIRow count={2} />
-            <SkeletonListItem />
-            <SkeletonListItem />
-          </View>
+          <SkeletonDashboardScreen />
         ) : (
           <>
             {/* ========================================================================= */}

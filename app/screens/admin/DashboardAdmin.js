@@ -13,7 +13,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../context/ThemeContext";
-import { SkeletonKPIRow, SkeletonListItem } from "../../components/common/SkeletonLoader";
+import { SkeletonDashboardScreen } from "../../components/common/SkeletonLoader";
 import { getInstitutions, getAdminStats, getNoticesList, getSystemLogs, getLeavesList } from "../../services/dataService";
 import { api } from "../../services/api";
 import { showToast } from "../../utils/toastService";
@@ -275,12 +275,7 @@ export default function DashboardAdmin() {
         </View>
 
         {isLoading ? (
-          <View style={{ marginTop: 15 }}>
-            <SkeletonKPIRow count={2} />
-            <SkeletonKPIRow count={2} />
-            <SkeletonListItem />
-            <SkeletonListItem />
-          </View>
+          <SkeletonDashboardScreen />
         ) : (
           <>
             {/* ========================================================================= */}

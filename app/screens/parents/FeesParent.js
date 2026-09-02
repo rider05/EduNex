@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
-import { SkeletonBox, SkeletonListItem } from "../../components/common/SkeletonLoader";
+import { SkeletonFeesScreen } from "../../components/common/SkeletonLoader";
 import PaymentModal from "../students/modals/PaymentModal";
 import { getStudentFees, getParentData, getInstitutions } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
@@ -173,12 +173,7 @@ export default function FeesParent() {
         </View>
 
         {isLoading ? (
-          <View style={{ marginTop: 10 }}>
-            <SkeletonBox height={160} borderRadius={20} style={{ marginBottom: 16 }} />
-            <SkeletonListItem />
-            <SkeletonListItem />
-            <SkeletonListItem />
-          </View>
+          <SkeletonFeesScreen />
         ) : (
           <>
             {/* ========================================================================= */}

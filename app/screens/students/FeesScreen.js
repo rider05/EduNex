@@ -12,7 +12,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import PaymentModal from "./modals/PaymentModal";
-import { SkeletonBox, SkeletonListItem } from "../../components/common/SkeletonLoader";
+import { SkeletonFeesScreen } from "../../components/common/SkeletonLoader";
 import { getStudentFees, getStudentData } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
@@ -167,12 +167,7 @@ export default function FeesScreen() {
         }
       >
         {isLoading ? (
-          <View style={{ marginTop: 10 }}>
-            <SkeletonBox height={180} borderRadius={24} style={{ marginBottom: 20 }} />
-            <SkeletonListItem />
-            <SkeletonListItem />
-            <SkeletonListItem />
-          </View>
+          <SkeletonFeesScreen />
         ) : (
           <>
             {/* Header Hub */}
