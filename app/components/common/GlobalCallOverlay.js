@@ -9,7 +9,6 @@ import {
   Platform,
   Animated,
   PanResponder,
-  Linking,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -20,15 +19,10 @@ import { resolveIdentity } from "../../services/identityService";
 import {
   subscribeToChatMessages,
   sendCallSignal,
-  getCanonicalPairKey,
   resolveHumanDisplayName,
 } from "../../services/chatService";
 import { showToast } from "../../utils/toastService";
-import {
-  initSocketVideoRoom,
-  emitMediaStateChange,
-  emitCallHangup,
-} from "../../services/socketVideoService";
+import { emitCallHangup } from "../../services/socketVideoService";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const PIP_WIDTH = 115;
@@ -737,16 +731,11 @@ export default function GlobalCallOverlay() {
                     {callStatus === "connected" ? formatCallTime(callTimer) : "Connecting..."}
                   </Text>
 
-                  {/* Launch Real Full-Duplex WebRTC Live Session */}
-                  <TouchableOpacity
-                    style={styles.fullDuplexPillBtn}
-                    onPress={() => handleLaunchFullDuplexRoom("audio")}
-                    activeOpacity={0.8}
-                  >
+                  {/* Real-time Socket.io Audio Session badge */}
+                  <View style={styles.fullDuplexPillBtn}>
                     <Icon name="broadcast" size={14} color="#34D399" />
-                    <Text style={styles.fullDuplexPillText}>Full Duplex HD WebRTC</Text>
-                    <Icon name="open-in-new" size={12} color="#34D399" />
-                  </TouchableOpacity>
+                    <Text style={styles.fullDuplexPillText}>Socket.io Live HD Audio</Text>
+                  </View>
 
                   {/* Animated Audio Waveform Equalizer */}
                   {callStatus === "connected" && (

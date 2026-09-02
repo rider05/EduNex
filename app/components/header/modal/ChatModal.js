@@ -25,7 +25,6 @@ import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import { CameraView, Camera } from "expo-camera";
 import { useVideoPlayer, VideoView } from "expo-video";
-import * as WebBrowser from "expo-web-browser";
 import { useTheme } from "../../../context/ThemeContext";
 import { api } from "../../../services/api";
 import { showToast } from "../../../utils/toastService";
@@ -51,7 +50,6 @@ import {
 import { onNavigateToNotification } from "../../../utils/notificationUtils";
 import { setActiveOpenChatContact } from "../../../services/realtimeNotificationService";
 import {
-  initSocketVideoRoom,
   emitMediaStateChange,
   emitCallHangup,
 } from "../../../services/socketVideoService";
@@ -1382,7 +1380,7 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
     });
   };
 
-  const handleToggleMute = () => {
+  const handleToggleCallMute = () => {
     setIsMuted((prev) => {
       const next = !prev;
       emitMediaStateChange({ isMuted: next, isVideoEnabled, cameraFacing, user: currentUser });
@@ -2825,7 +2823,7 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
                         styles.callBtnCircle,
                         isMuted && { backgroundColor: "rgba(239,68,68,0.5)" },
                       ]}
-                      onPress={() => setIsMuted(!isMuted)}
+                      onPress={handleToggleCallMute}
                     >
                       <Icon
                         name={isMuted ? "microphone-off" : "microphone"}
@@ -2915,16 +2913,11 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
                         : "Connecting..."}
                     </Text>
 
-                    {/* Launch Real Full-Duplex WebRTC Live Session */}
-                    <TouchableOpacity
-                      style={styles.fullDuplexPillBtn}
-                      onPress={() => handleLaunchFullDuplexRoom("audio")}
-                      activeOpacity={0.8}
-                    >
+                    {/* Real-time Socket.io Audio Session badge */}
+                    <View style={styles.fullDuplexPillBtn}>
                       <Icon name="broadcast" size={14} color="#34D399" />
-                      <Text style={styles.fullDuplexPillText}>Full Duplex HD WebRTC</Text>
-                      <Icon name="open-in-new" size={12} color="#34D399" />
-                    </TouchableOpacity>
+                      <Text style={styles.fullDuplexPillText}>Socket.io Live HD Audio</Text>
+                    </View>
 
                     {/* Animated Audio Waveform Equalizer */}
                     {callStatus === "connected" && (
@@ -2945,7 +2938,7 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
                         styles.callBtnCircle,
                         isMuted && { backgroundColor: "rgba(239,68,68,0.5)" },
                       ]}
-                      onPress={() => setIsMuted(!isMuted)}
+                      onPress={handleToggleCallMute}
                     >
                       <Icon
                         name={isMuted ? "microphone-off" : "microphone"}
