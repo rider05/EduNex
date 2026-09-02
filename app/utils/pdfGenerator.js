@@ -915,4 +915,126 @@ export async function shareHallTicketPdf({ student = {}, exams = [], examSetting
   return printAndShare(html, `Hall_Ticket_${rollNo}.pdf`, `Hall Ticket - ${name} (${rollNo})`);
 }
 
+export async function shareSeatingPlanPdf(planData = {}) {
+  const classrooms = planData.classrooms || [];
+  const examTitle = planData.examTitle || "End-Semester Examinations 2026";
+  const dateStr = planData.date || new Date().toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+  const totalStudents = planData.totalStudents || 0;
+  const totalCapacity = planData.totalCapacity || 0;
+  const classroomCount = planData.classroomCount || classrooms.length || 4;
+  const benchCount = planData.benchCount || 25;
+  const studentsPerBench = planData.studentsPerBench || 2;
+
+  const hallTables = classrooms.map((hall) => `
+    <div style="margin-bottom: 16px; page-break-inside: avoid;">
+      <div style="background: #1e3a8a; color: #ffffff; padding: 6px 10px; font-weight: 800; font-size: 11px; border-radius: 4px 4px 0 0; display: flex; justify-content: space-between;">
+        <span>HALL ${hall.roomNumber || hall.name} · ${hall.block || "Academic Complex"}</span>
+        <span>Invigilator: ${hall.supervisor || "Staff Invigilator"} | Capacity: ${hall.capacity || (benchCount * studentsPerBench)}</span>
+      </div>
+      <table class="data-table" style="margin-bottom: 0;">
+        <thead>
+          <tr>
+            <th style="width: 70px;">Bench #</th>
+            <th style="width: 140px;">Seat A (Left)</th>
+            <th style="width: 140px;">Seat B (Right)</th>
+            <th>Roll Number Range</th>
+            <th style="width: 80px; text-align: center;">Allocated</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(hall.benches || []).slice(0, 12).map((b, bIdx) => `
+            <tr>
+              <td style="font-weight: 700;">Bench ${b.benchNo || (bIdx + 1)}</td>
+              <td>${b.seatA || "—"}</td>
+              <td>${b.seatB || "—"}</td>
+              <td style="font-family: monospace;">${b.range || "—"}</td>
+              <td style="text-align: center; font-weight: 700; color: #16a34a;">${b.count || studentsPerBench}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+      <div style="padding: 4px 8px; background: #f1f5f9; font-size: 9px; color: #475569; border: 1px solid #cbd5e1; border-top: none; display: flex; justify-content: space-between;">
+        <span>Total Allocated for ${hall.roomNumber || hall.name}: <b>${hall.allocatedCount || (hall.students || []).length} Students</b></span>
+        <span>Roll Range: <b>${hall.startRoll || "—"} → ${hall.endRoll || "—"}</b></span>
+      </div>
+    </div>
+  `).join("");
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Master Seating Arrangement Roster</title>
+        <style>
+          ${BASE_CSS}
+          .summary-box {
+            display: flex;
+            gap: 10px;
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+          }
+          .summary-item {
+            flex: 1;
+            text-align: center;
+          }
+          .summary-item .num {
+            font-size: 14px;
+            font-weight: 800;
+            color: #1e3a8a;
+          }
+          .summary-item .lbl {
+            font-size: 8.5px;
+            color: #64748b;
+            text-transform: uppercase;
+            font-weight: 700;
+          }
+        </style>
+      </head>
+      <body>
+        <table class="header-table">
+          <tr>
+            <td>
+              <div class="inst-title">EDUNEX AUTONOMOUS INSTITUTION OF ENGINEERING & TECH</div>
+              <div class="inst-sub">Office of the Controller of Examinations · Automated Seating & Hall Allocation</div>
+              <div class="doc-badge">OFFICIAL SEATING MATRIX & INSTRUCTION ROSTER</div>
+            </td>
+            <td style="text-align: right; vertical-align: top;">
+              <div style="font-size: 11px; font-weight: 800; color: #1e3a8a;">EXAM DATE: ${dateStr}</div>
+              <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Session: Morning (09:30 AM - 12:30 PM)</div>
+              <div style="font-size: 9px; color: #059669; font-weight: 700; margin-top: 2px;">STATUS: VERIFIED & SEALED</div>
+            </td>
+          </tr>
+        </table>
+
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+          <div><b>Examination:</b> ${examTitle}</div>
+          <div><b>Seating Config:</b> ${classroomCount} Halls · ${benchCount} Benches/Hall · ${studentsPerBench} Students/Bench</div>
+        </div>
+
+        <div class="summary-box">
+          <div class="summary-item"><div class="num">${classroomCount}</div><div class="lbl">Total Classrooms</div></div>
+          <div class="summary-item"><div class="num">${totalCapacity}</div><div class="lbl">Gross Seat Capacity</div></div>
+          <div class="summary-item"><div class="num">${totalStudents}</div><div class="lbl">Students Allocated</div></div>
+          <div class="summary-item"><div class="num" style="color: #16a34a;">${Math.max(0, totalCapacity - totalStudents)}</div><div class="lbl">Vacant / Buffer Seats</div></div>
+        </div>
+
+        ${hallTables}
+
+        <div class="footer-sig" style="margin-top: 24px;">
+          <div class="sig-block">Prepared by<br>Administrative Exam Coordinator</div>
+          <div class="sig-block">Verified by<br>Chief Superintendent (Hall Security)</div>
+          <div class="sig-block">Approved by<br>Controller of Examinations</div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return printAndShare(html, `Seating_Plan_${Date.now()}.pdf`, `Seating Arrangement Plan - ${examTitle}`);
+}
+
+
 

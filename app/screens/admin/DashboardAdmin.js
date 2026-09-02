@@ -19,6 +19,7 @@ import { api } from "../../services/api";
 import { showToast } from "../../utils/toastService";
 import { sendTargetedNotification } from "../../utils/notificationUtils";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
+import SeatingPlannerModal from "../../components/header/amodal/SeatingPlannerModal";
 
 export default function DashboardAdmin() {
   const { colors } = useTheme();
@@ -590,82 +591,12 @@ export default function DashboardAdmin() {
       </ScrollView>
 
       {/* ========================================================================= */}
-      {/* SUB-MODAL 1: EXAM OPERATIONS & SEATING PLANNER                            */}
+      {/* SUB-MODAL 1: EXAM OPERATIONS & AUTOMATED SEATING PLANNER                   */}
       {/* ========================================================================= */}
-      <Modal visible={examModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { backgroundColor: colors.cardBackground }]}>
-            <View style={styles.modalTopBar}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <Icon name="calendar-clock" size={24} color="#3B82F6" />
-                <Text style={[styles.modalHeading, { color: colors.primaryText }]}>Examination & Hall Planner</Text>
-              </View>
-              <TouchableOpacity onPress={() => setExamModalVisible(false)}>
-                <Icon name="close-circle" size={24} color={colors.secondaryText} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-              <View style={[styles.examBanner, { backgroundColor: "#3B82F618", borderColor: "#3B82F640" }]}>
-                <Text style={[styles.examBannerTitle, { color: "#3B82F6" }]}>
-                   Examination Schedule
-                </Text>
-                {live.examSchedule && live.examSchedule.length > 0 ? (
-                  live.examSchedule.map((e, i) => (
-                    <View key={i} style={{ marginBottom: 6 }}>
-                      <Text style={[styles.examBannerSub, { color: colors.primaryText }]}>
-                        {e.subject || e.examName || "—"} · {e.date || "—"}
-                      </Text>
-                      <Text style={[styles.examBannerSub, { color: colors.secondaryText }]}>
-                        {e.time || ""}{e.time && e.room ? " · " : ""}{e.room || ""}
-                      </Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={[styles.examBannerSub, { color: colors.primaryText }]}>
-                    Examination schedule pending
-                  </Text>
-                )}
-              </View>
-
-              <Text style={[styles.subModalSection, { color: colors.secondaryText }]}>
-                ALLOCATED EXAMINATION HALLS
-              </Text>
-
-              {(live.examHalls || []).length > 0 ? (
-                (live.examHalls || []).map((h, i) => (
-                  <View key={i} style={[styles.hallItem, { borderBottomColor: colors.divider }]}>
-                    <View>
-                      <Text style={[styles.hallName, { color: colors.primaryText }]}>{typeof h === "string" ? h : (h.hall || h.name || "—")}</Text>
-                      <Text style={[styles.hallChief, { color: colors.secondaryText }]}>Supervisor: {typeof h === "string" ? "—" : (h.chief || h.supervisor || "—")}</Text>
-                    </View>
-                    <View style={{ alignItems: "flex-end" }}>
-                      <Text style={[styles.hallCap, { color: colors.primaryAccent }]}>{typeof h === "string" ? "—" : (h.cap || h.capacity || "—")}</Text>
-                      <View style={[styles.hallStatusBadge, { backgroundColor: "#10B98120" }]}>
-                        <Text style={[styles.hallStatusText, { color: "#10B981" }]}>{typeof h === "string" ? "Ready" : (h.status || "Ready")}</Text>
-                      </View>
-                    </View>
-                  </View>
-                ))
-              ) : (
-                <View style={{ alignItems: "center", paddingVertical: 20 }}>
-                  <Text style={{ fontSize: 12, color: colors.secondaryText }}>No exam hall data available</Text>
-                </View>
-              )}
-            </ScrollView>
-
-            <TouchableOpacity
-              style={[styles.modalActionBtn, { backgroundColor: colors.primaryAccent }]}
-              onPress={() => {
-                showToast("Examination halls and invigilator duties confirmed!", "success");
-                setExamModalVisible(false);
-              }}
-            >
-              <Text style={styles.modalActionBtnText}>Confirm Seating & Supervision Roster</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <SeatingPlannerModal
+        visible={examModalVisible}
+        onClose={() => setExamModalVisible(false)}
+      />
 
       {/* ========================================================================= */}
       {/* SUB-MODAL 2: FACULTY LEAVE APPROVALS MANAGER                              */}
