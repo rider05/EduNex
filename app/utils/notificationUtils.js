@@ -71,7 +71,7 @@ export function handleNotificationAction(notifData) {
   });
 }
 
-function notifySubscribers(notif) {
+export function notifySubscribers(notif = {}) {
   notifListeners.forEach((cb) => {
     try {
       cb(notif);

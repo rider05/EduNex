@@ -57,11 +57,53 @@ export default function HeaderStaff() {
   const fetchNotifications = useCallback(async () => {
     try {
       const id = await resolveIdentity();
-      const notifs = await getUserNotifications("staff", id?.staff?.id || id?.id || id?.username);
-      if (Array.isArray(notifs)) {
-        setUnreadNotifsCount(notifs.filter((n) => n.isNew || !n.read).length);
-      }
-    } catch (_e) {}
+      const userIdentifier = id?.staff?.id || id?.id || id?.username || "";
+
+      const [storedNotifs, apiRes] = await Promise.allSettled([
+        getUserNotifications("staff", userIdentifier),
+        api.get("/notices", { limit: 10, sort: "-createdAt" }),
+      ]);
+
+      const directList = storedNotifs.status === "fulfilled" && Array.isArray(storedNotifs.value) ? storedNotifs.value : [];
+      const noticeDocs = apiRes.status === "fulfilled" && Array.isArray(apiRes.value?.data) ? apiRes.value.data : [];
+
+      const validNotices = noticeDocs
+        .filter((n) => {
+          if (!n) return false;
+          const hasTitle = Boolean((n.subject || n.title || n.sender || "").trim());
+          const hasText = Boolean((n.message || n.text || n.body || "").trim());
+          return hasText || (hasTitle && (n.subject || n.title || "").trim() !== "Campus Notice");
+        })
+        .map((n, idx) => ({
+          id: n.id || n._id || `notice_${idx}`,
+          title: (n.subject || n.title || n.sender || "Campus Notice").trim(),
+          text: (n.message || n.text || n.body || "").trim(),
+          isNew: n.isNew,
+        }));
+
+      const validStored = directList
+        .filter((n) => {
+          if (!n) return false;
+          const hasTitle = Boolean((n.title || "").trim());
+          const hasText = Boolean((n.message || n.text || "").trim());
+          return hasTitle || hasText;
+        })
+        .map((n) => ({
+          id: n.id,
+          title: (n.title || "").trim(),
+          text: (n.message || "").trim(),
+          isNew: n.isNew,
+          read: n.read,
+        }));
+
+      const dismissedIds = new Set((await secureGet("edunex_dismissed_notif_ids")) || []);
+      const activeList = [...validStored, ...validNotices].filter((n) => !dismissedIds.has(String(n.id)));
+      const unreadCount = activeList.filter((n) => n.isNew !== false && !n.read).length;
+
+      setUnreadNotifsCount(unreadCount);
+    } catch (_e) {
+      setUnreadNotifsCount(0);
+    }
   }, []);
 
   useEffect(() => {

@@ -54,6 +54,136 @@ const parseTimeToMinutes = (timeStr) => {
   return { startMin, endMin };
 };
 
+// Accurately derives period number (P1, P2, Break, P3, P4, Lunch, P5, P6, P7) purely based on time
+const getPeriodTagFromTime = (startMin, endMin, subject = "", isBreak = false) => {
+  const sLower = String(subject || "").toLowerCase();
+  const isLunch = isBreak || sLower.includes("lunch");
+  const isTea = isBreak || sLower.includes("break") || sLower.includes("tea");
+
+  if (isLunch) {
+    return { periodTag: "Lunch", periodName: "Lunch Break", isBreak: true };
+  }
+  if (isTea) {
+    return { periodTag: "Break", periodName: "Tea Break", isBreak: true };
+  }
+
+  // 08:45 AM - 09:40 AM -> Period 1
+  if (startMin < 9 * 60 + 30) {
+    return { periodTag: "P1", periodName: "Period 1", isBreak: false };
+  }
+  // 09:40 AM - 10:35 AM -> Period 2
+  if (startMin >= 9 * 60 + 30 && startMin < 10 * 60 + 30) {
+    return { periodTag: "P2", periodName: "Period 2", isBreak: false };
+  }
+  // 10:35 AM - 10:55 AM -> Tea Break
+  if (startMin >= 10 * 60 + 30 && startMin < 10 * 60 + 55) {
+    return { periodTag: "Break", periodName: "Tea Break", isBreak: true };
+  }
+  // 10:55 AM - 11:50 AM -> Period 3
+  if (startMin >= 10 * 60 + 50 && startMin < 11 * 60 + 45) {
+    return { periodTag: "P3", periodName: "Period 3", isBreak: false };
+  }
+  // 11:50 AM - 12:45 PM -> Period 4
+  if (startMin >= 11 * 60 + 45 && startMin < 12 * 60 + 45) {
+    return { periodTag: "P4", periodName: "Period 4", isBreak: false };
+  }
+  // 12:45 PM - 01:30 PM -> Lunch Break
+  if (startMin >= 12 * 60 + 40 && startMin < 13 * 60 + 30) {
+    return { periodTag: "Lunch", periodName: "Lunch Break", isBreak: true };
+  }
+  // 01:30 PM - 02:25 PM -> Period 5 (or P5-6 for 2-hour lab)
+  if (startMin >= 13 * 60 + 20 && startMin < 14 * 60 + 20) {
+    if (endMin >= 15 * 60 + 10) {
+      return { periodTag: "P5-6", periodName: "Period 5 & 6", isBreak: false };
+    }
+    return { periodTag: "P5", periodName: "Period 5", isBreak: false };
+  }
+  // 02:25 PM - 03:20 PM -> Period 6
+  if (startMin >= 14 * 60 + 20 && startMin < 15 * 60 + 15) {
+    return { periodTag: "P6", periodName: "Period 6", isBreak: false };
+  }
+  // 03:20 PM - 04:15 PM / 05:00 PM -> Period 7
+  if (startMin >= 15 * 60 + 15) {
+    return { periodTag: "P7", periodName: "Period 7", isBreak: false };
+  }
+
+  return { periodTag: "P1", periodName: "Period 1", isBreak: false };
+};
+
+// Classifies assignment/deadline items into category color flags and badges
+const getAssignmentCategoryMeta = (item = {}) => {
+  const text = `${item.title || ""} ${item.subject || ""} ${item.category || ""} ${item.type || ""}`.toLowerCase();
+
+  // 1. Assessment / Class Test / Quiz / Internal CIA Exam -> Crimson Red (#EF4444)
+  if (
+    text.includes("test") ||
+    text.includes("quiz") ||
+    text.includes("exam") ||
+    text.includes("cia") ||
+    text.includes("midterm") ||
+    text.includes("assessment")
+  ) {
+    return {
+      category: "Assessment Test",
+      color: "#EF4444",
+      icon: "clipboard-text-clock-outline",
+    };
+  }
+
+  // 2. Lab Practicals, Projects & Code Work -> Indigo (#6366F1)
+  if (
+    text.includes("lab") ||
+    text.includes("project") ||
+    text.includes("code") ||
+    text.includes("coding") ||
+    text.includes("practical") ||
+    text.includes("model")
+  ) {
+    return {
+      category: "Lab & Project",
+      color: "#6366F1",
+      icon: "flask-outline",
+    };
+  }
+
+  // 3. Seminars, Presentations, Reviews & Viva -> Amber Orange (#F59E0B)
+  if (
+    text.includes("seminar") ||
+    text.includes("presentation") ||
+    text.includes("viva") ||
+    text.includes("review") ||
+    text.includes("talk")
+  ) {
+    return {
+      category: "Seminar & Viva",
+      color: "#F59E0B",
+      icon: "presentation-play",
+    };
+  }
+
+  // 4. Certifications & Self-Paced Courses -> Emerald Green (#10B981)
+  if (
+    text.includes("nptel") ||
+    text.includes("cert") ||
+    text.includes("course") ||
+    text.includes("mooc") ||
+    text.includes("online")
+  ) {
+    return {
+      category: "Certification",
+      color: "#10B981",
+      icon: "certificate-outline",
+    };
+  }
+
+  // 5. Default: Theory Assignment / Homework -> Electric Blue (#3B82F6)
+  return {
+    category: "Theory Assignment",
+    color: "#3B82F6",
+    icon: "file-document-edit-outline",
+  };
+};
+
 const calculateCurrentGrade = (grade, cgpa, subjects) => {
   if (grade && typeof grade === "string" && grade.trim().length > 0 && grade !== "—") {
     return grade.trim().toUpperCase();
@@ -165,18 +295,23 @@ export default function DashboardScreen() {
 
       if (Array.isArray(assignRes) && assignRes.length > 0) {
         setAssignments(
-          assignRes.slice(0, 5).map((a, i) => ({
-            id: a.id || a._id || i,
-            title: a.title || a.subject || "Assignment",
-            due: a.dueDate || a.due || "",
-            color: ["#EC4899", "#F59E0B", "#10B981", "#3B82F6", "#8B5CF6"][i % 5],
-            status:
-              a.status === "Submitted" || a.status === "submitted"
-                ? "submitted"
-                : a.status === "in_progress" || a.status === "Working"
-                ? "in_progress"
-                : "pending",
-          }))
+          assignRes.slice(0, 5).map((a, i) => {
+            const meta = getAssignmentCategoryMeta(a);
+            return {
+              id: a.id || a._id || i,
+              title: a.title || a.subject || "Academic Assignment",
+              due: a.dueDate || a.due || "Due this week",
+              category: a.category || meta.category,
+              color: a.color || meta.color,
+              icon: meta.icon,
+              status:
+                a.status === "Submitted" || a.status === "submitted"
+                  ? "submitted"
+                  : a.status === "in_progress" || a.status === "Working"
+                  ? "in_progress"
+                  : "pending",
+            };
+          })
         );
       } else {
         setAssignments([]);
@@ -306,26 +441,32 @@ export default function DashboardScreen() {
       if (Array.isArray(studentData.schedule) && studentData.schedule.length > 0) {
         daySchedule = studentData.schedule;
       } else if (Array.isArray(studentData.subjects) && studentData.subjects.length > 0) {
-        const defaultTimes = [
-          "08:45 AM - 09:40 AM",
-          "09:40 AM - 10:35 AM",
-          "10:55 AM - 11:50 AM",
-          "11:50 AM - 12:45 PM",
-          "01:30 PM - 02:25 PM",
-          "02:25 PM - 03:20 PM",
-          "03:20 PM - 04:15 PM",
+        const slotTemplates = [
+          { time: "08:45 AM - 09:40 AM", type: "Theory" },
+          { time: "09:40 AM - 10:35 AM", type: "Theory" },
+          { time: "10:35 AM - 10:55 AM", type: "Break", isBreak: true, subject: "Morning Tea & Refreshment", room: "Cafeteria", faculty: "Campus Lounge" },
+          { time: "10:55 AM - 11:50 AM", type: "Theory" },
+          { time: "11:50 AM - 12:45 PM", type: "Theory" },
+          { time: "12:45 PM - 01:30 PM", type: "Break", isBreak: true, subject: "Lunch & Relaxation", room: "Food Court", faculty: "Dining Hall" },
+          { time: "01:30 PM - 02:25 PM", type: "Theory" },
+          { time: "02:25 PM - 03:20 PM", type: "Theory" },
+          { time: "03:20 PM - 04:15 PM", type: "Theory" },
         ];
-        daySchedule = studentData.subjects.slice(0, 7).map((sub, i) => ({
-          period: `Period ${i + 1}`,
-          periodIndex: i + 1,
-          time: defaultTimes[i] || "09:00 AM - 10:00 AM",
-          subject: sub.name || sub.title || "Academic Lecture",
-          code: sub.code || `SUB-${i + 1}`,
-          faculty: sub.faculty || "Faculty Instructor",
-          room: sub.room || (sub.type === "Lab" ? "Lab Complex" : "Hall 201"),
-          type: sub.type || "Theory",
-          color: sub.color || ["#10B981", "#F59E0B", "#3B82F6", "#06B6D4", "#6366F1", "#EC4899", "#8B5CF6"][i % 7],
-        }));
+        let subIdx = 0;
+        daySchedule = slotTemplates.map((slot) => {
+          if (slot.isBreak) return slot;
+          const sub = studentData.subjects[subIdx % studentData.subjects.length];
+          subIdx++;
+          return {
+            time: slot.time,
+            subject: sub?.name || sub?.title || "Academic Lecture",
+            code: sub?.code || `SUB-${subIdx}`,
+            faculty: sub?.faculty || "Faculty Instructor",
+            room: sub?.room || (sub?.type === "Lab" ? "Lab Complex" : "D205"),
+            type: sub?.type || "Theory",
+            color: sub?.color,
+          };
+        });
       }
     }
 
@@ -333,16 +474,9 @@ export default function DashboardScreen() {
       return [];
     }
 
-    let academicIndex = 0;
     return daySchedule.map((row, idx) => {
-      const isLunch = String(row.subject || "").toLowerCase().includes("lunch");
-      const isTea = String(row.subject || "").toLowerCase().includes("tea") || String(row.subject || "").toLowerCase().includes("break");
-      const isBreak = row.isBreak || isLunch || isTea;
-      if (!isBreak) academicIndex++;
-
       const { startMin, endMin } = parseTimeToMinutes(row.time);
-      const periodTag = isBreak ? (isLunch ? "Lunch" : "Break") : `P${academicIndex || idx + 1}`;
-      const periodName = isBreak ? (isLunch ? "Lunch Break" : "Tea Break") : (row.period || `Period ${academicIndex || idx + 1}`);
+      const { periodTag, periodName, isBreak } = getPeriodTagFromTime(startMin, endMin, row.subject, row.isBreak);
 
       return {
         id: row.id || row._id || `period_${idx}`,
@@ -351,8 +485,8 @@ export default function DashboardScreen() {
         time: row.time || "—",
         subject: row.subject || row.name || "Academic Class",
         code: row.code || "",
-        faculty: row.faculty || row.teacher || "Faculty Instructor",
-        room: row.room || "Campus Hall",
+        faculty: row.faculty || row.teacher || (isBreak ? "Campus Facility" : "Faculty Instructor"),
+        room: row.room || (isBreak ? "Dining / Lounge" : "Campus Hall"),
         type: isBreak ? "Break" : (row.type || "Theory"),
         isBreak,
         color: row.color || (isBreak ? "#F59E0B" : ["#10B981", "#3B82F6", "#6366F1", "#06B6D4", "#EC4899", "#8B5CF6"][idx % 6]),
@@ -935,33 +1069,50 @@ export default function DashboardScreen() {
             {/* 5. CONTINUOUS ASSESSMENT & DEADLINES TRACKER                              */}
             {/* ========================================================================= */}
             <View style={[styles.sectionHeaderRow, { marginTop: 18 }]}>
-              <Text style={[styles.sectionTitle, { color: colors.primaryText }]}>Assignments & Deadlines</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Icon name="clipboard-check-outline" size={18} color={colors.primaryAccent} />
+                <Text style={[styles.sectionTitle, { color: colors.primaryText }]}>Assignments & Deadlines</Text>
+              </View>
             </View>
 
             <View style={styles.deadlinesList}>
-              {assignments.map((item, idx) => (
-                <View
-                  key={item.id || idx}
-                  style={[
-                    styles.deadlineItem,
-                    {
-                      backgroundColor: colors.cardBackground,
-                      borderColor: colors.divider,
-                      borderLeftColor: item.color,
-                    },
-                  ]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.deadlineTitle, { color: colors.primaryText }]}>{item.title}</Text>
-                    <Text style={[styles.deadlineDue, { color: colors.secondaryText }]}>📅 {item.due}</Text>
+              {assignments.map((item, idx) => {
+                const meta = getAssignmentCategoryMeta(item);
+                const color = item.color || meta.color;
+                const category = item.category || meta.category;
+                const icon = item.icon || meta.icon;
+
+                return (
+                  <View
+                    key={item.id || idx}
+                    style={[
+                      styles.deadlineItem,
+                      {
+                        backgroundColor: colors.cardBackground,
+                        borderColor: colors.divider,
+                        borderLeftColor: color,
+                      },
+                    ]}
+                  >
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <View style={[styles.categoryFlagPill, { backgroundColor: color + "18", borderColor: color + "33" }]}>
+                          <Icon name={icon} size={11} color={color} />
+                          <Text style={[styles.categoryFlagText, { color: color }]}>{category}</Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.deadlineTitle, { color: colors.primaryText }]}>{item.title}</Text>
+                      <Text style={[styles.deadlineDue, { color: colors.secondaryText }]}>📅 {item.due}</Text>
+                    </View>
+
+                    <View style={[styles.deadlineBadge, { backgroundColor: color + "18" }]}>
+                      <Text style={[styles.deadlineBadgeText, { color: color }]}>
+                        {item.status === "submitted" ? "✓ Done" : item.status === "in_progress" ? "Working" : "Pending"}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={[styles.deadlineBadge, { backgroundColor: item.color + "18" }]}>
-                    <Text style={[styles.deadlineBadgeText, { color: item.color }]}>
-                      {item.status === "submitted" ? "✓ Done" : item.status === "in_progress" ? "Working" : "Urgent"}
-                    </Text>
-                  </View>
-                </View>
-              ))}
+                );
+              })}
               {assignments.length === 0 && (
                 <View style={[styles.emptyNoticeBox, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
                   <Icon name="clipboard-check-outline" size={36} color={colors.secondaryText} />
@@ -1664,6 +1815,22 @@ const getStyles = (colors) =>
       fontSize: 11.5,
       fontWeight: "500",
       marginTop: 2,
+    },
+    categoryFlagPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 5,
+      borderWidth: 1,
+      alignSelf: "flex-start",
+    },
+    categoryFlagText: {
+      fontSize: 9.5,
+      fontWeight: "800",
+      letterSpacing: 0.3,
+      textTransform: "uppercase",
     },
     deadlineBadge: {
       paddingVertical: 3,

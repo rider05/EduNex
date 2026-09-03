@@ -19,6 +19,7 @@ import {
   getUserNotifications,
   subscribeToNotifications,
   handleNotificationAction,
+  notifySubscribers,
 } from "../../../utils/notificationUtils";
 
 const { height } = Dimensions.get("window");
@@ -75,6 +76,7 @@ export default function NotificationModal({ visible, onClose }) {
   const [isLoading, setIsLoading] = useState(false);
 
   const translateY = useRef(new Animated.Value(height)).current;
+  const dragDy = useRef(0);
 
   const loadAllNotifications = async () => {
     try {
@@ -96,44 +98,61 @@ export default function NotificationModal({ visible, onClose }) {
       const directList = storedNotifs.status === "fulfilled" && Array.isArray(storedNotifs.value) ? storedNotifs.value : [];
       const noticeDocs = apiRes.status === "fulfilled" && Array.isArray(apiRes.value?.data) ? apiRes.value.data : [];
 
-      const formattedNotices = noticeDocs.map((n, idx) => ({
-        id: n.id || `notice_${idx}`,
-        icon: n.senderRole === "admin" ? "shield-alert-outline" : "bell-ring-outline",
-        color: n.isNew ? "#4F46E5" : "#64748B",
-        title: n.subject || n.sender || "Campus Notice",
-        text: n.message || n.text || "",
-        createdAt: n.createdAt || n.date || new Date().toISOString(),
-      }));
+      const formattedNotices = noticeDocs
+        .filter((n) => {
+          if (!n) return false;
+          const hasTitle = Boolean((n.subject || n.title || n.sender || "").trim());
+          const hasText = Boolean((n.message || n.text || n.body || "").trim());
+          return hasText || (hasTitle && (n.subject || n.title || "").trim() !== "Campus Notice");
+        })
+        .map((n, idx) => ({
+          id: n.id || n._id || `notice_${idx}`,
+          icon: n.senderRole === "admin" ? "shield-alert-outline" : "bell-ring-outline",
+          color: n.isNew ? "#4F46E5" : "#64748B",
+          title: (n.subject || n.title || n.sender || "Campus Notice").trim(),
+          text: (n.message || n.text || n.body || "").trim(),
+          createdAt: n.createdAt || n.date || new Date().toISOString(),
+          isNew: n.isNew,
+        }))
+        .filter((n) => n.text.length > 0 || (n.title.length > 0 && n.title !== "Campus Notice"));
 
-      const formattedStored = directList.map((n) => ({
-        id: n.id,
-        icon:
-          n.metadata?.type === "chat" || (n.title || "").toLowerCase().includes("message") || (n.title || "").toLowerCase().includes("tutor")
-            ? "chat-processing-outline"
-            : n.type === "success"
-            ? "check-decagram"
-            : n.type === "warning"
-            ? "alert-circle"
-            : n.type === "error"
-            ? "close-circle"
-            : "clipboard-text-clock",
-        color:
-          n.metadata?.type === "chat" || (n.title || "").toLowerCase().includes("message")
-            ? "#059669"
-            : n.type === "success"
-            ? "#10B981"
-            : n.type === "warning"
-            ? "#EF4444"
-            : n.type === "error"
-            ? "#DC2626"
-            : "#4F46E5",
-        title: n.title,
-        text: n.message,
-        createdAt: n.createdAt,
-        isNew: n.isNew,
-        metadata: n.metadata || n.data || {},
-        data: n.data || n.metadata || {},
-      }));
+      const formattedStored = directList
+        .filter((n) => {
+          if (!n) return false;
+          const hasTitle = Boolean((n.title || "").trim());
+          const hasText = Boolean((n.message || n.text || "").trim());
+          return hasTitle || hasText;
+        })
+        .map((n) => ({
+          id: n.id,
+          icon:
+            n.metadata?.type === "chat" || (n.title || "").toLowerCase().includes("message") || (n.title || "").toLowerCase().includes("tutor")
+              ? "chat-processing-outline"
+              : n.type === "success"
+              ? "check-decagram"
+              : n.type === "warning"
+              ? "alert-circle"
+              : n.type === "error"
+              ? "close-circle"
+              : "clipboard-text-clock",
+          color:
+            n.metadata?.type === "chat" || (n.title || "").toLowerCase().includes("message")
+              ? "#059669"
+              : n.type === "success"
+              ? "#10B981"
+              : n.type === "warning"
+              ? "#EF4444"
+              : n.type === "error"
+              ? "#DC2626"
+              : "#4F46E5",
+          title: (n.title || "").trim(),
+          text: (n.message || n.text || "").trim(),
+          createdAt: n.createdAt,
+          isNew: n.isNew,
+          metadata: n.metadata || n.data || {},
+          data: n.data || n.metadata || {},
+        }))
+        .filter((n) => n.title.length > 0 || n.text.length > 0);
 
       const dismissedIds = new Set((await secureGet("edunex_dismissed_notif_ids")) || []);
       const combined = [...formattedStored, ...formattedNotices]
@@ -172,10 +191,6 @@ export default function NotificationModal({ visible, onClose }) {
     }).start();
   }, [visible, translateY]);
 
-  // Pull-down PanResponder: Supports dragging down across the handle, header, and modal top
-  const dragDy = useRef(0);
-  const scrollOffsetRef = useRef(0);
-
   const triggerDismiss = () => {
     Animated.timing(translateY, {
       toValue: height,
@@ -194,6 +209,7 @@ export default function NotificationModal({ visible, onClose }) {
       const dismissed = (await secureGet("edunex_dismissed_notif_ids")) || [];
       const updated = [...new Set([...dismissed, String(notifId)])];
       await secureSet("edunex_dismissed_notif_ids", updated);
+      notifySubscribers({ type: "dismiss", notifId });
     } catch (err) {
       console.warn("Dismiss notification error:", err);
     }
@@ -206,10 +222,13 @@ export default function NotificationModal({ visible, onClose }) {
       const dismissed = (await secureGet("edunex_dismissed_notif_ids")) || [];
       const updated = [...new Set([...dismissed, ...allIds])];
       await secureSet("edunex_dismissed_notif_ids", updated);
+      notifySubscribers({ type: "clear_all" });
     } catch (err) {
       console.warn("Clear all notifications error:", err);
     }
   };
+
+  const scrollOffsetRef = useRef(0);
 
   const handlePan = useRef(
     PanResponder.create({

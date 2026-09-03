@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Text,
   View,
@@ -21,7 +21,9 @@ import BusTrackerModal from "./modal/BusTrackerModal";
 import MessMenuModal from "./modal/MessMenuModal";
 import { showToast } from "../../utils/toastService";
 import { resolveIdentity } from "../../services/identityService";
-import { onNavigateToNotification } from "../../utils/notificationUtils";
+import { api } from "../../services/api";
+import { secureGet } from "../../services/secureStorage";
+import { onNavigateToNotification, getUserNotifications, subscribeToNotifications } from "../../utils/notificationUtils";
 import { onRouteChange } from "../../services/navigationEvents";
 
 export default function Header() {
@@ -32,8 +34,67 @@ export default function Header() {
   const [activeModal, setActiveModal] = useState(null); // leave | hostel | notify | chat | bus | mess
   const [userLabel, setUserLabel] = useState("");
   const [studentName, setStudentName] = useState("");
+  const [unreadNotifsCount, setUnreadNotifsCount] = useState(0);
 
   const bottomExpand = useRef(new Animated.Value(0)).current;
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const role = "student";
+      const id = await resolveIdentity();
+      const userIdentifier =
+        id?.student?.rollNo ||
+        id?.user?.profile?.rollNo ||
+        id?.username ||
+        id?.id ||
+        "";
+
+      const [storedNotifs, apiRes] = await Promise.allSettled([
+        getUserNotifications(role, userIdentifier),
+        api.get("/notices", { limit: 10, sort: "-createdAt" }),
+      ]);
+
+      const directList = storedNotifs.status === "fulfilled" && Array.isArray(storedNotifs.value) ? storedNotifs.value : [];
+      const noticeDocs = apiRes.status === "fulfilled" && Array.isArray(apiRes.value?.data) ? apiRes.value.data : [];
+
+      const validNotices = noticeDocs
+        .filter((n) => {
+          if (!n) return false;
+          const hasTitle = Boolean((n.subject || n.title || n.sender || "").trim());
+          const hasText = Boolean((n.message || n.text || n.body || "").trim());
+          return hasText || (hasTitle && (n.subject || n.title || "").trim() !== "Campus Notice");
+        })
+        .map((n, idx) => ({
+          id: n.id || n._id || `notice_${idx}`,
+          title: (n.subject || n.title || n.sender || "Campus Notice").trim(),
+          text: (n.message || n.text || n.body || "").trim(),
+          isNew: n.isNew,
+        }));
+
+      const validStored = directList
+        .filter((n) => {
+          if (!n) return false;
+          const hasTitle = Boolean((n.title || "").trim());
+          const hasText = Boolean((n.message || n.text || "").trim());
+          return hasTitle || hasText;
+        })
+        .map((n) => ({
+          id: n.id,
+          title: (n.title || "").trim(),
+          text: (n.message || "").trim(),
+          isNew: n.isNew,
+          read: n.read,
+        }));
+
+      const dismissedIds = new Set((await secureGet("edunex_dismissed_notif_ids")) || []);
+      const activeList = [...validStored, ...validNotices].filter((n) => !dismissedIds.has(String(n.id)));
+      const unreadCount = activeList.filter((n) => n.isNew !== false && !n.read).length;
+
+      setUnreadNotifsCount(unreadCount);
+    } catch (_e) {
+      setUnreadNotifsCount(0);
+    }
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -49,6 +110,12 @@ export default function Header() {
         }
       } catch (_e) { /* silent */ }
     })();
+
+    fetchNotifications();
+
+    const unsubNotif = subscribeToNotifications(() => {
+      fetchNotifications();
+    });
 
     const unsubRoute = onRouteChange(() => {
       Animated.timing(bottomExpand, {
@@ -75,8 +142,9 @@ export default function Header() {
     return () => {
       unsub();
       unsubRoute();
+      unsubNotif();
     };
-  }, [bottomExpand]);
+  }, [bottomExpand, fetchNotifications]);
 
   const handleAppIconPress = () => showToast(`👋 Welcome, ${studentName || "Student"}!`, "info");
 
@@ -135,7 +203,13 @@ export default function Header() {
               style={styles.actionBtn}
             >
               <Icon name="bell-outline" size={22} color="#FFFFFF" />
-              <View style={styles.notificationDot} />
+              {unreadNotifsCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {unreadNotifsCount > 99 ? "99+" : unreadNotifsCount}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -328,16 +402,26 @@ const getStyles = (colors, isDarkMode) =>
       alignItems: "center",
       position: "relative",
     },
-    notificationDot: {
+    notificationBadge: {
       position: "absolute",
-      top: 6,
-      right: 7,
-      width: 7,
-      height: 7,
-      borderRadius: 3.5,
+      top: -3,
+      right: -3,
+      minWidth: 17,
+      height: 17,
+      borderRadius: 8.5,
       backgroundColor: "#EF4444",
-      borderWidth: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 3,
+      borderWidth: 1.5,
       borderColor: "#FFFFFF",
+    },
+    notificationBadgeText: {
+      color: "#FFFFFF",
+      fontSize: 9,
+      fontWeight: "900",
+      textAlign: "center",
+      lineHeight: 11,
     },
     menuIcon: {
       width: 36,
