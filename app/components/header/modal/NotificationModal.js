@@ -425,8 +425,8 @@ const getStyles = (colors, isDarkMode) =>
     },
     handleWrapper: {
       alignItems: "center",
-      paddingTop: 6,
-      paddingBottom: 4,
+      paddingTop: 10,
+      paddingBottom: 6,
     },
     handle: {
       width: 50,
@@ -451,10 +451,10 @@ const getStyles = (colors, isDarkMode) =>
       alignItems: "center",
       justifyContent: "space-between",
       backgroundColor: colors.primary,
-      marginTop: 4,
+      marginTop: 8,
       marginHorizontal: 16,
       borderRadius: 14,
-      paddingVertical: 10,
+      paddingVertical: 12,
       paddingHorizontal: 16,
     },
     headerLeft: {

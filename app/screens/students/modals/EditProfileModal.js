@@ -293,12 +293,13 @@ const modalStyles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     padding: 18,
+    paddingTop: 22,
     elevation: 16,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 14,
+    marginBottom: 16,
   },
   headerIconCircle: {
     width: 44,

@@ -216,13 +216,14 @@ const getStyles = (colors, isDarkMode) =>
       borderRadius: 22,
       borderWidth: 1,
       padding: 18,
+      paddingTop: 22,
       elevation: 12,
     },
     header: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 12,
+      marginBottom: 16,
     },
     iconWrap: {
       width: 42,

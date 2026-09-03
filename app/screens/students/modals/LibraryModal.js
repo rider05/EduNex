@@ -130,7 +130,7 @@ export default function LibraryModal({ visible, onClose }) {
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: "center", alignItems: "center" },
   modalContainer: { width: "85%", borderRadius: 18, overflow: "hidden", elevation: 12 },
-  headerBar: { width: "100%", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 15, paddingVertical: 10 },
+  headerBar: { width: "100%", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: 16, paddingBottom: 14 },
   headerText: { color: "#fff", fontWeight: "700", fontSize: 18 },
   section: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 15, marginVertical: 12 },
   sectionIcon: { width: 45, height: 45, borderRadius: 25, justifyContent: "center", alignItems: "center" },

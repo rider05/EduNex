@@ -149,7 +149,7 @@ export default function FeesModal({ visible, onClose }) {
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: "center", alignItems: "center" },
   modalContainer: { width: "85%", borderRadius: 18, overflow: "hidden", elevation: 12 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 15, paddingVertical: 10 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: 16, paddingBottom: 14 },
   headerText: { color: "#fff", fontWeight: "700", fontSize: 18 },
   body: { padding: 15 },
   section: { flexDirection: "row", alignItems: "center", marginVertical: 10 },

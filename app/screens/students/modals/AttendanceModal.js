@@ -752,6 +752,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: "hidden",
     padding: 18,
+    paddingTop: 22,
     elevation: 16,
     shadowColor: "#000",
     shadowOpacity: 0.35,
@@ -762,7 +763,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14,
+    marginBottom: 16,
+    paddingTop: 2,
   },
   headerTitleRow: {
     flexDirection: "row",

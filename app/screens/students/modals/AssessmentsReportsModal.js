@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -103,7 +104,7 @@ export default function AssessmentsReportsModal({ onClose }) {
 const getStyles = (colors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.primaryBackground },
-    header: { flexDirection: 'row', alignItems: 'center', padding: 15, paddingTop: StatusBar.currentHeight || 0, borderBottomWidth: 1, borderBottomColor: colors.divider },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: Platform.OS === 'android' ? Math.max(StatusBar.currentHeight || 0, 14) : 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.divider },
     closeButton: { marginRight: 10 },
     headerTitle: { fontSize: 22, fontWeight: '700', color: colors.primaryAccent },
     headerSubtitle: { fontSize: 14, color: colors.secondaryText },

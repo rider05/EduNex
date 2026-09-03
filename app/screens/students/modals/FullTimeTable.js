@@ -11,6 +11,7 @@ import {
   TextInput,
   Linking,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -22,6 +23,7 @@ import { getStudentData } from "../../../services/dataService";
 import { resolveIdentity } from "../../../services/identityService";
 import { formatDeptName } from "../../../utils/deptFormatter";
 import { shareTimetableAsPdf } from "../../../utils/timetablePdfGenerator";
+import AcademicCalendarModal from "./AcademicCalendarModal";
 
 const DEPT_CODE_MAP = {
   "AI & DS": "AIDS",
@@ -158,6 +160,7 @@ export default function FullTimetable({ visible = true, onClose }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedClass, setSelectedClass] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [timetableData, setTimetableData] = useState({});
   const [loading, setLoading] = useState(false);
   const timetableDataRef = useRef({});
@@ -342,6 +345,21 @@ export default function FullTimetable({ visible = true, onClose }) {
           </View>
 
           <View style={styles.headerRightActions}>
+            <TouchableOpacity
+              style={[
+                styles.headerActionBtn,
+                {
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.divider,
+                },
+              ]}
+              onPress={() => setShowCalendarModal(true)}
+              activeOpacity={0.7}
+              accessibilityLabel="Academic Calendar"
+            >
+              <Icon name="calendar-month-outline" size={19} color={colors.primaryAccent} />
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={[
                 styles.headerActionBtn,
@@ -759,6 +777,12 @@ export default function FullTimetable({ visible = true, onClose }) {
             </View>
           </TouchableWithoutFeedback>
         </Modal>
+
+        {/* 8. ACADEMIC CALENDAR MODAL */}
+        <AcademicCalendarModal
+          visible={showCalendarModal}
+          onClose={() => setShowCalendarModal(false)}
+        />
       </SafeAreaView>
     </Modal>
   );
@@ -768,12 +792,22 @@ export default function FullTimetable({ visible = true, onClose }) {
 const getStyles = (colors, _isDarkMode) =>
   StyleSheet.create({
     container: { flex: 1 },
+    headerBar: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingTop: Platform.OS === "android" ? Math.max(StatusBar.currentHeight || 0, 14) : 14,
+      paddingBottom: 14,
+      borderBottomWidth: 1,
+    },
     header: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingTop: Platform.OS === "android" ? Math.max(StatusBar.currentHeight || 0, 14) : 14,
+      paddingBottom: 14,
       borderBottomWidth: 1,
     },
     headerLeft: {

@@ -942,6 +942,7 @@ const styles = StyleSheet.create({
   },
   handleArea: {
     alignItems: "center",
+    paddingTop: 10,
     paddingBottom: 8,
   },
   handle: {
@@ -953,14 +954,15 @@ const styles = StyleSheet.create({
   closeX: {
     position: "absolute",
     right: 12,
-    top: -2,
+    top: 6,
     padding: 6,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
+    marginTop: 2,
+    marginBottom: 16,
     paddingHorizontal: 4,
   },
   headerIconBadge: {

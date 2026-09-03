@@ -277,7 +277,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingTop: 18,
+    paddingBottom: 14,
     borderBottomWidth: 1,
   },
   headerIconCircle: {

@@ -699,14 +699,15 @@ const getStyles = (colors, isDarkMode) =>
       maxHeight: "90%",
       borderRadius: 22,
       borderWidth: 1,
-      padding: 16,
+      padding: 18,
+      paddingTop: 20,
       elevation: 12,
     },
     header: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 10,
+      marginBottom: 14,
     },
     iconWrap: {
       width: 40,

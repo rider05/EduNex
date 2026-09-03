@@ -11,6 +11,8 @@ import {
   FlatList,
   Alert,
   RefreshControl,
+  Platform,
+  StatusBar,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -1280,7 +1282,7 @@ const getStyles = (colors, _isDarkMode) =>
       backgroundColor: "rgba(0,0,0,0.8)",
     },
     fullHeader: {
-      paddingTop: 44,
+      paddingTop: Platform.OS === "android" ? Math.max(StatusBar.currentHeight || 0, 44) : 52,
       paddingBottom: 14,
       paddingHorizontal: 16,
       flexDirection: "row",

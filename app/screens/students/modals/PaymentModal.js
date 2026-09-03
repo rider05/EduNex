@@ -1088,7 +1088,8 @@ const styles = StyleSheet.create({
   },
   handleContainer: {
     alignItems: "center",
-    paddingBottom: 6,
+    paddingTop: 10,
+    paddingBottom: 8,
   },
   handleBar: {
     width: 36,
@@ -1098,7 +1099,8 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    marginTop: 4,
+    marginBottom: 14,
   },
   headerIconCircle: {
     width: 42,
