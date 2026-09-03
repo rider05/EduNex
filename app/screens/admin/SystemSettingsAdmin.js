@@ -11,8 +11,9 @@ import {
   RefreshControl,
   TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { secureGet, secureSet } from "../../services/secureStorage";
 import { useTheme } from "../../context/ThemeContext";
@@ -273,7 +274,7 @@ export default function SystemSettingsAdmin({ onLogout }) {
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.primaryBackground }]}>
+    <View style={[styles.container, { backgroundColor: colors.primaryBackground }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -870,7 +871,10 @@ export default function SystemSettingsAdmin({ onLogout }) {
 
       {/* ===== MODAL 2: EMERGENCY BROADCAST MODAL ===== */}
       <Modal visible={broadcastModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
           <View style={[styles.modalBox, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeaderRow}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -927,7 +931,7 @@ export default function SystemSettingsAdmin({ onLogout }) {
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ===== MODAL 3: PURGE CACHE CONFIRMATION ===== */}
@@ -1034,34 +1038,34 @@ export default function SystemSettingsAdmin({ onLogout }) {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const getStyles = (colors) =>
   StyleSheet.create({
-    safeArea: { flex: 1 },
-    scrollContent: { paddingHorizontal: 18, paddingTop: 50, paddingBottom: 60 },
-    headerContainer: { alignItems: "center", marginBottom: 20 },
+    container: { flex: 1, backgroundColor: colors.primaryBackground },
+    scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 60 },
+    headerContainer: { alignItems: "center", marginBottom: 16, marginTop: 2 },
     headerIconWrap: {
-      width: 72,
-      height: 72,
-      borderRadius: 36,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
       justifyContent: "center",
       alignItems: "center",
-      marginBottom: 10,
+      marginBottom: 8,
     },
     headerTitle: {
-      fontSize: 26,
+      fontSize: 22,
       fontWeight: "800",
-      letterSpacing: -0.5,
+      letterSpacing: -0.4,
     },
     subHeader: {
-      fontSize: 13.5,
-      marginTop: 6,
+      fontSize: 12.5,
+      marginTop: 4,
       textAlign: "center",
-      lineHeight: 20,
-      paddingHorizontal: 12,
+      lineHeight: 18,
+      paddingHorizontal: 16,
     },
 
     /* Live Server Status Card */

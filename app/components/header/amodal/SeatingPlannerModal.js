@@ -9,6 +9,8 @@ import {
   TextInput,
   Animated,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import * as DocumentPicker from "expo-document-picker";
@@ -336,17 +338,21 @@ export default function SeatingPlannerModal({ visible, onClose, colors: propColo
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
-        <Animated.View
-          style={[
-            styles.modalCard,
-            {
-              backgroundColor: colors.cardBackground || "#FFFFFF",
-              borderColor: colors.divider || "rgba(0,0,0,0.1)",
-              transform: [{ scale: scaleAnim }],
-            },
-          ]}
-        >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1 }}
+      >
+        <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
+          <Animated.View
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: colors.cardBackground || "#FFFFFF",
+                borderColor: colors.divider || "rgba(0,0,0,0.1)",
+                transform: [{ scale: scaleAnim }],
+              },
+            ]}
+          >
           {/* Top Bar Header */}
           <View style={styles.header}>
             <View style={styles.headerTitleGroup}>
@@ -873,13 +879,17 @@ export default function SeatingPlannerModal({ visible, onClose, colors: propColo
           </View>
         </Animated.View>
       </Animated.View>
+    </KeyboardAvoidingView>
 
       {/* ========================================================================= */}
       {/* EDIT HALL DETAILS MODAL                                                   */}
       {/* ========================================================================= */}
       {editingHall && (
         <Modal transparent visible={!!editingHall} animationType="fade" onRequestClose={() => setEditingHall(null)}>
-          <View style={styles.editModalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={styles.editModalOverlay}
+          >
             <View style={[styles.editModalCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
               <View style={styles.editModalHeader}>
                 <View style={[styles.headerIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
@@ -957,7 +967,7 @@ export default function SeatingPlannerModal({ visible, onClose, colors: propColo
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       )}
     </Modal>
