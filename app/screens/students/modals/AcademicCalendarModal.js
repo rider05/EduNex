@@ -184,7 +184,13 @@ export default function AcademicCalendarModal({ visible, onClose }) {
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.tabPillText, { color: isSelected ? "#FFFFFF" : colors.primaryText }]}>
-                    {tab === "Holidays" ? "🎉 Holidays" : tab === "Overview" ? "⭐ Key Dates" : tab}
+                    {tab === "Holidays"
+                      ? "🎉 Holidays"
+                      : tab === "Overview"
+                      ? "⭐ Key Dates"
+                      : tab.toLowerCase() === todayMonthName.toLowerCase()
+                      ? `📍 ${tab} (Now)`
+                      : tab}
                   </Text>
                 </TouchableOpacity>
               );

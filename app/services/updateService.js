@@ -99,9 +99,44 @@ export async function dismissUpdate(version) {
 }
 
 /**
+ * Check and apply Expo Over-The-Air (OTA) JS update silently or on command
+ */
+export async function checkAndFetchExpoOTA() {
+  try {
+    const Updates = require("expo-updates");
+    if (!Updates.isEnabled) return { isAvailable: false, reason: "Updates disabled in dev mode" };
+
+    const update = await Updates.checkForUpdateAsync();
+    if (update.isAvailable) {
+      await Updates.fetchUpdateAsync();
+      await Updates.reloadAsync();
+      return { isAvailable: true, updated: true };
+    }
+    return { isAvailable: false };
+  } catch (err) {
+    console.log("[OTA] Update check skipped:", err.message);
+    return { isAvailable: false, error: err.message };
+  }
+}
+
+/**
  * Open the download / update URL
  */
 export async function openUpdateUrl(url) {
+  try {
+    const Updates = require("expo-updates");
+    if (Updates.isEnabled) {
+      const ota = await Updates.checkForUpdateAsync();
+      if (ota.isAvailable) {
+        await Updates.fetchUpdateAsync();
+        await Updates.reloadAsync();
+        return;
+      }
+    }
+  } catch {
+    // Fall back to direct URL
+  }
+
   const target = url || "https://github.com/rider05/EduNex/releases/latest";
   try {
     const supported = await Linking.canOpenURL(target);
