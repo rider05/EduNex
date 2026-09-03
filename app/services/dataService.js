@@ -2124,35 +2124,21 @@ export async function getBugReports(params = {}) {
   }
 }
 
-// ---------------- Academic Calendar ----------------
+// ---------------- Academic Calendar (Fetched directly from DB) ----------------
 export async function getAcademicCalendar(forceRefresh = false) {
   try {
-    const cached = await secureGet("academic_calendar_cache").catch(() => null);
-    if (cached && !forceRefresh) {
-      // Background revalidation
-      api.get("/academicCalendar")
-        .then((res) => {
-          const docs = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-          if (docs.length > 0) {
-            secureSet("academic_calendar_cache", docs[0]);
-            notifyDataSubscribers("academicCalendar", docs[0]);
-          }
-        })
-        .catch(() => null);
-      return cached;
-    }
-
     const res = await api.get("/academicCalendar");
     const docs = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
     if (docs.length > 0) {
       await secureSet("academic_calendar_cache", docs[0]);
       return docs[0];
     }
+    const cached = await secureGet("academic_calendar_cache").catch(() => null);
     return cached || null;
   } catch (err) {
-    console.warn("getAcademicCalendar error:", err);
+    console.warn("getAcademicCalendar error fetching from DB:", err);
     const fallback = await secureGet("academic_calendar_cache").catch(() => null);
-    return fallback;
+    return fallback || null;
   }
 }
 
