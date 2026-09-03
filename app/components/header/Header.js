@@ -22,6 +22,7 @@ import MessMenuModal from "./modal/MessMenuModal";
 import { showToast } from "../../utils/toastService";
 import { resolveIdentity } from "../../services/identityService";
 import { onNavigateToNotification } from "../../utils/notificationUtils";
+import { onRouteChange } from "../../services/navigationEvents";
 
 export default function Header() {
   const { colors, isDarkMode } = useTheme();
@@ -49,6 +50,15 @@ export default function Header() {
       } catch (_e) { /* silent */ }
     })();
 
+    const unsubRoute = onRouteChange(() => {
+      Animated.timing(bottomExpand, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: false,
+      }).start();
+      setIsExpanded(false);
+    });
+
     const unsub = onNavigateToNotification(({ target }) => {
       if (
         target === "leave" ||
@@ -62,8 +72,11 @@ export default function Header() {
       }
     });
 
-    return () => unsub();
-  }, []);
+    return () => {
+      unsub();
+      unsubRoute();
+    };
+  }, [bottomExpand]);
 
   const handleAppIconPress = () => showToast(`👋 Welcome, ${studentName || "Student"}!`, "info");
 

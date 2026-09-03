@@ -32,12 +32,12 @@ const SEVERITIES = [
   { id: "critical", label: "Critical", color: "#EF4444" },
 ];
 
-export default function FeedbackBugModal({ visible, onClose, initialScreen = "General" }) {
+export default function FeedbackBugModal({ visible, onClose, initialScreen = "" }) {
   const { colors } = useTheme();
 
   const [category, setCategory] = useState("bug");
   const [severity, setSeverity] = useState("medium");
-  const [screenContext, setScreenContext] = useState(initialScreen);
+  const [screenContext, setScreenContext] = useState(initialScreen || "");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [userInfo, setUserInfo] = useState(null);
@@ -48,7 +48,7 @@ export default function FeedbackBugModal({ visible, onClose, initialScreen = "Ge
       resolveIdentity().then((id) => {
         setUserInfo(id);
       });
-      setScreenContext(initialScreen || "General");
+      setScreenContext(initialScreen || "");
     }
   }, [visible, initialScreen]);
 

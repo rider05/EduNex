@@ -19,6 +19,7 @@ import ChatModal from "./modal/ChatModal";
 import { getParentData } from "../../services/dataService";
 import { showToast } from "../../utils/toastService";
 import { onNavigateToNotification } from "../../utils/notificationUtils";
+import { onRouteChange } from "../../services/navigationEvents";
 
 export default function HeaderParent() {
   const { colors, isDarkMode } = useTheme();
@@ -45,14 +46,26 @@ export default function HeaderParent() {
       }
     }).catch(() => {});
 
+    const unsubRoute = onRouteChange(() => {
+      Animated.timing(bottomExpand, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: false,
+      }).start();
+      setIsExpanded(false);
+    });
+
     const unsub = onNavigateToNotification(({ target }) => {
       if (target === "chat" || target === "assignment" || target === "feedback" || target === "entryexit") {
         setActiveModal(target);
       }
     });
 
-    return () => unsub();
-  }, []);
+    return () => {
+      unsub();
+      unsubRoute();
+    };
+  }, [bottomExpand]);
 
   const handleMenuPress = () => {
     Animated.spring(bottomExpand, {

@@ -21,6 +21,7 @@ import ChatModal from "./modal/ChatModal";
 import { showToast } from "../../utils/toastService";
 import { onNavigateToNotification } from "../../utils/notificationUtils";
 import { resolveIdentity } from "../../services/identityService";
+import { onRouteChange } from "../../services/navigationEvents";
 
 export default function HeaderAdmin() {
   const { colors, isDarkMode } = useTheme();
@@ -28,10 +29,12 @@ export default function HeaderAdmin() {
 
   /* Bottom Expand */
   const [isExpanded, setIsExpanded] = useState(false);
-  const [adminName, setAdminName] = useState("");
   const bottomExpand = useRef(new Animated.Value(0)).current;
 
-  /* Modals */
+  // Admin Name
+  const [adminName, setAdminName] = useState("");
+
+  // Modals
   const [manageModal, setManageModal] = useState(false);
   const [settingsModal, setSettingsModal] = useState(false);
   const [chatModal, setChatModal] = useState(false);
@@ -44,6 +47,15 @@ export default function HeaderAdmin() {
       })
       .catch(() => {});
 
+    const unsubRoute = onRouteChange(() => {
+      Animated.timing(bottomExpand, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: false,
+      }).start();
+      setIsExpanded(false);
+    });
+
     const unsub = onNavigateToNotification(({ target }) => {
       if (target === "chat") {
         setChatModal(true);
@@ -51,8 +63,11 @@ export default function HeaderAdmin() {
         setSettingsModal(true);
       }
     });
-    return () => unsub();
-  }, []);
+    return () => {
+      unsub();
+      unsubRoute();
+    };
+  }, [bottomExpand]);
 
   const handleMenuPress = () => {
     Animated.spring(bottomExpand, {

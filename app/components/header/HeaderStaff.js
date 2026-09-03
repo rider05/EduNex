@@ -26,6 +26,7 @@ import { resolveIdentity } from "../../services/identityService";
 import { api } from "../../services/api";
 import { secureGet } from "../../services/secureStorage";
 import { subscribeToNotifications, onNavigateToNotification, getUserNotifications } from "../../utils/notificationUtils";
+import { onRouteChange } from "../../services/navigationEvents";
 
 export default function HeaderStaff() {
   const { colors, isDarkMode } = useTheme();
@@ -103,11 +104,21 @@ export default function HeaderStaff() {
       }
     });
 
+    const unsubRoute = onRouteChange(() => {
+      Animated.timing(bottomExpand, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: false,
+      }).start();
+      setIsExpanded(false);
+    });
+
     return () => {
       unsubscribe();
       unsubNav();
+      unsubRoute();
     };
-  }, [fetchPendingLeaves, fetchNotifications]);
+  }, [fetchPendingLeaves, fetchNotifications, bottomExpand]);
 
   const handleMenuPress = () => {
     Animated.spring(bottomExpand, {

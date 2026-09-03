@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
+import { emitRouteChange } from "../../services/navigationEvents";
 
 import DashboardStaff from "../../screens/staff/DashboardStaff";
 import AttendanceStaff from "../../screens/staff/AttendanceStaff";
@@ -16,6 +17,15 @@ export default function AppNavigatorStaff({ onLogout, userRole }) {
 
   return (
     <Tab.Navigator
+      screenListeners={{
+        tabPress: (e) => {
+          emitRouteChange(e?.target);
+        },
+        state: (e) => {
+          const current = e?.data?.state?.routes?.[e?.data?.state?.index]?.name;
+          if (current) emitRouteChange(current);
+        },
+      }}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: colors.primary,

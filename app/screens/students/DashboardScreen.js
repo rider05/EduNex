@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { SkeletonScreenLoader } from "../../components/common/SkeletonLoader";
 import { formatDeptName } from "../../utils/deptFormatter";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { shareStudentIdCardPdf } from "../../utils/pdfGenerator";
+import { api } from "../../services/api";
 
 // Modals
 import FeesModal from "./modals/FeesModal";
@@ -29,6 +30,29 @@ import AttendanceModal from "./modals/AttendanceModal";
 import LibraryModal from "./modals/LibraryModal";
 import FullTimeTable from "./modals/FullTimeTable";
 import LeaveFormModal from "../../components/header/modal/LeaveFormModal";
+
+// Dynamic parser to convert standard time formats into minutes from midnight
+const parseTimeToMinutes = (timeStr) => {
+  if (!timeStr || typeof timeStr !== "string") return { startMin: 0, endMin: 0 };
+  const parts = timeStr.split("-").map((s) => s.trim());
+  const parseSingle = (s) => {
+    if (!s) return 0;
+    const isPM = /pm/i.test(s);
+    const isAM = /am/i.test(s);
+    const clean = s.replace(/[^0-9:]/g, "");
+    const [hStr, mStr] = clean.split(":");
+    let h = parseInt(hStr, 10) || 0;
+    const m = parseInt(mStr, 10) || 0;
+    if (isPM && h < 12) h += 12;
+    if (isAM && h === 12) h = 0;
+    if (!isPM && !isAM && h >= 1 && h <= 6) h += 12;
+    return h * 60 + m;
+  };
+
+  const startMin = parseSingle(parts[0]);
+  const endMin = parts[1] ? parseSingle(parts[1]) : startMin + 55;
+  return { startMin, endMin };
+};
 
 const calculateCurrentGrade = (grade, cgpa, subjects) => {
   if (grade && typeof grade === "string" && grade.trim().length > 0 && grade !== "—") {
@@ -75,6 +99,8 @@ export default function DashboardScreen() {
   const [notices, setNotices] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [visibleModal, setVisibleModal] = useState(null);
+  const [selectedPeriodId, setSelectedPeriodId] = useState(null);
+  const [liveTimetable, setLiveTimetable] = useState(null);
 
   // Sub-Modals
   const [gradeModalVisible, setGradeModalVisible] = useState(false);
@@ -88,17 +114,21 @@ export default function DashboardScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const [data, gradeLevels, noticesRes, instRes, assignRes, attSummary] = await Promise.all([
+      const [data, gradeLevels, noticesRes, instRes, assignRes, attSummary, timetableRes] = await Promise.all([
         getStudentData().catch(() => null),
         getGradeLevels().catch(() => []),
         getParentNotices().catch(() => []),
         getInstitutions().catch(() => []),
         getAssignments().catch(() => []),
         getStudentAttendanceSummary().catch(() => ({ summary: null, records: [] })),
+        api.get("/timetable").catch(() => null),
       ]);
 
       const inst = Array.isArray(instRes) && instRes.length > 0 ? instRes[0] : null;
       if (inst) setInstitution(inst);
+      if (timetableRes) {
+        setLiveTimetable(timetableRes?.data || timetableRes || []);
+      }
 
       if (data) {
         const computedGrade = calculateCurrentGrade(data.grade, data.cgpa, data.subjects);
@@ -239,6 +269,124 @@ export default function DashboardScreen() {
   const hasBufferStats = attendedCount > 0 && totalCount > 0;
   const belowThreshold = attPctNum > 0 && attPctNum < minAttPct;
   const hasAttendanceData = attPctNum > 0 || hasBufferStats;
+
+  const todayPeriods = useMemo(() => {
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const todayIndex = new Date().getDay();
+    // Default to "Mon" if today is weekend
+    const todayKey = todayIndex === 0 || todayIndex === 6 ? "Mon" : days[todayIndex];
+
+    // 1. Check if we have live timetable from DB for this student's department
+    let daySchedule = [];
+    if (liveTimetable) {
+      const docs = Array.isArray(liveTimetable) ? liveTimetable : Array.isArray(liveTimetable.data) ? liveTimetable.data : [];
+      const dept = (studentData.department || "").toLowerCase();
+      const code = dept.includes("ai") ? "AIDS" : dept.includes("cse") || dept.includes("computer") ? "CSE" : dept.includes("it") ? "IT" : dept.includes("ece") ? "ECE" : dept.includes("mech") ? "MECH" : "AIDS";
+      const match = docs.find((d) =>
+        d.departmentCode === code ||
+        (d.departmentCode || "").toLowerCase() === code.toLowerCase() ||
+        (d.department || "").toLowerCase().includes(code.toLowerCase()) ||
+        (d.departmentName || "").toLowerCase().includes(dept)
+      ) || docs[0];
+
+      if (match?.schedule && match.schedule[todayKey] && Array.isArray(match.schedule[todayKey]) && match.schedule[todayKey].length > 0) {
+        daySchedule = match.schedule[todayKey];
+      }
+    }
+
+    // 2. Fallback to studentData.schedule or studentData.subjects
+    if (!daySchedule || daySchedule.length === 0) {
+      if (Array.isArray(studentData.schedule) && studentData.schedule.length > 0) {
+        daySchedule = studentData.schedule;
+      } else if (Array.isArray(studentData.subjects) && studentData.subjects.length > 0) {
+        const defaultTimes = [
+          "08:45 AM - 09:40 AM",
+          "09:40 AM - 10:35 AM",
+          "10:55 AM - 11:50 AM",
+          "11:50 AM - 12:45 PM",
+          "01:30 PM - 02:25 PM",
+          "02:25 PM - 03:20 PM",
+          "03:20 PM - 04:15 PM",
+        ];
+        daySchedule = studentData.subjects.slice(0, 7).map((sub, i) => ({
+          period: `Period ${i + 1}`,
+          periodIndex: i + 1,
+          time: defaultTimes[i] || "09:00 AM - 10:00 AM",
+          subject: sub.name || sub.title || "Academic Lecture",
+          code: sub.code || `SUB-${i + 1}`,
+          faculty: sub.faculty || "Faculty Instructor",
+          room: sub.room || (sub.type === "Lab" ? "Lab Complex" : "Hall 201"),
+          type: sub.type || "Theory",
+          color: sub.color || ["#10B981", "#F59E0B", "#3B82F6", "#06B6D4", "#6366F1", "#EC4899", "#8B5CF6"][i % 7],
+        }));
+      }
+    }
+
+    if (!daySchedule || daySchedule.length === 0) {
+      return [];
+    }
+
+    let academicIndex = 0;
+    return daySchedule.map((row, idx) => {
+      const isLunch = String(row.subject || "").toLowerCase().includes("lunch");
+      const isTea = String(row.subject || "").toLowerCase().includes("tea") || String(row.subject || "").toLowerCase().includes("break");
+      const isBreak = row.isBreak || isLunch || isTea;
+      if (!isBreak) academicIndex++;
+
+      const { startMin, endMin } = parseTimeToMinutes(row.time);
+      const periodTag = isBreak ? (isLunch ? "Lunch" : "Break") : `P${academicIndex || idx + 1}`;
+      const periodName = isBreak ? (isLunch ? "Lunch Break" : "Tea Break") : (row.period || `Period ${academicIndex || idx + 1}`);
+
+      return {
+        id: row.id || row._id || `period_${idx}`,
+        period: periodName,
+        periodTag,
+        time: row.time || "—",
+        subject: row.subject || row.name || "Academic Class",
+        code: row.code || "",
+        faculty: row.faculty || row.teacher || "Faculty Instructor",
+        room: row.room || "Campus Hall",
+        type: isBreak ? "Break" : (row.type || "Theory"),
+        isBreak,
+        color: row.color || (isBreak ? "#F59E0B" : ["#10B981", "#3B82F6", "#6366F1", "#06B6D4", "#EC4899", "#8B5CF6"][idx % 6]),
+        startMin,
+        endMin,
+      };
+    });
+  }, [liveTimetable, studentData.department, studentData.schedule, studentData.subjects]);
+
+  const { activePeriod, activePeriodStatus } = useMemo(() => {
+    if (!todayPeriods || todayPeriods.length === 0) {
+      return { activePeriod: null, activePeriodStatus: "none" };
+    }
+
+    const now = new Date();
+    const curMin = now.getHours() * 60 + now.getMinutes();
+
+    let live = null;
+    let next = null;
+
+    for (const p of todayPeriods) {
+      if (curMin >= p.startMin && curMin < p.endMin) {
+        live = p;
+        break;
+      }
+      if (curMin < p.startMin && !next) {
+        next = p;
+      }
+    }
+
+    if (live) return { activePeriod: live, activePeriodStatus: "live" };
+    if (next) return { activePeriod: next, activePeriodStatus: "upcoming" };
+    return { activePeriod: todayPeriods[0], activePeriodStatus: "upcoming" };
+  }, [todayPeriods]);
+
+  const displayedPeriod = useMemo(() => {
+    if (selectedPeriodId) {
+      return todayPeriods.find((p) => p.id === selectedPeriodId) || activePeriod;
+    }
+    return activePeriod;
+  }, [selectedPeriodId, todayPeriods, activePeriod]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.primaryBackground }]}>
@@ -406,7 +554,7 @@ export default function DashboardScreen() {
             </View>
 
             {/* ========================================================================= */}
-            {/* 3. TODAY'S LIVE LECTURE SCHEDULE TRACKER                                  */}
+            {/* 3. TODAY'S TIME-BASED PERIOD SCHEDULE TRACKER                              */}
             {/* ========================================================================= */}
             <View style={styles.sectionHeaderRow}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -418,32 +566,230 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Time-Based Period Horizontal Outer Look Timeline Strip */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.periodScrollStrip}
+              style={{ marginBottom: 10 }}
+            >
+              {todayPeriods.map((p) => {
+                const isLive = activePeriodStatus === "live" && activePeriod.id === p.id;
+                const isSelected = displayedPeriod.id === p.id;
+                const now = new Date();
+                const curMin = now.getHours() * 60 + now.getMinutes();
+                const isPast = curMin >= p.endMin;
+
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={[
+                      styles.periodOuterCard,
+                      {
+                        backgroundColor: isSelected
+                          ? colors.primaryAccent + "14"
+                          : colors.cardBackground,
+                        borderColor: isSelected
+                          ? colors.primaryAccent
+                          : isLive
+                          ? "#10B981"
+                          : colors.divider,
+                      },
+                    ]}
+                    onPress={() => setSelectedPeriodId(p.id)}
+                    activeOpacity={0.8}
+                  >
+                    {/* Top Row: Period Tag + Status */}
+                    <View style={styles.periodOuterTop}>
+                      <View
+                        style={[
+                          styles.periodTagPill,
+                          {
+                            backgroundColor: p.isBreak
+                              ? "#F59E0B20"
+                              : (p.color || colors.primaryAccent) + "20",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.periodTagText,
+                            {
+                              color: p.isBreak ? "#D97706" : p.color || colors.primaryAccent,
+                            },
+                          ]}
+                        >
+                          {p.periodTag}
+                        </Text>
+                      </View>
+
+                      {isLive ? (
+                        <View style={[styles.periodStatusDotPill, { backgroundColor: "#10B98120" }]}>
+                          <View style={[styles.liveDot, { backgroundColor: "#10B981" }]} />
+                          <Text style={[styles.periodStatusText, { color: "#10B981" }]}>LIVE</Text>
+                        </View>
+                      ) : isPast ? (
+                        <View style={[styles.periodStatusDotPill, { backgroundColor: colors.divider }]}>
+                          <Icon name="check" size={10} color={colors.secondaryText} />
+                          <Text style={[styles.periodStatusText, { color: colors.secondaryText }]}>DONE</Text>
+                        </View>
+                      ) : (
+                        <Text style={[styles.periodTimeText, { color: colors.secondaryText }]}>
+                          {p.time.split(" - ")[0]}
+                        </Text>
+                      )}
+                    </View>
+
+                    {/* Subject Name */}
+                    <Text
+                      style={[
+                        styles.periodSubjectText,
+                        { color: colors.primaryText },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {p.subject}
+                    </Text>
+
+                    {/* Faculty / Location Subtitle */}
+                    <Text
+                      style={[styles.periodFacultySub, { color: colors.secondaryText }]}
+                      numberOfLines={1}
+                    >
+                      {p.isBreak ? p.room : p.faculty}
+                    </Text>
+
+                    {/* Bottom Meta Badges */}
+                    <View style={styles.periodMetaRow}>
+                      <View style={[styles.periodRoomBadge, { backgroundColor: colors.primaryBackground }]}>
+                        <Icon name="map-marker-outline" size={10} color={colors.secondaryText} />
+                        <Text style={[styles.periodRoomText, { color: colors.secondaryText }]}>
+                          {p.room}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.periodTypeBadge,
+                          {
+                            backgroundColor:
+                              p.type === "Lab"
+                                ? "#6366F120"
+                                : p.isBreak
+                                ? "#F59E0B20"
+                                : colors.primaryAccent + "18",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.periodTypeText,
+                            {
+                              color:
+                                p.type === "Lab"
+                                ? "#6366F1"
+                                : p.isBreak
+                                ? "#D97706"
+                                : colors.primaryAccent,
+                            },
+                          ]}
+                        >
+                          {p.type}
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Selected / Active Period Hero Card */}
             <TouchableOpacity
-              style={[styles.liveClassCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+              style={[
+                styles.liveClassCard,
+                {
+                  backgroundColor: colors.cardBackground,
+                  borderColor:
+                    displayedPeriod.id === activePeriod.id && activePeriodStatus === "live"
+                      ? "#10B981"
+                      : colors.divider,
+                },
+              ]}
               onPress={() => setTimetableModalVisible(true)}
               activeOpacity={0.85}
             >
               <View style={styles.liveClassTop}>
-                <View style={[styles.liveBadge, { backgroundColor: "#10B98120" }]}>
-                  <View style={[styles.liveDot, { backgroundColor: "#10B981" }]} />
-                  <Text style={[styles.liveBadgeText, { color: "#10B981" }]}>
-                    UPCOMING · {studentData.schedule?.[0]?.time || "—"}
+                <View
+                  style={[
+                    styles.liveBadge,
+                    {
+                      backgroundColor:
+                        displayedPeriod.id === activePeriod.id && activePeriodStatus === "live"
+                          ? "#10B98120"
+                          : colors.primaryAccent + "18",
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.liveDot,
+                      {
+                        backgroundColor:
+                          displayedPeriod.id === activePeriod.id && activePeriodStatus === "live"
+                            ? "#10B981"
+                            : colors.primaryAccent,
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.liveBadgeText,
+                      {
+                        color:
+                          displayedPeriod.id === activePeriod.id && activePeriodStatus === "live"
+                            ? "#10B981"
+                            : colors.primaryAccent,
+                      },
+                    ]}
+                  >
+                    {displayedPeriod.id === activePeriod.id && activePeriodStatus === "live"
+                      ? "LIVE NOW"
+                      : displayedPeriod.period.toUpperCase()}{" "}
+                    · {displayedPeriod.time}
                   </Text>
                 </View>
+
                 <View style={[styles.roomPill, { backgroundColor: colors.primaryAccent + "18" }]}>
                   <Text style={[styles.roomPillText, { color: colors.primaryAccent }]}>
-                    {studentData.schedule?.[0]?.room ? `Room ${studentData.schedule[0].room}` : "—"}
+                    {displayedPeriod.room ? `Room ${displayedPeriod.room}` : "—"}
                   </Text>
                 </View>
               </View>
 
-              <Text style={[styles.liveSubjectTitle, { color: colors.primaryText }]}>
-                {studentData.schedule?.[0]?.subject || studentData.subjects?.[0]?.name || "No upcoming class"}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <Text style={[styles.liveSubjectTitle, { color: colors.primaryText, flex: 1, marginRight: 8 }]}>
+                  {displayedPeriod.subject}
+                </Text>
+                {displayedPeriod.code && (
+                  <View style={[styles.codeBadge, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                    <Text style={[styles.codeBadgeText, { color: colors.secondaryText }]}>
+                      {displayedPeriod.code}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
               <View style={styles.liveFacultyRow}>
-                <Icon name="account-tie-outline" size={16} color={colors.secondaryText} />
+                <Icon
+                  name={displayedPeriod.isBreak ? "coffee-outline" : "account-tie-outline"}
+                  size={16}
+                  color={colors.secondaryText}
+                />
                 <Text style={[styles.liveFacultyText, { color: colors.secondaryText }]}>
-                  {studentData.schedule?.[0]?.faculty || studentData.subjects?.[0]?.faculty || "—"}
+                  {displayedPeriod.faculty}
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Text style={[styles.viewDetailsPrompt, { color: colors.primaryAccent }]}>
+                  View Details →
                 </Text>
               </View>
             </TouchableOpacity>
@@ -1050,6 +1396,106 @@ const getStyles = (colors) =>
     sectionActionText: {
       fontSize: 12,
       fontWeight: "800",
+    },
+
+    /* Time-Based Period Timeline Strip & Cards */
+    periodScrollStrip: {
+      flexDirection: "row",
+      gap: 10,
+      paddingVertical: 2,
+    },
+    periodOuterCard: {
+      width: 165,
+      borderRadius: 14,
+      borderWidth: 1.5,
+      padding: 12,
+      elevation: 2,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
+      shadowRadius: 3,
+    },
+    periodOuterTop: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 8,
+    },
+    periodTagPill: {
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    periodTagText: {
+      fontSize: 10.5,
+      fontWeight: "800",
+    },
+    periodStatusDotPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      paddingHorizontal: 5,
+      paddingVertical: 1.5,
+      borderRadius: 4,
+    },
+    periodStatusText: {
+      fontSize: 9.5,
+      fontWeight: "800",
+    },
+    periodTimeText: {
+      fontSize: 10,
+      fontWeight: "600",
+    },
+    periodSubjectText: {
+      fontSize: 13.5,
+      fontWeight: "800",
+      letterSpacing: -0.2,
+      marginBottom: 2,
+    },
+    periodFacultySub: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginBottom: 8,
+    },
+    periodMetaRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    periodRoomBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 2,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    periodRoomText: {
+      fontSize: 10,
+      fontWeight: "600",
+    },
+    periodTypeBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    periodTypeText: {
+      fontSize: 10,
+      fontWeight: "700",
+    },
+    codeBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    codeBadgeText: {
+      fontSize: 10.5,
+      fontWeight: "700",
+    },
+    viewDetailsPrompt: {
+      fontSize: 11.5,
+      fontWeight: "700",
     },
 
     /* Live Class Card */
