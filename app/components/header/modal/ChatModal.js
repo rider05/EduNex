@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   Platform,
+  StatusBar,
   Animated,
   PanResponder,
   Linking,
@@ -3343,7 +3344,7 @@ const getStyles = (colors, isDarkMode) =>
     /* WhatsApp Header */
     waHeader: {
       paddingHorizontal: 16,
-      paddingTop: Platform.OS === "ios" ? 52 : 36,
+      paddingTop: Platform.OS === "ios" ? 56 : (StatusBar.currentHeight ? StatusBar.currentHeight + 14 : 48),
       paddingBottom: 12,
       elevation: 4,
       shadowColor: "#000",

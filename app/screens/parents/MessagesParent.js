@@ -11,6 +11,7 @@ import {
   TextInput,
   Modal,
   Share,
+  Platform,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { secureGet, secureSet } from "../../services/secureStorage";
@@ -614,7 +615,11 @@ const getStyles = (colors, isDarkMode) =>
   StyleSheet.create({
     container: { flex: 1 },
     scrollView: { flex: 1 },
-    contentContainer: { paddingHorizontal: 16, paddingTop: 44, paddingBottom: 80 },
+    contentContainer: {
+      paddingHorizontal: 16,
+      paddingTop: Platform.OS === "ios" ? 54 : 48,
+      paddingBottom: 80,
+    },
 
     /* Header */
     header: {

@@ -1036,5 +1036,106 @@ export async function shareSeatingPlanPdf(planData = {}) {
   return printAndShare(html, `Seating_Plan_${Date.now()}.pdf`, `Seating Arrangement Plan - ${examTitle}`);
 }
 
+export async function shareExecutiveReportPdf(reportData = {}) {
+  const title = reportData.title || "Campus Executive Intelligence Report";
+  const category = reportData.category || "General";
+  const period = reportData.period || "Current Academic Term";
+  const dept = reportData.dept || "All Departments";
+  const dateStr = new Date().toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+  const highlights = reportData.highlights || [];
+  const details = reportData.details || {};
+
+  const highlightRows = highlights.map((h) => `
+    <tr>
+      <td style="font-weight: 700; width: 45%;">${h.label || "Metric"}</td>
+      <td style="width: 25%; font-weight: 800; color: #1e3a8a;">${h.value || "—"}</td>
+      <td style="width: 30%;">
+        <div style="background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden;">
+          <div style="background: #2563eb; width: ${h.bar || '75%'}; height: 100%;"></div>
+        </div>
+      </td>
+    </tr>
+  `).join("");
+
+  const detailRows = Object.entries(details).map(([k, v]) => `
+    <tr>
+      <td style="font-weight: 700; color: #475569; width: 50%;">${k.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase())}</td>
+      <td style="font-weight: 800; color: #0f172a;">${v}</td>
+    </tr>
+  `).join("");
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>${title}</title>
+        <style>
+          ${BASE_CSS}
+          .kpi-badge {
+            display: inline-block;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 800;
+            font-size: 10px;
+          }
+        </style>
+      </head>
+      <body>
+        <table class="header-table">
+          <tr>
+            <td>
+              <div class="inst-title">EDUNEX AUTONOMOUS INSTITUTION OF ENGINEERING & TECH</div>
+              <div class="inst-sub">Executive Analytics & Institutional Audit Division</div>
+              <div class="doc-badge">OFFICIAL DOMAIN INTELLIGENCE REPORT</div>
+            </td>
+            <td style="text-align: right; vertical-align: top;">
+              <div style="font-size: 11px; font-weight: 800; color: #1e3a8a;">DATE: ${dateStr}</div>
+              <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Scope: ${dept} · Period: ${period}</div>
+              <div class="kpi-badge" style="margin-top: 4px;">CATEGORY: ${category.toUpperCase()}</div>
+            </td>
+          </tr>
+        </table>
+
+        <div style="font-size: 14px; font-weight: 800; color: #1e3a8a; margin-bottom: 4px;">${title}</div>
+        <div style="font-size: 10px; color: #64748b; margin-bottom: 12px;">Automated Institutional Audit & Statistical Breakdown</div>
+
+        <div class="section-title">Departmental & Performance Breakdown</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Evaluation Parameter</th>
+              <th>Score / Realization</th>
+              <th>Benchmark Progress</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${highlightRows || '<tr><td colspan="3" style="text-align:center;">No breakdown metrics recorded</td></tr>'}
+          </tbody>
+        </table>
+
+        <div class="section-title" style="margin-top: 14px;">Key Governance & Operational Summary</div>
+        <table class="data-table">
+          <tbody>
+            ${detailRows || '<tr><td colspan="2" style="text-align:center;">Standard operational parameters compliant</td></tr>'}
+          </tbody>
+        </table>
+
+        <div class="footer-sig" style="margin-top: 30px;">
+          <div class="sig-block">Prepared by<br>Senior Analytics Officer</div>
+          <div class="sig-block">Audited by<br>Dean of Academic Affairs</div>
+          <div class="sig-block">Approved by<br>Principal / Director</div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return printAndShare(html, `${title.replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.pdf`, `${title} - EduNex Analytics`);
+}
+
+
 
 
