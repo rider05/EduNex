@@ -1004,7 +1004,7 @@ export async function shareSeatingPlanPdf(planData = {}) {
             </td>
             <td style="text-align: right; vertical-align: top;">
               <div style="font-size: 11px; font-weight: 800; color: #1e3a8a;">EXAM DATE: ${dateStr}</div>
-              <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Session: Morning (09:30 AM - 12:30 PM)</div>
+              <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Session: ${planData.sessionTime || "Morning (09:30 AM - 12:30 PM)"}</div>
               <div style="font-size: 9px; color: #059669; font-weight: 700; margin-top: 2px;">STATUS: VERIFIED & SEALED</div>
             </td>
           </tr>
