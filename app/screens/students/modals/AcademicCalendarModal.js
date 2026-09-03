@@ -17,12 +17,22 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../../context/ThemeContext";
 import { getAcademicCalendar, subscribeToDataChanges } from "../../../services/dataService";
 
+const getCurrentMonthName = (months = []) => {
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const currentName = monthNames[new Date().getMonth()];
+  if (!months || months.length === 0) return currentName;
+  const match = months.find((m) => m.name.toLowerCase() === currentName.toLowerCase());
+  return match ? match.name : months[0].name;
+};
+
 export default function AcademicCalendarModal({ visible, onClose }) {
   const { colors, isDarkMode } = useTheme();
   const styles = getStyles(colors, isDarkMode);
 
   const [calendarData, setCalendarData] = useState(null);
-  const [activeTab, setActiveTab] = useState("Overview");
+  const [activeTab, setActiveTab] = useState(() => getCurrentMonthName());
+  const [viewMode, setViewMode] = useState("calendar"); // "calendar" | "table"
+  const [selectedGridDay, setSelectedGridDay] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -34,6 +44,10 @@ export default function AcademicCalendarModal({ visible, onClose }) {
       const doc = await getAcademicCalendar(force);
       if (doc && (doc.months || doc.milestones || doc.institution)) {
         setCalendarData(doc);
+        if (doc.months && doc.months.length > 0) {
+          const autoMonth = getCurrentMonthName(doc.months);
+          setActiveTab(autoMonth);
+        }
       }
     } catch (e) {
       console.warn("Error fetching academic calendar from DB:", e);
@@ -87,27 +101,37 @@ export default function AcademicCalendarModal({ visible, onClose }) {
     );
   }, [currentMonthData, searchQuery]);
 
-  const getTagStyle = (type, highlight) => {
-    if (highlight && type === "exam") {
-      return { bg: "#EF444418", text: "#EF4444", border: "#EF4444" };
+  const gridWeeks = useMemo(() => {
+    if (!currentMonthData || !currentMonthData.days || currentMonthData.days.length === 0) return [];
+    const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const firstDay = currentMonthData.days[0];
+    const offset = firstDay ? daysOfWeek.indexOf(firstDay.day) : 0;
+
+    const cells = [];
+    for (let i = 0; i < (offset >= 0 ? offset : 0); i++) {
+      cells.push(null);
     }
-    if (highlight && type === "milestone") {
-      return { bg: "#EC489918", text: "#EC4899", border: "#EC4899" };
+    for (const d of currentMonthData.days) {
+      cells.push(d);
     }
-    if (type === "holiday") {
-      return { bg: isDarkMode ? "#332222" : "#FEE2E2", text: "#DC2626", border: "#FCA5A5" };
+    while (cells.length % 7 !== 0) {
+      cells.push(null);
     }
-    if (type === "exam") {
-      return { bg: isDarkMode ? "#2D1F3D" : "#EDE9FE", text: "#7C3AED", border: "#C4B5FD" };
+
+    const rows = [];
+    for (let i = 0; i < cells.length; i += 7) {
+      rows.push(cells.slice(i, i + 7));
     }
-    if (type === "event" || highlight) {
-      return { bg: "#10B98118", text: "#10B981", border: "#10B981" };
-    }
-    return { bg: colors.primaryBackground, text: colors.primaryText, border: colors.divider };
-  };
+    return rows;
+  }, [currentMonthData]);
 
   const theoryExamMs = milestonesList.find((m) => m.event?.toLowerCase().includes("theory"))?.date || "—";
   const totalWdCount = meta.totalWorkingDays || calendarData?.workingDays?.total || 90;
+
+  const today = new Date();
+  const todayDate = today.getDate();
+  const todayMonthName = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][today.getMonth()];
+  const isCurrentMonthActive = Boolean(currentMonthData && currentMonthData.name.toLowerCase() === todayMonthName.toLowerCase());
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
@@ -333,87 +357,318 @@ export default function AcademicCalendarModal({ visible, onClose }) {
                   </View>
                 </View>
 
-                {/* Search in Month */}
-                <View style={[styles.searchBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
-                  <Icon name="magnify" size={18} color={colors.secondaryText} />
-                  <TextInput
-                    style={[styles.searchInput, { color: colors.primaryText }]}
-                    placeholder={`Search in ${currentMonthData.name} (e.g. CIA, WD-12, Holiday)...`}
-                    placeholderTextColor={colors.secondaryText}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    clearButtonMode="while-editing"
-                  />
-                  {searchQuery.length > 0 && (
-                    <TouchableOpacity onPress={() => setSearchQuery("")}>
-                      <Icon name="close-circle" size={16} color={colors.secondaryText} />
+                {/* Search & View Mode Controls */}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 }}>
+                  <View style={[styles.searchBox, { flex: 1, backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                    <Icon name="magnify" size={18} color={colors.secondaryText} />
+                    <TextInput
+                      style={[styles.searchInput, { color: colors.primaryText }]}
+                      placeholder={`Search ${currentMonthData.name}…`}
+                      placeholderTextColor={colors.secondaryText}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      clearButtonMode="while-editing"
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => setSearchQuery("")}>
+                        <Icon name="close-circle" size={16} color={colors.secondaryText} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* View Mode Toggle Pill */}
+                  <View style={[styles.mobileViewModeToggle, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                    <TouchableOpacity
+                      style={[styles.mobileViewModeBtn, viewMode === "calendar" && { backgroundColor: colors.primaryAccent }]}
+                      onPress={() => setViewMode("calendar")}
+                      activeOpacity={0.8}
+                    >
+                      <Icon name="calendar-month" size={16} color={viewMode === "calendar" ? "#FFFFFF" : colors.secondaryText} />
                     </TouchableOpacity>
-                  )}
+                    <TouchableOpacity
+                      style={[styles.mobileViewModeBtn, viewMode === "table" && { backgroundColor: colors.primaryAccent }]}
+                      onPress={() => setViewMode("table")}
+                      activeOpacity={0.8}
+                    >
+                      <Icon name="format-list-bulleted" size={16} color={viewMode === "table" ? "#FFFFFF" : colors.secondaryText} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
 
-              {/* Day-by-Day Table */}
-              <View style={[styles.tableCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
-                {/* Table Header */}
-                <View style={[styles.tableHeaderRow, { backgroundColor: colors.primaryBackground, borderBottomColor: colors.divider }]}>
-                  <Text style={[styles.thDate, { color: colors.secondaryText }]}>DATE</Text>
-                  <Text style={[styles.thDay, { color: colors.secondaryText }]}>DAY</Text>
-                  <Text style={[styles.thDetails, { color: colors.secondaryText }]}>SCHEDULE / EVENT DETAILS</Text>
-                </View>
-
-                {/* Rows */}
-                {filteredDays.map((d) => {
-                  const tag = getTagStyle(d.type, d.highlight);
-                  const isSunday = d.day === "Sun";
-                  const isSat = d.day === "Sat";
-
-                  return (
-                    <View
-                      key={d.date}
-                      style={[
-                        styles.dayRow,
-                        {
-                          borderBottomColor: colors.divider,
-                          backgroundColor: d.highlight
-                            ? tag.bg
-                            : isSunday
-                            ? isDarkMode
-                              ? "rgba(239, 68, 68, 0.05)"
-                              : "rgba(254, 242, 242, 0.7)"
-                            : isSat && d.type === "holiday"
-                            ? isDarkMode
-                              ? "rgba(255, 255, 255, 0.02)"
-                              : "rgba(241, 245, 249, 0.6)"
-                            : "transparent",
-                        },
-                      ]}
-                    >
-                      {/* Date Num */}
-                      <View style={styles.dateCol}>
-                        <Text style={[styles.dateText, { color: d.type === "holiday" ? "#EF4444" : colors.primaryText, fontWeight: d.highlight ? "900" : "700" }]}>
-                          {d.date}
+              {/* 📅 CALENDAR GRID VIEW */}
+              {viewMode === "calendar" && (
+                <View style={[styles.gridCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+                  {/* Weekday Headers */}
+                  <View style={styles.gridWeekHeader}>
+                    {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((dayName, dIdx) => (
+                      <View key={dIdx} style={styles.gridDayCol}>
+                        <Text
+                          style={[
+                            styles.gridDayHeaderText,
+                            { color: dIdx === 0 ? "#EF4444" : dIdx === 6 ? "#3B82F6" : colors.secondaryText },
+                          ]}
+                        >
+                          {dayName}
                         </Text>
                       </View>
+                    ))}
+                  </View>
 
-                      {/* Day Name */}
-                      <View style={styles.dayCol}>
-                        <Text style={[styles.dayText, { color: isSunday ? "#EF4444" : colors.secondaryText }]}>
-                          {d.day}
-                        </Text>
+                  {/* 7-Column Grid Rows */}
+                  <View style={styles.gridWeeksContainer}>
+                    {gridWeeks.map((week, wIdx) => (
+                      <View key={`week-${wIdx}`} style={styles.gridWeekRow}>
+                        {week.map((d, colIdx) => {
+                          if (!d) {
+                            return <View key={`blank-${colIdx}`} style={styles.gridCellBlank} />;
+                          }
+
+                          const isSun = d.day === "Sun";
+                          const isSat = d.day === "Sat";
+                          const isHoliday = d.type === "holiday";
+                          const isExam = d.type === "exam";
+                          const isSelected = selectedGridDay?.date === d.date;
+                          const isToday = isCurrentMonthActive && d.date === todayDate;
+
+                          return (
+                            <TouchableOpacity
+                              key={d.date}
+                              style={[
+                                styles.gridDayCell,
+                                {
+                                  borderColor: isToday
+                                    ? "#10B981"
+                                    : isSelected
+                                    ? colors.primaryAccent
+                                    : isHoliday
+                                    ? "rgba(239, 68, 68, 0.4)"
+                                    : d.highlight
+                                    ? "rgba(79, 70, 229, 0.4)"
+                                    : colors.divider,
+                                  borderWidth: isToday || isSelected ? 2 : 1,
+                                  backgroundColor: isToday
+                                    ? "#10B98118"
+                                    : isSelected
+                                    ? colors.primaryAccent + "18"
+                                    : isHoliday
+                                    ? "rgba(239, 68, 68, 0.08)"
+                                    : d.highlight
+                                    ? "rgba(79, 70, 229, 0.06)"
+                                    : colors.primaryBackground,
+                                },
+                              ]}
+                              onPress={() => setSelectedGridDay(isSelected ? null : d)}
+                              activeOpacity={0.7}
+                            >
+                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                                <Text
+                                  style={[
+                                    styles.gridDateNum,
+                                    {
+                                      color: isToday ? "#10B981" : isHoliday ? "#EF4444" : isSun ? "#EF4444" : isSat ? "#3B82F6" : colors.primaryText,
+                                      fontWeight: isToday || d.highlight || isSelected ? "900" : "700",
+                                    },
+                                  ]}
+                                >
+                                  {d.date}
+                                </Text>
+                                {isToday ? (
+                                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#10B981" }} />
+                                ) : d.highlight ? (
+                                  <Text style={{ fontSize: 9 }}>⭐</Text>
+                                ) : null}
+                              </View>
+
+                              {d.wd ? (
+                                <View style={[styles.gridWdBadge, { backgroundColor: isToday ? "#059669" : "#10B981" }]}>
+                                  <Text style={styles.gridWdText}>{d.wd.replace("WD-", "")}</Text>
+                                </View>
+                              ) : isHoliday ? (
+                                <Text style={{ fontSize: 9 }}>🏖️</Text>
+                              ) : isExam ? (
+                                <Text style={{ fontSize: 9 }}>📝</Text>
+                              ) : null}
+                            </TouchableOpacity>
+                          );
+                        })}
                       </View>
+                    ))}
+                  </View>
 
-                      {/* Details & WD Badge */}
-                      <View style={styles.detailsCol}>
-                        <View style={[styles.statusPill, { backgroundColor: tag.bg, borderColor: tag.border }]}>
-                          <Text style={[styles.statusText, { color: tag.text, fontWeight: d.highlight ? "800" : "600" }]}>
-                            {d.details}
-                          </Text>
+                  {/* Selected Day Preview Banner */}
+                  {selectedGridDay && (
+                    <View style={[styles.selectedDayCard, { backgroundColor: colors.primaryBackground, borderColor: colors.primaryAccent }]}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          <View style={[styles.selectedDayNumBox, { backgroundColor: colors.primaryAccent }]}>
+                            <Text style={styles.selectedDayNumText}>{selectedGridDay.date}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.selectedDayTitle, { color: colors.primaryText }]}>
+                              {currentMonthData.name} {selectedGridDay.date} ({selectedGridDay.day})
+                            </Text>
+                            <Text style={[styles.selectedDaySub, { color: selectedGridDay.type === "holiday" ? "#EF4444" : colors.secondaryText }]}>
+                              {selectedGridDay.details || (selectedGridDay.type === "holiday" ? "Holiday" : "Regular Working Day")}
+                            </Text>
+                          </View>
                         </View>
+                        {selectedGridDay.wd && (
+                          <View style={[styles.wdPill, { backgroundColor: "#10B98118", borderColor: "#10B981" }]}>
+                            <Text style={[styles.wdPillText, { color: "#10B981" }]}>{selectedGridDay.wd}</Text>
+                          </View>
+                        )}
                       </View>
                     </View>
-                  );
-                })}
-              </View>
+                  )}
+                </View>
+              )}
+
+              {/* 📋 AGENDA / TABLE VIEW (Mobile-Optimized Clean Card List) */}
+              {viewMode === "table" && (
+                <View style={styles.agendaListWrap}>
+                  {filteredDays.map((d) => {
+                    const isSunday = d.day === "Sun";
+                    const isHoliday = d.type === "holiday";
+                    const isExam = d.type === "exam";
+                    const isToday = isCurrentMonthActive && d.date === todayDate;
+
+                    return (
+                      <View
+                        key={d.date}
+                        style={[
+                          styles.agendaCard,
+                          {
+                            backgroundColor: colors.cardBackground,
+                            borderColor: isToday
+                              ? "#10B981"
+                              : isHoliday
+                              ? "rgba(239, 68, 68, 0.35)"
+                              : d.highlight
+                              ? colors.primaryAccent
+                              : colors.divider,
+                            borderWidth: isToday ? 1.5 : 1,
+                            borderLeftWidth: isToday ? 4 : d.highlight ? 4 : isHoliday ? 4 : isExam ? 4 : 1,
+                            borderLeftColor: isToday
+                              ? "#10B981"
+                              : isHoliday
+                              ? "#EF4444"
+                              : isExam
+                              ? "#8B5CF6"
+                              : d.highlight
+                              ? colors.primaryAccent
+                              : colors.divider,
+                          },
+                        ]}
+                      >
+                        {/* Left: Date Badge Box */}
+                        <View
+                          style={[
+                            styles.agendaDateBadge,
+                            {
+                              backgroundColor: isToday
+                                ? "#10B98118"
+                                : isHoliday
+                                ? "rgba(239, 68, 68, 0.08)"
+                                : isSunday
+                                ? isDarkMode
+                                  ? "rgba(239, 68, 68, 0.06)"
+                                  : "rgba(254, 242, 242, 0.9)"
+                                : colors.primaryBackground,
+                              borderColor: isToday ? "#10B981" : colors.divider,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.agendaDateNum,
+                              {
+                                color: isToday ? "#10B981" : isHoliday || isSunday ? "#EF4444" : colors.primaryText,
+                                fontWeight: isToday || d.highlight ? "900" : "800",
+                              },
+                            ]}
+                          >
+                            {d.date < 10 ? `0${d.date}` : d.date}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.agendaDayName,
+                              {
+                                color: isToday ? "#10B981" : isHoliday || isSunday ? "#EF4444" : colors.secondaryText,
+                              },
+                            ]}
+                          >
+                            {d.day ? d.day.toUpperCase() : ""}
+                          </Text>
+                        </View>
+
+                        {/* Center: Details & Status */}
+                        <View style={styles.agendaDetailsWrap}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                            {isToday && (
+                              <View style={{ backgroundColor: "#10B981", paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                                <Text style={{ color: "#FFF", fontSize: 9.5, fontWeight: "900" }}>TODAY</Text>
+                              </View>
+                            )}
+                            {d.highlight && <Text style={{ fontSize: 13 }}>⭐</Text>}
+                            <Text
+                              style={[
+                                styles.agendaTitle,
+                                {
+                                  color: isToday ? "#10B981" : isHoliday ? "#EF4444" : isExam ? "#7C3AED" : colors.primaryText,
+                                  fontWeight: isToday || d.highlight || isExam || isHoliday ? "800" : "600",
+                                },
+                              ]}
+                            >
+                              {d.details && d.details !== "—"
+                                ? d.details
+                                : isHoliday
+                                ? "Institutional Holiday"
+                                : d.wd
+                                ? `Regular Working Day (${d.wd})`
+                                : "No Academic Activity"}
+                            </Text>
+                          </View>
+
+                          {/* Status Chip Row */}
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 }}>
+                            {isHoliday ? (
+                              <View style={[styles.agendaChip, { backgroundColor: "#EF444418", borderColor: "#EF444430" }]}>
+                                <Text style={[styles.agendaChipText, { color: "#EF4444" }]}>🏖️ Holiday</Text>
+                              </View>
+                            ) : isExam ? (
+                              <View style={[styles.agendaChip, { backgroundColor: "#8B5CF618", borderColor: "#8B5CF630" }]}>
+                                <Text style={[styles.agendaChipText, { color: "#8B5CF6" }]}>📝 Examination</Text>
+                              </View>
+                            ) : d.highlight ? (
+                              <View style={[styles.agendaChip, { backgroundColor: colors.primaryAccent + "18", borderColor: colors.primaryAccent + "30" }]}>
+                                <Text style={[styles.agendaChipText, { color: colors.primaryAccent }]}>⭐ Academic Milestone</Text>
+                              </View>
+                            ) : (
+                              <View style={[styles.agendaChip, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                                <Text style={[styles.agendaChipText, { color: colors.secondaryText }]}>
+                                  {d.wd ? "Instruction Day" : "Regular Day"}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+
+                        {/* Right: WD Badge */}
+                        <View style={styles.agendaWdCol}>
+                          {d.wd ? (
+                            <View style={[styles.wdPill, { backgroundColor: "#10B98118", borderColor: "#10B981" }]}>
+                              <Text style={[styles.wdPillText, { color: "#10B981" }]}>{d.wd}</Text>
+                            </View>
+                          ) : (
+                            <Text style={{ fontSize: 11, color: colors.secondaryText, fontWeight: "600" }}>—</Text>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
             </View>
           )}
 
@@ -751,6 +1006,165 @@ const getStyles = (colors, isDarkMode) =>
       fontSize: 12,
       padding: 0,
     },
+    mobileViewModeToggle: {
+      flexDirection: "row",
+      borderRadius: 8,
+      borderWidth: 1,
+      padding: 2,
+    },
+    mobileViewModeBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 6,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+
+    /* Calendar Grid */
+    gridCard: {
+      borderRadius: 16,
+      borderWidth: 1,
+      padding: 10,
+      elevation: 2,
+      gap: 8,
+    },
+    gridWeekHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingBottom: 6,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: "rgba(150,150,150,0.2)",
+    },
+    gridDayCol: {
+      width: "13.2%",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    gridDayHeaderText: {
+      fontSize: 10,
+      fontWeight: "800",
+    },
+    gridWeeksContainer: {
+      gap: 5,
+    },
+    gridWeekRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+    },
+    gridCellBlank: {
+      width: "13.2%",
+      height: 48,
+      borderRadius: 8,
+      backgroundColor: "transparent",
+    },
+    gridDayCell: {
+      width: "13.2%",
+      height: 48,
+      borderRadius: 8,
+      borderWidth: 1,
+      padding: 3.5,
+      justifyContent: "space-between",
+    },
+    gridDateNum: {
+      fontSize: 11.5,
+    },
+    gridWdBadge: {
+      borderRadius: 4,
+      paddingHorizontal: 2.5,
+      paddingVertical: 1,
+      alignSelf: "flex-start",
+    },
+    gridWdText: {
+      color: "#FFFFFF",
+      fontSize: 8,
+      fontWeight: "900",
+    },
+    selectedDayCard: {
+      borderRadius: 12,
+      borderWidth: 1.5,
+      padding: 12,
+      marginTop: 6,
+    },
+    selectedDayNumBox: {
+      width: 34,
+      height: 34,
+      borderRadius: 8,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    selectedDayNumText: {
+      color: "#FFFFFF",
+      fontSize: 15,
+      fontWeight: "900",
+    },
+    selectedDayTitle: {
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    selectedDaySub: {
+      fontSize: 11.5,
+      fontWeight: "600",
+      marginTop: 1,
+    },
+
+    /* Agenda List / Mobile Schedule View */
+    agendaListWrap: {
+      gap: 8,
+    },
+    agendaCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 14,
+      borderWidth: 1,
+      padding: 10,
+      elevation: 1,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+    },
+    agendaDateBadge: {
+      width: 48,
+      height: 48,
+      borderRadius: 10,
+      borderWidth: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      flexShrink: 0,
+    },
+    agendaDateNum: {
+      fontSize: 17,
+      lineHeight: 20,
+    },
+    agendaDayName: {
+      fontSize: 9.5,
+      fontWeight: "800",
+      marginTop: 1,
+    },
+    agendaDetailsWrap: {
+      flex: 1,
+      paddingHorizontal: 10,
+      justifyContent: "center",
+    },
+    agendaTitle: {
+      fontSize: 13,
+      lineHeight: 17,
+    },
+    agendaChip: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    agendaChipText: {
+      fontSize: 9.5,
+      fontWeight: "700",
+    },
+    agendaWdCol: {
+      minWidth: 54,
+      alignItems: "flex-end",
+      justifyContent: "center",
+    },
 
     /* Table */
     tableCard: {
@@ -781,6 +1195,12 @@ const getStyles = (colors, isDarkMode) =>
       fontSize: 10.5,
       fontWeight: "800",
     },
+    thWd: {
+      width: 60,
+      fontSize: 10.5,
+      fontWeight: "800",
+      textAlign: "center",
+    },
     dayRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -803,16 +1223,30 @@ const getStyles = (colors, isDarkMode) =>
     },
     detailsCol: {
       flex: 1,
+      paddingRight: 6,
     },
-    statusPill: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
+    dayEventText: {
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    wdCol: {
+      width: 60,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    wdPill: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
       borderRadius: 6,
       borderWidth: 1,
-      alignSelf: "flex-start",
     },
-    statusText: {
+    wdPillText: {
+      fontSize: 10,
+      fontWeight: "900",
+    },
+    noWdText: {
       fontSize: 11,
+      fontWeight: "600",
     },
 
     /* Holidays */
