@@ -36,6 +36,35 @@ const DEPT_CODE_MAP = {
   "MECH": "MECH",
 };
 
+// Dynamic parser to convert standard time formats into minutes from midnight
+const parseTimeToMinutes = (timeStr) => {
+  if (!timeStr || typeof timeStr !== "string") return { startMin: 0, endMin: 0 };
+  const parts = timeStr.split("-").map((s) => s.trim());
+  if (parts.length < 2) return { startMin: 0, endMin: 0 };
+
+  const parsePart = (str, fallbackPeriod) => {
+    if (!str) return 0;
+    const hasPM = /pm/i.test(str) || (fallbackPeriod === "pm" && !/am/i.test(str));
+    const hasAM = /am/i.test(str) || (fallbackPeriod === "am" && !/pm/i.test(str));
+    const match = str.match(/(\d{1,2}):(\d{2})/);
+    if (!match) return 0;
+    let h = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    if (hasPM && h < 12) h += 12;
+    if (hasAM && h === 12) h = 0;
+    if (!hasPM && !hasAM) {
+      if (h >= 1 && h <= 6) h += 12;
+    }
+    return h * 60 + m;
+  };
+
+  const endIsPM = /pm/i.test(parts[1]);
+  const startIsPM = /pm/i.test(parts[0]);
+  const startMin = parsePart(parts[0], startIsPM ? "pm" : "am");
+  const endMin = parsePart(parts[1], endIsPM ? "pm" : startMin >= 12 * 60 ? "pm" : "am");
+
+  return { startMin, endMin: endMin > startMin ? endMin : startMin + 50 };
+};
 
 // Normalizers for DB timetable rows: numbered 1 to 7 only (breaks not counted as periods)
 const DEFAULT_STAFF_NAME = "—";
@@ -482,24 +511,46 @@ export default function FullTimetable({ visible = true, onClose }) {
           ) : (
             <View style={{ gap: 10, marginTop: 10 }}>
               {filteredSchedule.map((item, idx) => {
+                const isToday = getTodayName() === selectedDay;
+                const now = new Date();
+                const curMin = now.getHours() * 60 + now.getMinutes();
+                const { startMin, endMin } = parseTimeToMinutes(item.time);
+                const isLiveNow = isToday && startMin > 0 && curMin >= startMin && curMin < endMin;
+
                 if (item.isBreak) {
                   return (
                     <View
                       key={idx}
-                      style={[styles.breakCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+                      style={[
+                        styles.breakCard,
+                        {
+                          backgroundColor: isLiveNow ? "#10B9810D" : colors.cardBackground,
+                          borderColor: isLiveNow ? "#10B981" : colors.divider,
+                        },
+                      ]}
                     >
                       <Icon
                         name={item.subject.toLowerCase().includes("lunch") ? "food-fork-drink" : "coffee-outline"}
                         size={20}
-                        color="#F59E0B"
+                        color={isLiveNow ? "#10B981" : "#F59E0B"}
                       />
                       <View style={{ flex: 1, marginLeft: 10 }}>
                         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                          <Text style={[styles.breakTitle, { color: colors.primaryText }]}>{item.subject}</Text>
-                          <Text style={[styles.breakDuration, { color: "#F59E0B" }]}>{item.duration}</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Text style={[styles.breakTitle, { color: colors.primaryText }]}>{item.subject}</Text>
+                            {isLiveNow && (
+                              <View style={[styles.liveIndicatorBadge, { backgroundColor: "#10B98120" }]}>
+                                <View style={[styles.liveDot, { backgroundColor: "#10B981" }]} />
+                                <Text style={[styles.liveIndicatorText, { color: "#10B981" }]}>LIVE NOW</Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={[styles.breakDuration, { color: isLiveNow ? "#10B981" : "#F59E0B" }]}>
+                            {item.duration || (isLiveNow ? `${endMin - curMin}m left` : "")}
+                          </Text>
                         </View>
                         <Text style={[styles.breakMeta, { color: colors.secondaryText }]}>
-                          â° {item.time} Â· ðŸ“ {item.room}
+                          ⏰ {item.time} · 📍 {item.room}
                         </Text>
                       </View>
                     </View>
@@ -509,21 +560,33 @@ export default function FullTimetable({ visible = true, onClose }) {
                 return (
                   <TouchableOpacity
                     key={idx}
-                    style={[styles.lectureCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+                    style={[
+                      styles.lectureCard,
+                      {
+                        backgroundColor: isLiveNow ? "#10B98108" : colors.cardBackground,
+                        borderColor: isLiveNow ? "#10B981" : colors.divider,
+                      },
+                    ]}
                     onPress={() => handleClassClick(item)}
                     activeOpacity={0.85}
                   >
-                    <View style={[styles.colorStrip, { backgroundColor: item.color || colors.primaryAccent }]} />
+                    <View style={[styles.colorStrip, { backgroundColor: isLiveNow ? "#10B981" : (item.color || colors.primaryAccent) }]} />
 
                     <View style={{ flex: 1, padding: 12 }}>
                       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <View style={[styles.periodBadge, { backgroundColor: (item.color || colors.primaryAccent) + "18" }]}>
-                            <Text style={[styles.periodBadgeText, { color: item.color || colors.primaryAccent }]}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap", flex: 1 }}>
+                          <View style={[styles.periodBadge, { backgroundColor: (isLiveNow ? "#10B981" : (item.color || colors.primaryAccent)) + "18" }]}>
+                            <Text style={[styles.periodBadgeText, { color: isLiveNow ? "#10B981" : (item.color || colors.primaryAccent) }]}>
                               {item.period}
                             </Text>
                           </View>
                           <Text style={[styles.lectureTime, { color: colors.primaryText }]}>{item.time}</Text>
+                          {isLiveNow && (
+                            <View style={[styles.liveIndicatorBadge, { backgroundColor: "#10B98120" }]}>
+                              <View style={[styles.liveDot, { backgroundColor: "#10B981" }]} />
+                              <Text style={[styles.liveIndicatorText, { color: "#10B981" }]}>LIVE NOW</Text>
+                            </View>
+                          )}
                         </View>
 
                         <View style={[styles.typeBadge, { backgroundColor: item.type === "Lab" ? "#7C3AED18" : "#2563EB18" }]}>
@@ -960,6 +1023,24 @@ const getStyles = (colors, _isDarkMode) =>
     typeBadgeText: {
       fontSize: 9.5,
       fontWeight: "900",
+    },
+    liveIndicatorBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    liveDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+    },
+    liveIndicatorText: {
+      fontSize: 9,
+      fontWeight: "900",
+      letterSpacing: 0.2,
     },
     subjectName: {
       fontSize: 13.5,

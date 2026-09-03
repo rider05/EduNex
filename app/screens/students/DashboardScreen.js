@@ -101,6 +101,13 @@ export default function DashboardScreen() {
   const [visibleModal, setVisibleModal] = useState(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState(null);
   const [liveTimetable, setLiveTimetable] = useState(null);
+  const [nowTime, setNowTime] = useState(Date.now());
+
+  // Auto-refresh clock every 30 seconds for live period tracking
+  useEffect(() => {
+    const timer = setInterval(() => setNowTime(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Sub-Modals
   const [gradeModalVisible, setGradeModalVisible] = useState(false);
@@ -355,31 +362,73 @@ export default function DashboardScreen() {
     });
   }, [liveTimetable, studentData.department, studentData.schedule, studentData.subjects]);
 
-  const { activePeriod, activePeriodStatus } = useMemo(() => {
+  const { activePeriod, activePeriodStatus, statusLabel, isWeekend, curMin } = useMemo(() => {
     if (!todayPeriods || todayPeriods.length === 0) {
-      return { activePeriod: null, activePeriodStatus: "none" };
+      return { activePeriod: null, activePeriodStatus: "none", statusLabel: "No Schedule", isWeekend: false, curMin: 0 };
     }
 
-    const now = new Date();
-    const curMin = now.getHours() * 60 + now.getMinutes();
+    const now = new Date(nowTime);
+    const dayOfWeek = now.getDay();
+    const isWk = dayOfWeek === 0 || dayOfWeek === 6;
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    let live = null;
-    let next = null;
-
-    for (const p of todayPeriods) {
-      if (curMin >= p.startMin && curMin < p.endMin) {
-        live = p;
-        break;
-      }
-      if (curMin < p.startMin && !next) {
-        next = p;
-      }
+    if (isWk) {
+      return {
+        activePeriod: todayPeriods[0],
+        activePeriodStatus: "weekend",
+        statusLabel: "WEEKEND · NEXT SESSION MON",
+        isWeekend: true,
+        curMin: currentMinutes,
+      };
     }
 
-    if (live) return { activePeriod: live, activePeriodStatus: "live" };
-    if (next) return { activePeriod: next, activePeriodStatus: "upcoming" };
-    return { activePeriod: todayPeriods[0], activePeriodStatus: "upcoming" };
-  }, [todayPeriods]);
+    // 1. Check if an exact period is ongoing right now
+    const live = todayPeriods.find((p) => currentMinutes >= p.startMin && currentMinutes < p.endMin);
+    if (live) {
+      const remaining = live.endMin - currentMinutes;
+      return {
+        activePeriod: live,
+        activePeriodStatus: "live",
+        statusLabel: `LIVE NOW · ${remaining}m remaining`,
+        isWeekend: false,
+        curMin: currentMinutes,
+      };
+    }
+
+    // 2. Check if before the first period of today
+    if (currentMinutes < todayPeriods[0].startMin) {
+      const untilFirst = todayPeriods[0].startMin - currentMinutes;
+      return {
+        activePeriod: todayPeriods[0],
+        activePeriodStatus: "upcoming",
+        statusLabel: `UPCOMING · Starts in ${untilFirst > 60 ? `${Math.floor(untilFirst / 60)}h ${untilFirst % 60}m` : `${untilFirst}m`}`,
+        isWeekend: false,
+        curMin: currentMinutes,
+      };
+    }
+
+    // 3. Check for next upcoming period later today
+    const next = todayPeriods.find((p) => currentMinutes < p.startMin);
+    if (next) {
+      const untilNext = next.startMin - currentMinutes;
+      return {
+        activePeriod: next,
+        activePeriodStatus: "upcoming",
+        statusLabel: `NEXT SESSION · in ${untilNext}m`,
+        isWeekend: false,
+        curMin: currentMinutes,
+      };
+    }
+
+    // 4. All periods for today have finished
+    return {
+      activePeriod: todayPeriods[todayPeriods.length - 1],
+      activePeriodStatus: "completed",
+      statusLabel: "ALL CLASSES CONCLUDED TODAY",
+      isWeekend: false,
+      curMin: currentMinutes,
+    };
+  }, [todayPeriods, nowTime]);
 
   const displayedPeriod = useMemo(() => {
     if (selectedPeriodId) {
@@ -574,11 +623,9 @@ export default function DashboardScreen() {
               style={{ marginBottom: 10 }}
             >
               {todayPeriods.map((p) => {
-                const isLive = activePeriodStatus === "live" && activePeriod.id === p.id;
+                const isLive = !isWeekend && curMin >= p.startMin && curMin < p.endMin;
+                const isPast = !isWeekend && curMin >= p.endMin;
                 const isSelected = displayedPeriod.id === p.id;
-                const now = new Date();
-                const curMin = now.getHours() * 60 + now.getMinutes();
-                const isPast = curMin >= p.endMin;
 
                 return (
                   <TouchableOpacity
@@ -709,7 +756,7 @@ export default function DashboardScreen() {
                 {
                   backgroundColor: colors.cardBackground,
                   borderColor:
-                    displayedPeriod.id === activePeriod.id && activePeriodStatus === "live"
+                    displayedPeriod.id === activePeriod?.id && activePeriodStatus === "live"
                       ? "#10B981"
                       : colors.divider,
                 },
@@ -723,8 +770,10 @@ export default function DashboardScreen() {
                     styles.liveBadge,
                     {
                       backgroundColor:
-                        displayedPeriod.id === activePeriod.id && activePeriodStatus === "live"
+                        displayedPeriod.id === activePeriod?.id && activePeriodStatus === "live"
                           ? "#10B98120"
+                          : activePeriodStatus === "completed"
+                          ? colors.divider
                           : colors.primaryAccent + "18",
                     },
                   ]}
@@ -734,8 +783,10 @@ export default function DashboardScreen() {
                       styles.liveDot,
                       {
                         backgroundColor:
-                          displayedPeriod.id === activePeriod.id && activePeriodStatus === "live"
+                          displayedPeriod.id === activePeriod?.id && activePeriodStatus === "live"
                             ? "#10B981"
+                            : activePeriodStatus === "completed"
+                            ? colors.secondaryText
                             : colors.primaryAccent,
                       },
                     ]}
@@ -745,16 +796,17 @@ export default function DashboardScreen() {
                       styles.liveBadgeText,
                       {
                         color:
-                          displayedPeriod.id === activePeriod.id && activePeriodStatus === "live"
+                          displayedPeriod.id === activePeriod?.id && activePeriodStatus === "live"
                             ? "#10B981"
+                            : activePeriodStatus === "completed"
+                            ? colors.secondaryText
                             : colors.primaryAccent,
                       },
                     ]}
                   >
-                    {displayedPeriod.id === activePeriod.id && activePeriodStatus === "live"
-                      ? "LIVE NOW"
-                      : displayedPeriod.period.toUpperCase()}{" "}
-                    · {displayedPeriod.time}
+                    {displayedPeriod.id === activePeriod?.id
+                      ? statusLabel
+                      : `${displayedPeriod.period.toUpperCase()} · ${displayedPeriod.time}`}
                   </Text>
                 </View>
 
