@@ -84,27 +84,63 @@ fs.copyFileSync(sourceApk, latestFilePath);
 
 const stats = fs.statSync(targetFilePath);
 const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+const byteSize = stats.size.toLocaleString();
 
 console.log("\n===================================================");
 console.log(`✅ SUCCESS! Exported APK: ${targetFileName} (${sizeMB} MB)`);
 console.log(`📍 Location: ${targetFilePath}`);
 console.log("===================================================");
 
-// 6. Push to Git in D:/EduNex-app
+// 6. Automatically Update D:/EduNex-app index.html and src/main.js
+const indexPath = path.join(finalDestDir, "index.html");
+const mainJsPath = path.join(finalDestDir, "src", "main.js");
+
+if (fs.existsSync(indexPath)) {
+  console.log(`\n🔄 Updating ${indexPath} to latest v${version}...`);
+  let indexContent = fs.readFileSync(indexPath, "utf-8");
+  indexContent = indexContent.replace(/EduNex (?:Latest )?Release v[0-9.]+/gi, `EduNex Latest Release v${version}`);
+  indexContent = indexContent.replace(/<span class="tag-pill">v[0-9.]+<\/span>/gi, `<span class="tag-pill">v${version}</span>`);
+  indexContent = indexContent.replace(/<span>v[0-9.]+<\/span>/gi, `<span>v${version}</span>`);
+  indexContent = indexContent.replace(/File name: <code>[^<]*<\/code>/gi, `File name: <code>${targetFileName}</code>`);
+  fs.writeFileSync(indexPath, indexContent, "utf-8");
+  console.log(`[OK] index.html updated successfully with version v${version}`);
+}
+
+if (fs.existsSync(mainJsPath)) {
+  console.log(`🔄 Updating ${mainJsPath} to latest v${version}...`);
+  let mainContent = fs.readFileSync(mainJsPath, "utf-8");
+  mainContent = mainContent.replace(/version:\s*"[^"]*"/gi, `version: "${version} (Latest Release)"`);
+  mainContent = mainContent.replace(/size:\s*"[^"]*"/gi, `size: "${sizeMB} MB (${byteSize} bytes)"`);
+  fs.writeFileSync(mainJsPath, mainContent, "utf-8");
+  console.log(`[OK] src/main.js updated successfully`);
+}
+
+// Rebuild frontend dist if package.json in D:/EduNex-app
+const destPkgPath = path.join(finalDestDir, "package.json");
+if (fs.existsSync(destPkgPath)) {
+  try {
+    console.log(`\n⚡ Rebuilding frontend web distribution (${finalDestDir})...`);
+    execSync("npm run build", { cwd: finalDestDir, stdio: "inherit" });
+  } catch (buildErr) {
+    console.warn("Frontend build notice:", buildErr.message);
+  }
+}
+
+// 7. Push to Git in D:/EduNex-app
 const gitDir = path.join(finalDestDir, ".git");
 if (fs.existsSync(gitDir)) {
   console.log(`\n===================================================`);
-  console.log(`📤 Pushing Updated APK to GitHub (${finalDestDir})...`);
+  console.log(`📤 Pushing Updated APK & Web Portal to GitHub (${finalDestDir})...`);
   console.log(`===================================================`);
   try {
-    execSync(`git add "${targetFileName}" "EduNex.apk"`, { cwd: finalDestDir, stdio: "inherit" });
+    execSync(`git add .`, { cwd: finalDestDir, stdio: "inherit" });
     try {
-      execSync(`git commit -m "Release: Build & deploy EduNex V${version}.apk"`, { cwd: finalDestDir, stdio: "inherit" });
+      execSync(`git commit -m "Release: Build, update web portal & deploy EduNex V${version}.apk"`, { cwd: finalDestDir, stdio: "inherit" });
     } catch (_commitErr) {
-      console.log("ℹ️ No new changes to commit in git repository.");
+      console.log("ℹ️ No changes to commit in git.");
     }
     execSync(`git push origin main`, { cwd: finalDestDir, stdio: "inherit" });
-    console.log(`\n[OK] Successfully pushed ${targetFileName} to GitHub repository!`);
+    console.log(`\n[OK] Successfully pushed updated portal & APK to GitHub repository!`);
   } catch (gitErr) {
     console.warn(`[!] Git push error:`, gitErr.message);
   }
