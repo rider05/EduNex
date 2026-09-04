@@ -2,9 +2,9 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 
-console.log("========================================");
-console.log("🚀 EduNex Release APK Builder & Exporter");
-console.log("========================================");
+console.log("===================================================");
+console.log("🚀 EduNex Release APK Builder & Git Auto-Pusher");
+console.log("===================================================");
 
 // 1. Read app version from package.json
 const pkgPath = path.join(__dirname, "..", "package.json");
@@ -27,6 +27,7 @@ if (!fs.existsSync(finalDestDir)) fs.mkdirSync(finalDestDir, { recursive: true }
 
 const targetFileName = `EduNex V${version}.apk`;
 const targetFilePath = path.join(finalDestDir, targetFileName);
+const latestFilePath = path.join(finalDestDir, "EduNex.apk");
 
 console.log("\n🔍 Checking destination for existing file...");
 if (fs.existsSync(targetFilePath)) {
@@ -75,17 +76,40 @@ console.log(`\n📁 Rewriting and saving versioned APK to:\n👉 ${targetFilePat
 if (fs.existsSync(targetFilePath)) {
   try {
     fs.unlinkSync(targetFilePath);
-  } catch (_e) {
-    // Overwrite directly via copy
-  }
+  } catch (_e) {}
 }
 
 fs.copyFileSync(sourceApk, targetFilePath);
+fs.copyFileSync(sourceApk, latestFilePath);
 
 const stats = fs.statSync(targetFilePath);
 const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
 
-console.log("\n========================================");
+console.log("\n===================================================");
 console.log(`✅ SUCCESS! Exported APK: ${targetFileName} (${sizeMB} MB)`);
 console.log(`📍 Location: ${targetFilePath}`);
-console.log("========================================\n");
+console.log("===================================================");
+
+// 6. Push to Git in D:/EduNex-app
+const gitDir = path.join(finalDestDir, ".git");
+if (fs.existsSync(gitDir)) {
+  console.log(`\n===================================================`);
+  console.log(`📤 Pushing Updated APK to GitHub (${finalDestDir})...`);
+  console.log(`===================================================`);
+  try {
+    execSync(`git add "${targetFileName}" "EduNex.apk"`, { cwd: finalDestDir, stdio: "inherit" });
+    try {
+      execSync(`git commit -m "Release: Build & deploy EduNex V${version}.apk"`, { cwd: finalDestDir, stdio: "inherit" });
+    } catch (_commitErr) {
+      console.log("ℹ️ No new changes to commit in git repository.");
+    }
+    execSync(`git push origin main`, { cwd: finalDestDir, stdio: "inherit" });
+    console.log(`\n[OK] Successfully pushed ${targetFileName} to GitHub repository!`);
+  } catch (gitErr) {
+    console.warn(`[!] Git push error:`, gitErr.message);
+  }
+}
+
+console.log("\n===================================================");
+console.log("🎉 All Tasks Completed Successfully!");
+console.log("===================================================\n");
