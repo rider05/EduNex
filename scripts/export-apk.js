@@ -63,26 +63,30 @@ if (!fs.existsSync(destDir)) {
 const finalDestDir = fs.existsSync(destDir) ? destDir : path.join(projectRoot, "dist-apk");
 if (!fs.existsSync(finalDestDir)) fs.mkdirSync(finalDestDir, { recursive: true });
 
-// Remove old versioned APK files from destination folder
+// Remove old versioned APK files from destination folder, public/, and dist/
 const targetFileName = `EDUNEX_V${targetVersion}.apk`;
 const targetFilePath = path.join(finalDestDir, targetFileName);
 const latestFilePath = path.join(finalDestDir, "EduNex.apk");
 
-const destFiles = fs.readdirSync(finalDestDir);
-for (const file of destFiles) {
-  if (
-    (file.startsWith("EDUNEX_V") || file.startsWith("EduNex V") || file === "EduNex.apk") &&
-    file.endsWith(".apk")
-  ) {
-    const oldPath = path.join(finalDestDir, file);
-    try {
-      fs.unlinkSync(oldPath);
-      console.log(`   🗑️ Removed old artifact: ${file}`);
-    } catch (_err) {
-      console.log(`   (i) Could not remove ${file}, will overwrite.`);
+const cleanApksInDir = (dir) => {
+  if (!fs.existsSync(dir)) return;
+  const files = fs.readdirSync(dir);
+  for (const file of files) {
+    if (
+      (file.startsWith("EDUNEX_V") || file.startsWith("EduNex V") || file === "EduNex.apk" || file.endsWith(".apk")) &&
+      file.endsWith(".apk")
+    ) {
+      try {
+        fs.unlinkSync(path.join(dir, file));
+        console.log(`   🗑️ Removed old artifact in ${path.basename(dir) || 'root'}: ${file}`);
+      } catch (_err) {}
     }
   }
-}
+};
+
+cleanApksInDir(finalDestDir);
+cleanApksInDir(path.join(finalDestDir, "public"));
+cleanApksInDir(path.join(finalDestDir, "dist"));
 
 // Clean local Android build outputs
 const apkOutputDir = path.join(projectRoot, "android", "app", "build", "outputs", "apk", "release");
@@ -152,9 +156,15 @@ if (!sourceApk || !fs.existsSync(sourceApk)) {
 
 console.log(`   🎯 Selected Binary: ${path.basename(sourceApk)} ${isV8aSelected ? "(_v8a-release 64-bit)" : ""}`);
 
-// Copy fresh APK to EDUNEX_V[version].apk and EduNex.apk
+// Copy fresh APK to EDUNEX_V[version].apk and EduNex.apk across root, public/, and dist/
 fs.copyFileSync(sourceApk, targetFilePath);
 fs.copyFileSync(sourceApk, latestFilePath);
+
+const publicDir = path.join(finalDestDir, "public");
+if (fs.existsSync(publicDir)) {
+  fs.copyFileSync(sourceApk, path.join(publicDir, targetFileName));
+  fs.copyFileSync(sourceApk, path.join(publicDir, "EduNex.apk"));
+}
 
 const stats = fs.statSync(targetFilePath);
 const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
@@ -177,6 +187,7 @@ if (fs.existsSync(indexPath)) {
   indexContent = indexContent.replace(/<span class="tag-pill">v[0-9.]+<\/span>/gi, `<span class="tag-pill">v${targetVersion}</span>`);
   indexContent = indexContent.replace(/<span>v[0-9.]+<\/span>/gi, `<span>v${targetVersion}</span>`);
   indexContent = indexContent.replace(/File name: <code>[^<]*<\/code>/gi, `File name: <code>${targetFileName}</code>`);
+  indexContent = indexContent.replace(/href="[^"]*\.apk"/gi, `href="${targetFileName}"`);
   indexContent = indexContent.replace(/download="[^"]*"/gi, `download="${targetFileName}"`);
   indexContent = indexContent.replace(/triggerToast\('[^']*'\)/gi, `triggerToast('${targetFileName}')`);
   fs.writeFileSync(indexPath, indexContent, "utf-8");
@@ -199,6 +210,11 @@ if (fs.existsSync(destPkgPath)) {
   try {
     console.log(`   ⚡ Rebuilding web portal distribution bundle...`);
     execSync("npm run build", { cwd: finalDestDir, stdio: "inherit" });
+    const distDir = path.join(finalDestDir, "dist");
+    if (fs.existsSync(distDir)) {
+      fs.copyFileSync(sourceApk, path.join(distDir, targetFileName));
+      fs.copyFileSync(sourceApk, path.join(distDir, "EduNex.apk"));
+    }
   } catch (buildErr) {
     console.warn("   [!] Frontend build notice:", buildErr.message);
   }
