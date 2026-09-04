@@ -64,7 +64,7 @@ export default function AppUpdateModal({
 
             <View style={styles.versionPillRow}>
               <View style={styles.currentVerBadge}>
-                <Text style={styles.currentVerText}>v{updateInfo.currentVersion || "1.0.0"}</Text>
+                <Text style={styles.currentVerText}>v{updateInfo.currentVersion || "1.0.1"}</Text>
               </View>
               <Icon name="arrow-right" size={16} color="#6B7280" />
               <View style={styles.latestVerBadge}>

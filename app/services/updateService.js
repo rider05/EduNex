@@ -4,9 +4,12 @@ import { api } from "./api";
 import { secureGet, secureSet } from "./secureStorage";
 
 export const CURRENT_APP_VERSION =
+  Constants.nativeAppVersion ||
   Constants.expoConfig?.version ||
+  Constants.manifest2?.extra?.expoClient?.version ||
+  Constants.expoConfig?.extra?.version ||
   Constants.manifest?.version ||
-  "1.0.0";
+  "1.0.1";
 
 const DISMISSED_UPDATE_KEY = "edunex_dismissed_update_version";
 
