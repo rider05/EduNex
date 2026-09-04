@@ -12,12 +12,48 @@ echo "Build Mode: $BUILD_TYPE"
 echo "========================================"
 echo ""
 
-# Extract current version from package.json or app.json
+# 1. Extract current version from package.json or app.json
 VERSION=$(node -p "require('./package.json').version || '1.0.1'" 2>/dev/null || echo "1.0.1")
-echo "📦 Detected App Version: v$VERSION"
+echo "📦 Target App Version: v$VERSION"
 echo ""
 
-# Ensure env vars are set if in Linux/WSL
+# 2. Determine and verify destination paths (WSL vs Git Bash vs Windows native)
+DEST_DIRS=(
+  "/mnt/d/EduNex-app"
+  "/d/EduNex-app"
+  "D:/EduNex-app"
+  "D:\\EduNex-app"
+)
+
+DEST_DIR=""
+for d in "${DEST_DIRS[@]}"; do
+  if mkdir -p "$d" 2>/dev/null; then
+    DEST_DIR="$d"
+    break
+  fi
+done
+
+if [ -z "$DEST_DIR" ]; then
+  DEST_DIR="D:/EduNex-app"
+  mkdir -p "$DEST_DIR" 2>/dev/null || true
+fi
+
+TARGET_APK_NAME="EduNex V${VERSION}.apk"
+TARGET_APK_PATH="$DEST_DIR/$TARGET_APK_NAME"
+
+echo "🔍 Checking destination for existing versioned file..."
+if [ -f "$TARGET_APK_PATH" ]; then
+    echo "⚠️ EXISTING FILE FOUND: $TARGET_APK_NAME"
+    if command -v ls &>/dev/null; then
+        echo "   Details: $(ls -lh "$TARGET_APK_PATH" | awk '{print $5, $6, $7, $8}')"
+    fi
+    echo "♻️ Will rewrite and overwrite with the fresh build."
+else
+    echo "✨ No existing file found for $TARGET_APK_NAME (Will be created fresh)."
+fi
+echo ""
+
+# 3. Ensure env vars are set if in Linux/WSL
 if [ -d "/usr/lib/jvm/java-17-openjdk-amd64" ]; then
     export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
     export ANDROID_HOME="${ANDROID_HOME:-$HOME/android-sdk}"
@@ -29,7 +65,8 @@ if [ ! -d "android" ]; then
     npx expo prebuild --platform android
 fi
 
-echo "Building APK ($BUILD_TYPE)..."
+# 4. Build APK via Gradle
+echo "⚡ Building APK ($BUILD_TYPE)..."
 cd android
 
 if [ "$BUILD_TYPE" = "debug" ]; then
@@ -62,40 +99,20 @@ echo "========================================"
 echo "📁 Moving & Rewriting Versioned APK..."
 echo "========================================"
 
-# Determine destination paths (WSL vs Git Bash vs Windows native)
-DEST_DIRS=(
-  "/mnt/d/EduNex-app"
-  "/d/EduNex-app"
-  "D:/EduNex-app"
-  "D:\\EduNex-app"
-)
-
-DEST_DIR=""
-for d in "${DEST_DIRS[@]}"; do
-  if mkdir -p "$d" 2>/dev/null; then
-    DEST_DIR="$d"
-    break
-  fi
-done
-
-if [ -z "$DEST_DIR" ]; then
-  DEST_DIR="D:/EduNex-app"
-  mkdir -p "$DEST_DIR" 2>/dev/null || true
-fi
-
-TARGET_APK_NAME="EduNex V${VERSION}.apk"
-
 if [ -f "android/$SRC_APK" ]; then
-    # Remove any existing copy to guarantee a clean rewrite
-    rm -f "$DEST_DIR/$TARGET_APK_NAME" 2>/dev/null || true
+    # Remove existing file if present to guarantee clean rewrite
+    if [ -f "$TARGET_APK_PATH" ]; then
+        echo "🗑️ Removing old copy of $TARGET_APK_NAME..."
+        rm -f "$TARGET_APK_PATH" 2>/dev/null || true
+    fi
     
     # Copy fresh APK
-    cp -f "android/$SRC_APK" "$DEST_DIR/$TARGET_APK_NAME"
+    cp -f "android/$SRC_APK" "$TARGET_APK_PATH"
     
-    echo "✅ SUCCESS: Built and saved versioned APK!"
+    echo "✅ SUCCESS: Fresh APK rewritten and moved!"
     echo "📍 File Path: D:/EduNex-app/$TARGET_APK_NAME"
     if command -v ls &>/dev/null; then
-        ls -lh "$DEST_DIR/$TARGET_APK_NAME"
+        ls -lh "$TARGET_APK_PATH"
     fi
 else
     echo "❌ ERROR: Built APK not found at android/$SRC_APK"
