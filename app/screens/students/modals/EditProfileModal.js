@@ -18,6 +18,7 @@ import { api } from "../../../services/api";
 import { resolveIdentity } from "../../../services/identityService";
 import { showToast } from "../../../utils/toastService";
 import { getRandomInterestingNickname } from "../../../utils/nicknameGenerator";
+import AddressAutocompleteInput from "../../../components/common/AddressAutocompleteInput";
 
 function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
   const { colors } = useTheme();
@@ -229,21 +230,14 @@ function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
                   />
                 </View>
 
-                {/* 4. Permanent Address */}
+                {/* 4. Permanent Address with Dropdown Suggestions */}
                 <Text style={[modalStyles.inputLabel, { color: colors.secondaryText }]}>Permanent Address</Text>
-                <View style={[modalStyles.inputWrap, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, alignItems: "flex-start", minHeight: 68 }]}>
-                  <Icon name="map-marker-outline" size={20} color={colors.primaryAccent} style={{ marginTop: 8 }} />
-                  <TextInput
-                    style={[modalStyles.textInput, { color: colors.primaryText, minHeight: 60, textAlignVertical: "top" }]}
-                    value={address}
-                    onChangeText={setAddress}
-                    placeholder="Street, City, Pincode"
-                    multiline
-                    numberOfLines={3}
-                    placeholderTextColor={colors.disabledText}
-                    editable={!saving}
-                  />
-                </View>
+                <AddressAutocompleteInput
+                  value={address}
+                  onChangeText={setAddress}
+                  placeholder="Type street, area, city or pincode..."
+                  editable={!saving}
+                />
               </ScrollView>
 
               {/* Action Buttons */}

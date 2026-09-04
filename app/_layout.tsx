@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
+import { Platform } from "react-native";
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
+import * as NavigationBar from "expo-navigation-bar";
 import { startRealtimeWatcher, setupPushNotificationPermissions } from "./services/realtimeNotificationService";
 import { notifyChatSubscribers } from "./services/chatService";
 import { checkAppUpdate } from "./services/updateService";
@@ -13,6 +15,16 @@ export default function RootLayout() {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   useEffect(() => {
+    // 0. System Navigation Bar Configuration (Android Immersive Mode)
+    if (Platform.OS === "android") {
+      try {
+        NavigationBar.setVisibilityAsync("hidden").catch(() => {});
+        NavigationBar.setBehaviorAsync("inset-swipe").catch(() => {});
+      } catch (err) {
+        console.warn("NavigationBar setup error:", err);
+      }
+    }
+
     // 1. Setup push permissions and background call channels
     setupPushNotificationPermissions();
 

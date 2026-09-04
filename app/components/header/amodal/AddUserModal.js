@@ -18,6 +18,7 @@ import SuccessAnimation from "../../../utils/SuccessAnimation";
 import { api } from "../../../services/api";
 import { useTheme } from "../../../context/ThemeContext";
 import { showToast } from "../../../utils/toastService";
+import AddressAutocompleteInput from "../../common/AddressAutocompleteInput";
 
 /* ---------- Static lists & mappings ---------- */
 const ROLES = [
@@ -899,16 +900,11 @@ export default function AddUserModal({ visible, onClose }) {
 
                 <View style={styles.inputGroup}>
                   <Text style={[styles.inputLabel, { color: colors.primaryText }]}>Residential Address</Text>
-                  <View style={[styles.inputRow, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
-                    <Icon name="map-marker-outline" size={18} color={colors.secondaryText} />
-                    <TextInput
-                      style={[styles.input, { color: colors.primaryText }]}
-                      placeholder="Street address, City, Pincode"
-                      placeholderTextColor={colors.secondaryText}
-                      value={address}
-                      onChangeText={setAddress}
-                    />
-                  </View>
+                  <AddressAutocompleteInput
+                    value={address}
+                    onChangeText={setAddress}
+                    placeholder="Type street, area, city or pincode..."
+                  />
                 </View>
 
                 {/* SECTION 2: ROLE-SPECIFIC ATTRIBUTES */}

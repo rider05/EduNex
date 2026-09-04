@@ -775,8 +775,9 @@ export default function ProfileScreen({ onLogout }) {
         </View>
       </Modal>
 
+      {/* BUG & FEEDBACK REPORTING MODAL */}
+      <FeedbackBugModal visible={bugModalVisible} onClose={() => setBugModalVisible(false)} />
       {/* EDIT PROFILE MODAL */}
-      <FeedbackBugModal visible={bugModalVisible} onClose={() => setBugModalVisible(false)} initialScreen="Student Profile" />
         <EditProfileModal
         visible={editModalVisible}
         onClose={() => setEditModalVisible(false)}

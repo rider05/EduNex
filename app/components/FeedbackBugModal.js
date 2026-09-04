@@ -37,7 +37,7 @@ export default function FeedbackBugModal({ visible, onClose, initialScreen = "" 
 
   const [category, setCategory] = useState("bug");
   const [severity, setSeverity] = useState("medium");
-  const [screenContext, setScreenContext] = useState(initialScreen || "");
+  const [screenContext, setScreenContext] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [userInfo, setUserInfo] = useState(null);
@@ -48,9 +48,9 @@ export default function FeedbackBugModal({ visible, onClose, initialScreen = "" 
       resolveIdentity().then((id) => {
         setUserInfo(id);
       });
-      setScreenContext(initialScreen || "");
+      setScreenContext("");
     }
-  }, [visible, initialScreen]);
+  }, [visible]);
 
   const handleSubmit = async () => {
     if (!title.trim()) {
@@ -70,7 +70,7 @@ export default function FeedbackBugModal({ visible, onClose, initialScreen = "" 
         description: description.trim(),
         category,
         severity,
-        screen: screenContext.trim() || "General",
+        screen: screenContext.trim() || initialScreen.trim() || "General",
         status: "open",
         reporter: {
           username: userInfo?.username || u.username || "anonymous",
@@ -83,7 +83,7 @@ export default function FeedbackBugModal({ visible, onClose, initialScreen = "" 
         device: {
           platform: Platform.OS,
           version: String(Platform.Version),
-          appVersion: "1.0.0 (EduNex Ecosystem)",
+          appVersion: "1.0.1 (EduNex Ecosystem)",
         },
       };
 
