@@ -9,6 +9,7 @@
     "apk": "cd android && gradlew assembleRelease",
     "apk:arm64": "cd android && gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a",
     "apk:debug": "cd android && gradlew assembleDebug",
+    "build:apk": "node ./scripts/export-apk.js",
     "bundle:release": "cd android && gradlew bundleRelease",
     "ios": "expo run:ios",
     "web": "expo start --web",
