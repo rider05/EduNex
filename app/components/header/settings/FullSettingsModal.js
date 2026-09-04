@@ -21,6 +21,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../../../context/ThemeContext";
 import { showToast } from "../../../utils/toastService";
 import { api } from "../../../services/api";
+import { CURRENT_APP_VERSION } from "../../../services/updateService";
 import FeedbackBugModal from "../../FeedbackBugModal";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -867,7 +868,7 @@ export default function FullSettingsModal({ visible, onClose }) {
                 { label: "App Platform", val: "Expo React Native & Node.js" },
                 { label: "Auth Protocol", val: "JWT Bearer Tokens (HMAC SHA-256)" },
                 { label: "TLS / Encryption", val: "TLS 1.3 / HTTPS Enforced" },
-                { label: "App Version", val: "EduNex Enterprise 2.5.0-prod" },
+                { label: "App Version", val: `EduNex v${CURRENT_APP_VERSION}` },
               ].map((info) => (
                 <View key={info.label} style={[styles.infoRow, { borderBottomColor: colors.divider }]}>
                   <Text style={[styles.infoLabelText, { color: colors.secondaryText }]}>{info.label}:</Text>
