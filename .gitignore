@@ -44,8 +44,8 @@ ios/
 build_log.txt
 build_output.log
 expo.log
-rebuild.log
 *.bat
+!build-apk.bat
 
 # One-off patch & scratch scripts
 patch*.js
