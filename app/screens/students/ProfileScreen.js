@@ -27,7 +27,7 @@ import { getStudentData, getInstitutions } from "../../services/dataService";
 import { api, clearAuthSession } from "../../services/api";
 import { resolveIdentity, refreshSessionUserProfile } from "../../services/identityService";
 import { getRandomInterestingNickname, getDeterministicNickname } from "../../utils/nicknameGenerator";
-import { formatDeptName } from "../../utils/deptFormatter";
+import { formatDeptName, formatUniversityRegNo } from "../../utils/deptFormatter";
 import { shareStudentIdCardPdf } from "../../utils/pdfGenerator";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
@@ -122,14 +122,23 @@ export default function ProfileScreen({ onLogout }) {
           s.advisorDesignation ||
           "-";
 
+        const studentRoll = s.rollNo || s.id || "25BAD015";
+        const studentDept = s.department || s.dept || s.program || "-";
+        const studentRegNo =
+          s.regNo && s.regNo !== studentRoll
+            ? s.regNo
+            : s.universityNo && s.universityNo !== studentRoll
+            ? s.universityNo
+            : formatUniversityRegNo(studentRoll, studentDept);
+
         setUser({
           name: s.name || sessionUser?.name || "-",
           nickname: initialNick,
-          id: s.rollNo || s.id || "25BAD015",
-          regNo: s.regNo && s.regNo !== s.rollNo ? s.regNo : s.universityNo || s.registerNo || "71052408001",
+          id: studentRoll,
+          regNo: studentRegNo,
           email: s.email || sessionUser?.email || "-",
           phone: s.phone || s.mobile || sessionUser?.mobile || "-",
-          program: s.department || s.program || "-",
+          program: studentDept,
           address: s.parent?.address || s.address || "-",
           bloodGroup: s.bloodGroup || "-",
           batch: s.batch || "-",
@@ -278,7 +287,9 @@ export default function ProfileScreen({ onLogout }) {
         student: {
           ...user,
           rollNo: user.rollNo || user.id,
+          avatar: profileImage,
         },
+        institution,
       });
       showToast("Official Student ID Pass PDF generated!", "success");
     } catch (err) {
@@ -674,10 +685,10 @@ export default function ProfileScreen({ onLogout }) {
                     </View>
 
                     <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.idCardCandidateName}>{user.name}</Text>
-                      <Text style={styles.idCardCandidateDept}>{formatDeptName(user.department || user.program, "short")}</Text>
-                      <Text style={styles.idCardCandidateRoll}>Roll: {user.id}</Text>
-                      <Text style={styles.idCardCandidateReg}>Reg: {user.regNo}</Text>
+                      <Text style={styles.idCardCandidateName}>{user.name || "Student User"}</Text>
+                      <Text style={styles.idCardCandidateDept}>{formatDeptName(user.department || user.program, "compact")}</Text>
+                      <Text style={styles.idCardCandidateRoll}>Roll: {user.rollNo || user.id || "—"}</Text>
+                      <Text style={styles.idCardCandidateReg}>Reg: {user.regNo || formatUniversityRegNo(user.id, user.department)}</Text>
                     </View>
                   </View>
 
@@ -686,11 +697,12 @@ export default function ProfileScreen({ onLogout }) {
                     <View style={styles.qrFrameWhite}>
                       <QRCode
                         value={JSON.stringify({
+                          institution: institution?.shortName || institution?.name || "EduNex",
                           student: user.name,
-                          rollNo: user.id,
-                          regNo: user.regNo,
+                          rollNo: user.rollNo || user.id,
+                          regNo: user.regNo || formatUniversityRegNo(user.id, user.department),
                           dept: user.department,
-                          validity: user.batch || "MAY-2027",
+                          batch: user.batch || "—",
                           status: "VERIFIED_ACTIVE",
                         })}
                         size={120}
@@ -698,12 +710,12 @@ export default function ProfileScreen({ onLogout }) {
                         backgroundColor="#FFFFFF"
                       />
                     </View>
-                    <Text style={styles.qrScanInstruction}>Scan at Campus Library & Biometric Gate 1</Text>
+                    <Text style={styles.qrScanInstruction}>Scan at Campus Turnstiles & Biometric Gate</Text>
                   </View>
 
                   <View style={styles.idCardMetaFooter}>
-                    <Text style={styles.idCardValidity}>Valid Upto: {user.batch || "—"}</Text>
-                    <Text style={styles.idCardBlood}>Blood: {user.bloodGroup}</Text>
+                    <Text style={styles.idCardValidity}>Batch: {user.batch || "—"}</Text>
+                    <Text style={styles.idCardBlood}>Blood: {user.bloodGroup || "—"}</Text>
                   </View>
                 </View>
               </View>

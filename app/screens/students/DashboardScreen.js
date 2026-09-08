@@ -9,6 +9,7 @@ import {
   Modal,
   Easing,
   RefreshControl,
+  Image,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import QRCode from "react-native-qrcode-svg";
@@ -18,7 +19,7 @@ import { showToast } from "../../utils/toastService";
 // Data & Services
 import { getStudentData, getGradeLevels, getParentNotices, getInstitutions, getAssignments, getStudentAttendanceSummary } from "../../services/dataService";
 import { SkeletonScreenLoader } from "../../components/common/SkeletonLoader";
-import { formatDeptName } from "../../utils/deptFormatter";
+import { formatDeptName, formatUniversityRegNo } from "../../utils/deptFormatter";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { shareStudentIdCardPdf } from "../../utils/pdfGenerator";
 import { api } from "../../services/api";
@@ -292,11 +293,22 @@ export default function DashboardScreen() {
 
       if (data) {
         const computedGrade = calculateCurrentGrade(data.grade, data.cgpa, data.subjects);
+        const resolvedRoll = data.rollNo || data.roll || "25BAD015";
+        const resolvedDept = data.department || "";
+        const resolvedReg =
+          data.regNo && data.regNo !== resolvedRoll
+            ? data.regNo
+            : data.universityNo && data.universityNo !== resolvedRoll
+            ? data.universityNo
+            : formatUniversityRegNo(resolvedRoll, resolvedDept);
+
         setStudentData({
           name: data.name || "Student User",
-          rollNo: data.rollNo || data.roll || "25BAD015",
-          regNo: data.regNo && data.regNo !== data.rollNo ? data.regNo : data.universityNo || data.registerNo || "71052408001",
-          department: data.department || "",
+          rollNo: resolvedRoll,
+          regNo: resolvedReg,
+          department: resolvedDept,
+          program: data.program || data.degree || "B.Tech",
+          class: data.class || data.section || data.className || "II - AI & DS 'A'",
           semester: data.semester || "",
           grade: computedGrade,
           cgpa: data.cgpa != null ? String(data.cgpa) : "8.65",
@@ -314,6 +326,39 @@ export default function DashboardScreen() {
           bloodGroup: data.bloodGroup || "—",
           batch: data.batch || "—",
           dob: data.dob || data.dateOfBirth || data.birthDate || "—",
+          residentialStatus:
+            data.residentialStatus ||
+            (typeof data.hostel === "boolean"
+              ? data.hostel
+                ? "Hosteller"
+                : "Day Scholar"
+              : data.hostel) ||
+            "Day Scholar",
+          advisor:
+            data.advisor ||
+            data.advisorName ||
+            data.mentor ||
+            data.mentorName ||
+            data.tutor ||
+            data.tutorName ||
+            "Dr. S. K. Ramesh (HOD/AI&DS)",
+          advisorPhone:
+            data.advisorPhone ||
+            data.mentorPhone ||
+            data.tutorPhone ||
+            "+91 94432 10987",
+          advisorCabin: data.advisorCabin || data.cabin || "Block-B 302",
+          parentName: data.parentName || data.fatherName || data.parent?.name || "—",
+          parentPhone:
+            data.parentPhone ||
+            data.emergencyContact ||
+            data.fatherPhone ||
+            data.parent?.phone ||
+            data.parent?.mobile ||
+            "—",
+          phone: data.phone || data.mobile || "—",
+          email: data.email || "—",
+          avatar: data.avatar || data.photo || data.profileImage || null,
         });
       }
 
@@ -412,7 +457,7 @@ export default function DashboardScreen() {
 
   const handleShareIdCard = async () => {
     try {
-      await shareStudentIdCardPdf({ student: studentData });
+      await shareStudentIdCardPdf({ student: studentData, institution });
       showToast("Official Student ID Pass PDF generated!", "success");
     } catch (_err) {
       showToast("Could not generate ID Pass PDF", "error");
@@ -1436,15 +1481,19 @@ export default function DashboardScreen() {
               {/* Student Identification Row */}
               <View style={styles.idCardMainRow}>
                 <View style={[styles.idCardPhotoCircle, { backgroundColor: colors.primaryAccent + "22", borderColor: colors.primaryAccent }]}>
-                  <Icon name="account-school" size={38} color={colors.primaryAccent} />
+                  {studentData.avatar ? (
+                    <Image source={{ uri: studentData.avatar }} style={styles.idCardPhotoImage} />
+                  ) : (
+                    <Icon name="account-school" size={38} color={colors.primaryAccent} />
+                  )}
                 </View>
                 <View style={{ flex: 1, marginLeft: 14 }}>
-                  <Text style={[styles.idCardStudentName, { color: colors.primaryText }]}>{studentData.name}</Text>
+                  <Text style={[styles.idCardStudentName, { color: colors.primaryText }]}>{studentData.name || "Student User"}</Text>
                   <Text style={[styles.idCardRoll, { color: colors.primaryAccent }]}>
-                    ROLL: {studentData.rollNo || "25BAD015"} · UNIV: {studentData.regNo || "71052408001"}
+                    ROLL: {studentData.rollNo || "—"} · REG: {studentData.regNo || formatUniversityRegNo(studentData.rollNo, studentData.department)}
                   </Text>
                   <Text style={[styles.idCardDept, { color: colors.secondaryText }]} numberOfLines={2}>
-                    {formatDeptName(studentData.department, "compact")}
+                    {studentData.program || "B.Tech"} · {formatDeptName(studentData.department, "compact")} {studentData.class ? `(${studentData.class})` : ""}
                   </Text>
                 </View>
               </View>
@@ -1487,10 +1536,33 @@ export default function DashboardScreen() {
                 </View>
               </View>
 
+              {/* Details Matrix 3: Residential Status & Class Tutor / Advisor */}
+              <View style={[styles.idDetailsGrid, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, marginTop: 8 }]}>
+                <View style={styles.idDetailCell}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Icon name="home-account" size={13} color="#6366F1" />
+                    <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Residential Status</Text>
+                  </View>
+                  <Text style={[styles.idCellValue, { color: colors.primaryText }]} numberOfLines={1}>
+                    {studentData.residentialStatus || "Day Scholar"}
+                  </Text>
+                </View>
+                <View style={[styles.idCellDivider, { backgroundColor: colors.divider }]} />
+                <View style={styles.idDetailCell}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Icon name="account-tie-outline" size={13} color="#F59E0B" />
+                    <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Class Advisor</Text>
+                  </View>
+                  <Text style={[styles.idCellValue, { color: colors.primaryText, fontSize: 11 }]} numberOfLines={1}>
+                    {studentData.advisor ? studentData.advisor.split("(")[0].trim() : "—"}
+                  </Text>
+                </View>
+              </View>
+
               {/* Dynamic QR Code */}
               <View style={[styles.qrCodeWrapper, { backgroundColor: "#FFFFFF", borderColor: colors.divider }]}>
                 <QRCode
-                  value={`EDUNEX:STUDENT|ROLL:${studentData.rollNo || "25BAD015"}|REG:${studentData.regNo || "71052408001"}|NAME:${studentData.name || "—"}|DOB:${studentData.dob || "—"}|BLOOD:${studentData.bloodGroup || "—"}|BATCH:${studentData.batch || "—"}`}
+                  value={`EDUNEX:STUDENT|ROLL:${studentData.rollNo || "—"}|REG:${studentData.regNo || formatUniversityRegNo(studentData.rollNo, studentData.department)}|NAME:${studentData.name || "—"}|DOB:${studentData.dob || "—"}|BLOOD:${studentData.bloodGroup || "—"}|BATCH:${studentData.batch || "—"}`}
                   size={120}
                   color="#0F172A"
                   backgroundColor="#FFFFFF"
@@ -2124,6 +2196,12 @@ const getStyles = (colors) =>
       borderWidth: 2,
       justifyContent: "center",
       alignItems: "center",
+      overflow: "hidden",
+    },
+    idCardPhotoImage: {
+      width: "100%",
+      height: "100%",
+      borderRadius: 29,
     },
     idCardStudentName: {
       fontSize: 15.5,

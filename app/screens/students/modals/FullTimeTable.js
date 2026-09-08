@@ -22,7 +22,7 @@ import { showToast } from "../../../utils/toastService";
 import { api } from "../../../services/api";
 import { getStudentData } from "../../../services/dataService";
 import { resolveIdentity } from "../../../services/identityService";
-import { formatDeptName } from "../../../utils/deptFormatter";
+import { formatDeptName, formatUniversityRegNo } from "../../../utils/deptFormatter";
 import { shareTimetableAsPdf } from "../../../utils/timetablePdfGenerator";
 import AcademicCalendarModal from "./AcademicCalendarModal";
 
@@ -192,12 +192,18 @@ export default function FullTimetable({ visible = true, onClose }) {
             : "";
         const year = student?.year || identity?.year || rawUser?.year || "";
         const semester = student?.semester || identity?.semester || rawUser?.semester || "";
-        const section = student?.section || student?.class || rawUser?.section || "";
+        const rollNo = student?.rollNo || student?.roll || identity?.rollNo || "25BAD015";
+        const regNo =
+          student?.regNo && student.regNo !== rollNo
+            ? student.regNo
+            : student?.universityNo && student.universityNo !== rollNo
+            ? student.universityNo
+            : formatUniversityRegNo(rollNo, dept);
 
         setStudentCohort({
           name: student?.name || identity?.name || rawUser?.name || "",
-          rollNo: student?.rollNo || student?.roll || identity?.rollNo || "25BAD015",
-          regNo: student?.regNo || student?.universityNo || "71052408001",
+          rollNo,
+          regNo,
           department: dept,
           deptShort,
           year: typeof year === "number" ? `${year} Year` : year,

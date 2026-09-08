@@ -137,3 +137,63 @@ export function formatDeptName(dept, format = "compact") {
 export function getShortDept(dept) {
   return formatDeptName(dept, "code");
 }
+
+/**
+ * Derives a dynamic university registration number following the standard Anna University / EduNex
+ * 11-digit institution series pattern (e.g. 71052408015 for roll 24BAD015 or 25BAD015) matching
+ * the student's roll number series and sequential number.
+ * 
+ * Format Breakdown:
+ * [7105] (College Code) + [24/25] (Year of Admission) + [08/05/04] (Dept Branch Code) + [001..999] (3-digit Student Sequence)
+ *
+ * @param {string} rollNo - Student's department roll number (e.g. "25BAD015", "24BAD001", "24BCS042")
+ * @param {string} [department] - Student's department/program
+ * @returns {string}
+ */
+export function formatUniversityRegNo(rollNo, department = "") {
+  if (!rollNo || typeof rollNo !== "string") {
+    return "71052408015";
+  }
+
+  const clean = rollNo.trim().toUpperCase();
+
+  // If already an 11-digit numeric university registration number, keep it intact
+  if (/^\d{11,12}$/.test(clean)) {
+    return clean;
+  }
+
+  // Parse Year of Admission from prefix (e.g. "24" from "24BAD015" or "25" from "25BAD015")
+  const yearMatch = clean.match(/^(\d{2})/);
+  const year = yearMatch ? yearMatch[1] : "24";
+
+  // Parse Student Sequence Number from suffix (e.g. "015" from "25BAD015" or "1" from "AD01")
+  const seqMatch = clean.match(/(\d{1,4})$/);
+  const seqNum = seqMatch ? parseInt(seqMatch[1], 10) : 15;
+  const seqStr = String(seqNum).padStart(3, "0");
+
+  // Determine 2-digit Department Branch Code
+  const deptLower = (department || "").toLowerCase();
+  const rollUpper = clean;
+  let branchCode = "08"; // Default AI & DS (08)
+
+  if (rollUpper.includes("BAD") || rollUpper.includes("ADS") || deptLower.includes("data science") || deptLower.includes("ai & ds") || deptLower.includes("aids")) {
+    branchCode = "08";
+  } else if (rollUpper.includes("BCS") || rollUpper.includes("CSE") || deptLower.includes("computer science") || deptLower.includes("cse")) {
+    branchCode = "04";
+  } else if (rollUpper.includes("BIT") || rollUpper.includes("IT") || deptLower.includes("information technology")) {
+    branchCode = "05";
+  } else if (rollUpper.includes("BEC") || rollUpper.includes("ECE") || deptLower.includes("electronics")) {
+    branchCode = "06";
+  } else if (rollUpper.includes("BEE") || rollUpper.includes("EEE") || deptLower.includes("electrical")) {
+    branchCode = "07";
+  } else if (rollUpper.includes("BME") || rollUpper.includes("MEC") || deptLower.includes("mech")) {
+    branchCode = "02";
+  } else if (rollUpper.includes("BCE") || rollUpper.includes("CIV") || deptLower.includes("civil")) {
+    branchCode = "01";
+  } else if (rollUpper.includes("BML") || rollUpper.includes("AML") || deptLower.includes("machine learning")) {
+    branchCode = "09";
+  }
+
+  return `7105${year}${branchCode}${seqStr}`;
+}
+

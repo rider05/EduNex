@@ -13,6 +13,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonProfileScreen } from "../../components/common/SkeletonLoader";
 import { getStudentData, getPermits, getSubjects, enrichSubjectFromCatalog } from "../../services/dataService";
+import { formatUniversityRegNo } from "../../utils/deptFormatter";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
 import { shareStudentIdCardPdf } from "../../utils/pdfGenerator";
@@ -42,12 +43,21 @@ export default function WardDetailsParent() {
       const permitDocs = await getPermits({}, force).catch(() => []);
       const subjectCatalog = await getSubjects().catch(() => []);
       if (student) {
+        const studentRoll = student.roll || student.rollNo || "25BAD015";
+        const studentDept = student.department || student.dept || "AI & DS";
+        const studentReg =
+          student.regNo && student.regNo !== studentRoll
+            ? student.regNo
+            : student.universityNo && student.universityNo !== studentRoll
+            ? student.universityNo
+            : formatUniversityRegNo(studentRoll, studentDept);
+
         setWardInfo((prev) => ({
           ...prev,
           name: student.name || prev.name,
-          dept: student.department || student.dept || prev.dept,
-          rollNo: student.roll || student.rollNo || "25BAD015",
-          regNo: student.regNo && student.regNo !== student.rollNo ? student.regNo : student.universityNo || student.registerNo || "71052408001",
+          dept: studentDept,
+          rollNo: studentRoll,
+          regNo: studentReg,
           year: student.year || prev.year,
           semester: student.semester || prev.semester,
           batch: student.batch || prev.batch,

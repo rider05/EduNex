@@ -2,6 +2,7 @@ import { secureGet, secureSet, secureClearEduNex } from "./secureStorage";
 import { api } from "./api";
 import { resolveIdentity, invalidateIdentity, refreshSessionUserProfile } from "./identityService";
 import { getDeterministicNickname } from "../utils/nicknameGenerator";
+import { formatUniversityRegNo } from "../utils/deptFormatter";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔐 SECURE DELTA SYNCHRONIZATION & EVENT EMITTER
@@ -401,9 +402,11 @@ function enrichStudentDoc(doc) {
   clone.grade = metrics.grade;
   clone.rank = metrics.rank;
 
-  // University Registration Number (Distinct from Department Roll Number)
-  if (!clone.regNo || clone.regNo === clone.rollNo) {
-    clone.regNo = clone.universityNo || clone.registerNo || clone.registerNumber || "71052408001";
+  // University Registration Number (Series matching Roll No, e.g. 71052408015 for 24BAD015 or 25BAD015)
+  const roll = clone.rollNo || clone.roll || clone.id || "25BAD015";
+  const dept = clone.department || clone.dept || clone.program || "AI & DS";
+  if (!clone.regNo || clone.regNo === clone.rollNo || clone.regNo === clone.roll) {
+    clone.regNo = clone.universityNo && clone.universityNo !== clone.rollNo ? clone.universityNo : formatUniversityRegNo(roll, dept);
   }
   clone.universityNo = clone.regNo;
   clone.registerNo = clone.regNo;
@@ -476,8 +479,14 @@ export async function getStudentData(force = false) {
   }
 
   // Fallback to session user doc if not found in DB
-  const rollNo = identity.rollNo || (identity.username ? String(identity.username).toUpperCase() : "");
-  const regNo = identity.student?.regNo || identity.user?.regNo || identity.user?.profile?.regNo || "71052408001";
+  const rollNo = identity.rollNo || (identity.username ? String(identity.username).toUpperCase() : "25BAD015");
+  const deptName = identity.user?.department || identity.user?.dept || "AI & DS";
+  const regNo =
+    (identity.student?.regNo && identity.student.regNo !== rollNo) ||
+    (identity.user?.regNo && identity.user.regNo !== rollNo) ||
+    (identity.user?.profile?.regNo && identity.user.profile.regNo !== rollNo)
+      ? identity.student?.regNo || identity.user?.regNo || identity.user?.profile?.regNo
+      : formatUniversityRegNo(rollNo, deptName);
   
   if (!rollNo && !identity.user) return null;
 
@@ -1428,12 +1437,21 @@ export async function getParentData(force = false) {
     : [];
   const permits = await getPermits();
 
+  const wardRoll = ward?.rollNo || ward?.roll || "25BAD015";
+  const wardDept = ward?.department || ward?.dept || "AI & DS";
+  const wardRegNo =
+    ward?.regNo && ward?.regNo !== wardRoll
+      ? ward.regNo
+      : ward?.universityNo && ward?.universityNo !== wardRoll
+      ? ward.universityNo
+      : formatUniversityRegNo(wardRoll, wardDept);
+
   const overview = {
     parentName: parent?.name || "",
     guardianId: parent?.parentId || parent?.id || parent?.guardianId || "",
     wardName: ward?.name || "",
-    rollNo: ward?.rollNo || ward?.roll || "25BAD015",
-    regNo: ward?.regNo || ward?.universityNo || ward?.registerNo || "71052408001",
+    rollNo: wardRoll,
+    regNo: wardRegNo,
     department: ward?.department || "",
     deptShort: ward?.deptShort || "",
     year: ward?.year || "",
@@ -1463,8 +1481,8 @@ export async function getParentData(force = false) {
   const wardInfo = {
     ...(ward || {}),
     name: ward?.name || "",
-    rollNo: ward?.rollNo || ward?.roll || "25BAD015",
-    regNo: ward?.regNo || ward?.universityNo || ward?.registerNo || "71052408001",
+    rollNo: wardRoll,
+    regNo: wardRegNo,
     class: ward?.class || ward?.section || "",
     department: ward?.department || "",
     year: ward?.year || "",

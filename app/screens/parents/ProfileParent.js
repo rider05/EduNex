@@ -19,6 +19,7 @@ import { showToast } from "../../utils/toastService";
 import { SkeletonProfileScreen } from "../../components/common/SkeletonLoader";
 import { clearAuthSession } from "../../services/api";
 import { getParentData } from "../../services/dataService";
+import { formatUniversityRegNo } from "../../utils/deptFormatter";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import FeedbackBugModal from "../../components/FeedbackBugModal";
 
@@ -53,6 +54,15 @@ export default function ProfileParent({ onLogout }) {
 
       const data = await getParentData(force);
       if (data || storedUser) {
+        const wardRoll = data?.ward?.rollNo || data?.ward?.roll || "25BAD015";
+        const wardDept = data?.ward?.department || data?.ward?.class || "AI & DS";
+        const wardReg =
+          data?.ward?.regNo && data?.ward?.regNo !== wardRoll
+            ? data.ward.regNo
+            : data?.ward?.universityNo && data?.ward?.universityNo !== wardRoll
+            ? data.ward.universityNo
+            : formatUniversityRegNo(wardRoll, wardDept);
+
         setParentData((prev) => ({
           ...prev,
           name: storedUser?.profile?.name || storedUser?.name || data?.name || prev.name,
@@ -63,8 +73,8 @@ export default function ProfileParent({ onLogout }) {
             ...(prev.ward || {}),
             ...(data?.ward || {}),
             name: data?.ward?.name || prev?.ward?.name,
-            rollNo: data?.ward?.rollNo || data?.ward?.roll || "25BAD015",
-            regNo: (data?.ward?.regNo && data?.ward?.regNo !== data?.ward?.rollNo) ? data.ward.regNo : data?.ward?.universityNo || data?.ward?.registerNo || "71052408001",
+            rollNo: wardRoll,
+            regNo: wardReg,
             class: data?.ward?.class || prev?.ward?.class || "",
             advisor: data?.ward?.advisor || data?.overview?.advisorName || prev?.ward?.advisor || "",
             hostel: data?.ward?.hostel || prev?.ward?.hostel || "—",
