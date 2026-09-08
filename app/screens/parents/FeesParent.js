@@ -49,9 +49,12 @@ export default function FeesParent() {
   const [ward, setWard] = useState({});
   const [institution, setInstitution] = useState({});
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
-      const fees = await getStudentFees();
+      if (force) {
+        api.clearCache();
+      }
+      const fees = await getStudentFees(force);
       if (fees) {
         if (Array.isArray(fees.dueInvoices)) {
           setInvoices(fees.dueInvoices);
@@ -61,7 +64,7 @@ export default function FeesParent() {
         }
       }
       try {
-        const parentData = await getParentData();
+        const parentData = await getParentData(force);
         if (parentData?.ward) {
           setWardName(parentData.ward.name || "");
           setRollNo(parentData.ward.rollNo || "");
@@ -72,7 +75,7 @@ export default function FeesParent() {
         }
       } catch (_e) {}
       try {
-        const instList = await getInstitutions();
+        const instList = await getInstitutions(force);
         const inst =
           Array.isArray(instList) && instList.length > 0 ? instList[0] : null;
         if (inst) setInstitution(inst);
@@ -92,7 +95,7 @@ export default function FeesParent() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 

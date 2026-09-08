@@ -77,15 +77,18 @@ export default function AttendanceStaff() {
   const isLocked = Boolean(periodLockState[activePeriod?.id]);
   const activeAudit = periodAudit[activePeriod?.id] || null;
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       const cls = await getStaffClassName();
       const todayStr = new Date().toISOString().split("T")[0];
       const [rosterRes, sectionsRes, scheduleRes, facultyRes, storedAuditRes] = await Promise.allSettled([
-        getFacultyRoster(cls || undefined),
-        api.get("/faculty/schedule", cls ? { class: cls } : undefined),
+        getFacultyRoster(cls || undefined, force),
+        api.get("/faculty/schedule", cls ? { class: cls } : undefined, {}, { noCache: force }),
         getFacultySchedule(),
-        getFacultyData(),
+        getFacultyData(force),
         getPeriodAttendanceRecords(todayStr, cls || "AI & DS - Section A"),
       ]);
 
@@ -224,7 +227,7 @@ export default function AttendanceStaff() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 

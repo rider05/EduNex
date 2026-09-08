@@ -59,17 +59,20 @@ export default function DashboardStaff() {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       const className = await getStaffClassName();
       const [facultyRes, attendanceRes, assignmentsRes, scheduleRes, noticesRes] = await Promise.allSettled([
-        getFacultyData(),
+        getFacultyData(force),
         className
-          ? api.get("/attendance", { class: className, sort: "-date", limit: 100 })
-          : api.get("/attendance", { sort: "-date", limit: 100 }),
-        api.get("/assignments", { sort: "-createdAt", limit: 100 }),
+          ? api.get("/attendance", { class: className, sort: "-date", limit: 100 }, {}, { noCache: force })
+          : api.get("/attendance", { sort: "-date", limit: 100 }, {}, { noCache: force }),
+        api.get("/assignments", { sort: "-createdAt", limit: 100 }, {}, { noCache: force }),
         getFacultySchedule(),
-        api.get("/notices"),
+        api.get("/notices", {}, {}, { noCache: force }),
       ]);
 
       const faculty = facultyRes.status === "fulfilled" ? facultyRes.value : null;
@@ -182,7 +185,7 @@ export default function DashboardStaff() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 

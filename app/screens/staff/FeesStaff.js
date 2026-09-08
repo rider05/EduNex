@@ -23,9 +23,12 @@ export default function FeesStaff() {
   const [totalCollected, setTotalCollected] = useState("—");
   const [pendingDues, setPendingDues] = useState("—");
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
-      const res = await api.get("/students");
+      if (force) {
+        api.clearCache();
+      }
+      const res = await api.get("/students", {}, {}, { noCache: force });
       const data = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
       const feeRecords = [];
       let collected = 0;
@@ -62,7 +65,7 @@ export default function FeesStaff() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 

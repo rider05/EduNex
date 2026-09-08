@@ -38,8 +38,11 @@ export default function ProfileStaff({ onLogout }) {
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardTranslateY = useRef(new Animated.Value(14)).current;
 
-  const loadPreferences = useCallback(async () => {
+  const loadPreferences = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       const savedPref = await secureGet("staffNotifications");
       if (savedPref !== null) {
         setNotifications(Boolean(savedPref));
@@ -47,7 +50,7 @@ export default function ProfileStaff({ onLogout }) {
 
       const storedUser = await secureGet("userData");
 
-      const faculty = await getFacultyData();
+      const faculty = await getFacultyData(force);
       if (faculty || storedUser) {
         setStaffData((prev) => ({
           ...prev,
@@ -89,7 +92,7 @@ export default function ProfileStaff({ onLogout }) {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadPreferences();
+    await loadPreferences(true);
     setRefreshing(false);
   }, [loadPreferences]);
 

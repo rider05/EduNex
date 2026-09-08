@@ -57,9 +57,12 @@ export default function ManageUsersAdmin() {
   ];
 
   // FETCH ALL USERS FROM MONGODB
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(async (force = false) => {
     try {
-      const res = await api.get("/users", { sort: "-createdAt" });
+      if (force) {
+        api.clearCache();
+      }
+      const res = await api.get("/users", { sort: "-createdAt" }, {}, { noCache: force });
       if (res?.data && Array.isArray(res.data)) {
         setUsers(
           res.data.map((u) => {
@@ -97,7 +100,7 @@ export default function ManageUsersAdmin() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchUsers();
+    await fetchUsers(true);
     setRefreshing(false);
   };
 

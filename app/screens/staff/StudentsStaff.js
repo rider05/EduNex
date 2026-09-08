@@ -80,10 +80,13 @@ export default function StudentsStaff() {
     });
   }, []);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       const cls = await getStaffClassName();
-      const roster = await getFacultyRoster(cls || undefined);
+      const roster = await getFacultyRoster(cls || undefined, force);
       if (roster && roster.length > 0) {
         setStudents(mapRosterToStudents(roster));
         setIsLoading(false);
@@ -111,7 +114,7 @@ export default function StudentsStaff() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setSearchText("");
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 

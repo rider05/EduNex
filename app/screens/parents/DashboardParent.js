@@ -46,9 +46,12 @@ export default function DashboardParent() {
 
   const heroCardScale = useRef(new Animated.Value(1)).current;
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
-      const data = await getParentData();
+      if (force) {
+        api.clearCache();
+      }
+      const data = await getParentData(force);
       if (data?.overview) {
         setParentOverview((prev) => ({ ...prev, ...data.overview }));
       }
@@ -84,7 +87,7 @@ export default function DashboardParent() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 

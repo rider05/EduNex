@@ -198,16 +198,19 @@ export default function DocSpaceScreen() {
   const [isSubmittingDoc, setIsSubmittingDoc] = useState(false);
 
   // Load from MongoDB backend (Required Docs + Student Uploads)
-  const loadDocuments = useCallback(async () => {
+  const loadDocuments = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       const cached = await secureGet("student_verified_documents_v4");
-      if (cached && Array.isArray(cached) && cached.length > 0) {
+      if (!force && cached && Array.isArray(cached) && cached.length > 0) {
         setDocuments(cached);
       }
 
       // 1. Resolve student identity
-      const identity = await resolveIdentity().catch(() => null);
-      const student = await getStudentData().catch(() => null);
+      const identity = await resolveIdentity(force).catch(() => null);
+      const student = await getStudentData(force).catch(() => null);
       const roll = student?.rollNo || identity?.rollNo || "STU-2024-AIDS01";
       const name = student?.name || identity?.name || "Velu";
       const dept = student?.department || student?.class || "Artificial Intelligence & Data Science";
@@ -220,8 +223,8 @@ export default function DocSpaceScreen() {
 
       // 2. Fetch live data from MongoDB
       const [reqDocsRes, studentDocsRes] = await Promise.all([
-        getRequiredDocuments().catch(() => []),
-        getStudentDocuments(roll).catch(() => []),
+        getRequiredDocuments({}, force).catch(() => []),
+        getStudentDocuments(roll, {}, force).catch(() => []),
       ]);
 
       const reqDocs = reqDocsRes && reqDocsRes.length > 0 ? reqDocsRes : DEFAULT_REQUIRED_DOCS;
@@ -338,7 +341,7 @@ export default function DocSpaceScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadDocuments();
+    await loadDocuments(true);
     setRefreshing(false);
   }, [loadDocuments]);
 

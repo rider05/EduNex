@@ -80,8 +80,11 @@ export default function SystemSettingsAdmin({ onLogout }) {
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [broadcastSending, setBroadcastSending] = useState(false);
 
-  const loadSettings = useCallback(async () => {
+  const loadSettings = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       const stored = await secureGet("adminSettings");
       let merged = {};
       if (stored && typeof stored === "object") {
@@ -95,7 +98,7 @@ export default function SystemSettingsAdmin({ onLogout }) {
 
       // Pre-fill academic & bank settings from the live institution (MongoDB)
       try {
-        const institutions = await getInstitutions().catch(() => []);
+        const institutions = await getInstitutions(force).catch(() => []);
         const inst = Array.isArray(institutions) && institutions.length > 0 ? institutions[0] : null;
         if (inst) {
           const prefill = {
@@ -126,7 +129,7 @@ export default function SystemSettingsAdmin({ onLogout }) {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadSettings();
+    await loadSettings(true);
     setTimeout(() => {
       setRefreshing(false);
     }, 500);

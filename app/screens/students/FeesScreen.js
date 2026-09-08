@@ -45,11 +45,14 @@ export default function FeesScreen() {
   const [historyData, setHistoryData] = useState(DEFAULT_HISTORY);
   const [studentInfo, setStudentInfo] = useState(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       const [fees, student] = await Promise.all([
-        getStudentFees().catch(() => null),
-        getStudentData().catch(() => null),
+        getStudentFees(force).catch(() => null),
+        getStudentData(force).catch(() => null),
       ]);
       if (student) setStudentInfo(student);
       if (fees) {
@@ -75,7 +78,7 @@ export default function FeesScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 

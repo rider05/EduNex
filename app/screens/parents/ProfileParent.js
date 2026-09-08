@@ -39,8 +39,11 @@ export default function ProfileParent({ onLogout }) {
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardTranslateY = useRef(new Animated.Value(14)).current;
 
-  const loadPreferences = useCallback(async () => {
+  const loadPreferences = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       const savedPref = await secureGet("parentNotifications");
       if (savedPref !== null) {
         setNotifications(Boolean(savedPref));
@@ -48,7 +51,7 @@ export default function ProfileParent({ onLogout }) {
 
       const storedUser = await secureGet("userData");
 
-      const data = await getParentData();
+      const data = await getParentData(force);
       if (data || storedUser) {
         setParentData((prev) => ({
           ...prev,
@@ -95,7 +98,7 @@ export default function ProfileParent({ onLogout }) {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadPreferences();
+    await loadPreferences(true);
     setRefreshing(false);
   }, [loadPreferences]);
 

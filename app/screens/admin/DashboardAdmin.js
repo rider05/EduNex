@@ -62,12 +62,15 @@ export default function DashboardAdmin() {
   const [logs, setLogs] = useState([]);
 
   // Load Data
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       const [institutionsRes, statsRes, noticesRes, leavesRes] = await Promise.all([
-        getInstitutions().catch(() => null),
+        getInstitutions(force).catch(() => null),
         getAdminStats().catch(() => null),
-        getNoticesList().catch(() => []),
+        getNoticesList({}, force).catch(() => []),
         getLeavesList({ status: "pending" }).catch(() => []),
       ]);
 
@@ -136,7 +139,7 @@ export default function DashboardAdmin() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 

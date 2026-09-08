@@ -62,8 +62,11 @@ export default function ProfileScreen({ onLogout }) {
   const cardTranslateY = useRef(new Animated.Value(14)).current;
   const avatarScale = useRef(new Animated.Value(1)).current;
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       await refreshSessionUserProfile().catch(() => null);
 
       const img = await secureGet(PROFILE_IMAGE_KEY);
@@ -74,8 +77,8 @@ export default function ProfileScreen({ onLogout }) {
 
       const [apiStudent, identity, instRes] = await Promise.all([
         getStudentData(true).catch(() => null),
-        resolveIdentity().catch(() => null),
-        getInstitutions().catch(() => []),
+        resolveIdentity(force).catch(() => null),
+        getInstitutions(force).catch(() => []),
       ]);
 
       const inst = Array.isArray(instRes) && instRes.length > 0 ? instRes[0] : null;
@@ -184,7 +187,7 @@ export default function ProfileScreen({ onLogout }) {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 

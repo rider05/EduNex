@@ -73,10 +73,13 @@ export default function ReportsAdmin() {
     { id: "infrastructure", label: "Infrastructure", icon: "domain" },
   ];
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       const statsRes = await getAdminStats().catch(() => null);
-      const reportsRes = await getReports().catch(() => []);
+      const reportsRes = await getReports({}, force).catch(() => []);
 
       const totalStudents = Number(String(statsRes?.totalStudents || "0").replace(/[^0-9]/g, "")) || 0;
       const totalStaff = Number(String(statsRes?.totalFaculty || "0").replace(/[^0-9]/g, "")) || 0;
@@ -115,8 +118,8 @@ export default function ReportsAdmin() {
   useRefreshOnForeground(loadData);
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(false);
-    await loadData();
+    setRefreshing(true);
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 

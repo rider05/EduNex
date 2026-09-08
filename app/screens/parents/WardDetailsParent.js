@@ -33,10 +33,13 @@ export default function WardDetailsParent() {
   const [courses, setCourses] = useState(ENROLLED_COURSES);
   const [permits, setPermits] = useState(RECENT_PERMITS);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
-      const student = await getStudentData();
-      const permitDocs = await getPermits().catch(() => []);
+      if (force) {
+        api.clearCache();
+      }
+      const student = await getStudentData(force);
+      const permitDocs = await getPermits({}, force).catch(() => []);
       const subjectCatalog = await getSubjects().catch(() => []);
       if (student) {
         setWardInfo((prev) => ({
@@ -119,7 +122,7 @@ export default function WardDetailsParent() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 

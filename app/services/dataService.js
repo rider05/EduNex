@@ -560,14 +560,14 @@ export async function getStudentSubjects() {
   return catalog;
 }
 
-export async function getStudentFees() {
+export async function getStudentFees(force = false) {
   let studentId = null;
   try {
-    const identity = await resolveIdentity();
+    const identity = await resolveIdentity(force);
     studentId = identity.studentId || identity.wardRollNo || identity.rollNo || identity.id || identity.username;
   } catch {}
 
-  const student = (await getStudentData()) || (await getDatabase()).primaryStudent;
+  const student = (await getStudentData(force)) || (await getDatabase()).primaryStudent;
   if (!studentId && student) {
     studentId = student.id || student.rollNo;
   }
@@ -586,8 +586,8 @@ export async function getStudentFees() {
   if (studentId) {
     try {
       const [studentDocRes, feesListRes] = await Promise.allSettled([
-        api.get(`/students/${encodeURIComponent(studentId)}`),
-        api.get("/fees", { studentId }),
+        api.get(`/students/${encodeURIComponent(studentId)}`, {}, {}, { noCache: force }),
+        api.get("/fees", { studentId }, {}, { noCache: force }),
       ]);
 
       if (studentDocRes.status === "fulfilled" && studentDocRes.value?.data?.fees) {
@@ -1843,13 +1843,13 @@ export async function getSystemLogs(params = {}) {
   return [];
 }
 
-export async function getPermits(params = {}) {
-  const list = await ensureCollection("/permits", params);
+export async function getPermits(params = {}, force = false) {
+  const list = await ensureCollection("/permits", params, { noCache: force });
   return list.filter((p) => p && (Boolean(p.studentName?.trim?.()) || Boolean(p.rollNo?.trim?.()) || Boolean(p.place?.trim?.())));
 }
 
-export async function getReports(params = {}) {
-  const list = await ensureCollection("/reports", params);
+export async function getReports(params = {}, force = false) {
+  const list = await ensureCollection("/reports", params, { noCache: force });
   return list;
 }
 
@@ -1864,9 +1864,9 @@ export async function getAnnouncements(params = {}) {
 }
 
 // ---------------- DocSpace Real-Time MongoDB Services ----------------
-export async function getRequiredDocuments(params = {}) {
+export async function getRequiredDocuments(params = {}, force = false) {
   try {
-    const res = await api.get("/requiredDocuments", { limit: 100, ...params });
+    const res = await api.get("/requiredDocuments", { limit: 100, ...params }, {}, { noCache: force });
     if (Array.isArray(res?.data) && res.data.length > 0) return res.data;
   } catch (err) {
     console.warn("getRequiredDocuments error:", err);
@@ -1874,10 +1874,10 @@ export async function getRequiredDocuments(params = {}) {
   return [];
 }
 
-export async function getStudentDocuments(rollNo, params = {}) {
+export async function getStudentDocuments(rollNo, params = {}, force = false) {
   try {
     const q = rollNo ? { rollNo, ...params } : params;
-    const res = await api.get("/studentDocuments", { limit: 100, ...q });
+    const res = await api.get("/studentDocuments", { limit: 100, ...q }, {}, { noCache: force });
     if (Array.isArray(res?.data) && res.data.length > 0) return res.data;
   } catch (err) {
     console.warn("getStudentDocuments error:", err);
