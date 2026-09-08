@@ -335,16 +335,25 @@ export default function DashboardScreen() {
               : data.hostel) ||
             "Day Scholar",
           advisor:
-            data.advisor ||
+            (typeof data.advisor === "string"
+              ? data.advisor
+              : data.advisor?.name) ||
             data.advisorName ||
-            data.mentor ||
+            (typeof data.mentor === "string"
+              ? data.mentor
+              : data.mentor?.name) ||
             data.mentorName ||
-            data.tutor ||
+            (typeof data.tutor === "string"
+              ? data.tutor
+              : data.tutor?.name) ||
             data.tutorName ||
             "Dr. S. K. Ramesh (HOD/AI&DS)",
           advisorPhone:
+            data.advisor?.phone ||
             data.advisorPhone ||
+            data.mentor?.phone ||
             data.mentorPhone ||
+            data.tutor?.phone ||
             data.tutorPhone ||
             "+91 94432 10987",
           advisorCabin: data.advisorCabin || data.cabin || "Block-B 302",
@@ -1554,7 +1563,11 @@ export default function DashboardScreen() {
                     <Text style={[styles.idCellLabel, { color: colors.secondaryText }]}>Class Advisor</Text>
                   </View>
                   <Text style={[styles.idCellValue, { color: colors.primaryText, fontSize: 11 }]} numberOfLines={1}>
-                    {studentData.advisor ? studentData.advisor.split("(")[0].trim() : "—"}
+                    {typeof studentData.advisor === "string"
+                      ? studentData.advisor.split("(")[0].trim()
+                      : studentData.advisor?.name
+                      ? String(studentData.advisor.name).split("(")[0].trim()
+                      : "—"}
                   </Text>
                 </View>
               </View>

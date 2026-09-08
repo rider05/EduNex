@@ -293,134 +293,248 @@ export async function shareFeeReceiptPdf({ receipt = {}, student = {} }) {
  * 2. STUDENT DIGITAL ID PASS PDF GENERATOR
  */
 export async function shareStudentIdCardPdf({ student = {}, institution = {} }) {
-  const rollNo = student.rollNo || student.id || "—";
-  const regNo = student.regNo || formatUniversityRegNo(rollNo, student.department) || "—";
-  const name = student.name || "Student";
-  const dept = student.department || "Engineering & Technology";
-  const deptShort = formatDeptName(dept, "compact");
+  const name = student.name || "Student User";
+  const rollNo = student.rollNo || student.id || student.roll || "25BAD015";
+  const deptName = student.department || student.dept || student.program || "Artificial Intelligence & Data Science";
+  const deptCompact = formatDeptName(deptName, "compact");
+  const regNo = student.regNo || student.universityNo || formatUniversityRegNo(rollNo, deptName);
   const program = student.program || student.degree || "B.Tech";
-  const classSec = student.class || student.section || "—";
-  const year = student.year || "—";
-  const sem = student.semester || "—";
-  const batch = student.batch || "—";
-  const blood = student.bloodGroup || "—";
-  const dob = student.dob || "—";
-  const mobile = student.phone || student.mobile || "—";
-  const parentName = student.parentName || student.parent?.name || student.fatherName || "—";
-  const parentPhone = student.parentPhone || student.parent?.phone || "—";
-  const res = student.residentialStatus || (student.hostel ? "Hosteler" : "Day Scholar");
-  const advisorName = student.advisor?.name || student.advisor || student.advisorName || student.mentor || "—";
-  const advisorPhone = student.advisor?.phone || student.advisorPhone || "";
-  const instName = (institution?.name || institution?.shortName || "EDUNEX INSTITUTE OF TECHNOLOGY").toUpperCase();
-  const instSub = institution?.accreditation || institution?.address || "Office of the Registrar · Autonomous Examination Cell";
+  const className = student.class || student.section || student.className || "II - AI & DS 'A'";
+  const dob = student.dob || student.dateOfBirth || "—";
+  const bloodGroup = student.bloodGroup || student.blood || "—";
+  const batch = student.batch || "2024–2028";
+  const semester = student.semester || "5th Semester";
+  const residentialStatus = student.residentialStatus || (student.hostel ? "Hosteler" : "Day Scholar");
+  const advisor = student.advisor?.name || student.advisor || student.advisorName || student.mentor || student.mentorName || "Dr. S. K. Ramesh (HOD/AI&DS)";
+  const advisorPhone = student.advisor?.phone || student.advisorPhone || student.mentorPhone || "+91 94432 10987";
+  const parentPhone = student.parentPhone || student.parent?.phone || student.fatherPhone || student.emergencyContact || "—";
+  const phone = student.phone || student.mobile || "—";
+  const avatarUrl = student.avatar || student.photo || student.profileImage || "";
+  const instName = (institution?.name || institution?.shortName || "EDUNEX AUTONOMOUS CAMPUS").toUpperCase();
+  const instSub = institution?.accreditation || institution?.address || "Affiliated to Anna University · Approved by AICTE · NAAC 'A++' Accredited";
+  const issuedDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+
+  const qrDataText = `EDUNEX:STUDENT|ROLL:${rollNo}|REG:${regNo}|NAME:${name}|DEPT:${deptCompact}|BATCH:${batch}|BLOOD:${bloodGroup}|STATUS:ACTIVE`;
+  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(qrDataText)}&color=0f172a&bgcolor=ffffff`;
 
   const html = `
     <!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8" />
-        <title>Student Digital ID Pass - ${name}</title>
-        <style>${BASE_CSS}</style>
+        <title>Digital Identity Pass - ${name}</title>
+        <style>
+          ${BASE_CSS}
+          .id-pass-card {
+            max-width: 580px;
+            margin: 0 auto;
+            border: 2px solid #2563eb;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+            background: #ffffff;
+          }
+          .id-pass-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+            color: #ffffff;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+          }
+          .id-pass-header h1 {
+            font-size: 16px;
+            font-weight: 900;
+            margin: 0;
+            letter-spacing: 0.5px;
+          }
+          .id-pass-header p {
+            font-size: 9.5px;
+            margin: 3px 0 0 0;
+            opacity: 0.9;
+          }
+          .id-pass-chip {
+            background: #fde047;
+            color: #854d0e;
+            font-size: 9px;
+            font-weight: 900;
+            padding: 4px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .id-pass-body {
+            padding: 20px;
+          }
+          .id-hero-row {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            border-bottom: 1.5px dashed #cbd5e1;
+            padding-bottom: 16px;
+            margin-bottom: 16px;
+          }
+          .id-photo-box {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 3px solid #2563eb;
+            background: #eff6ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            flex-shrink: 0;
+          }
+          .id-photo-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+          }
+          .id-hero-details h2 {
+            font-size: 17px;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 0 0 4px 0;
+          }
+          .id-hero-roll {
+            font-size: 11.5px;
+            font-weight: 700;
+            color: #2563eb;
+            margin-bottom: 3px;
+          }
+          .id-hero-dept {
+            font-size: 11px;
+            color: #475569;
+            font-weight: 500;
+          }
+          .id-matrix {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 14px;
+          }
+          .id-matrix td {
+            padding: 6px 10px;
+            font-size: 11px;
+            border-bottom: 1px solid #f1f5f9;
+          }
+          .id-lbl {
+            color: #64748b;
+            font-weight: 600;
+            width: 25%;
+          }
+          .id-val {
+            color: #0f172a;
+            font-weight: 700;
+            width: 25%;
+          }
+          .id-qr-box {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px 18px;
+            margin-top: 14px;
+          }
+          .id-qr-img {
+            width: 85px;
+            height: 85px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            padding: 2px;
+          }
+          .id-pass-badge-active {
+            display: inline-block;
+            background: #10b981;
+            color: #ffffff;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+          }
+        </style>
       </head>
       <body>
-        <table class="header-table">
-          <tr>
-            <td>
-              <div class="inst-title">🎓 ${instName}</div>
-              <div class="inst-sub">${instSub}</div>
-              <div class="inst-sub" style="color: #4f46e5; font-weight: 800; margin-top: 2px;">STUDENT DIGITAL IDENTITY PASS</div>
-            </td>
-            <td style="text-align: right; vertical-align: top;">
-              <span class="doc-badge" style="background: #10b981;">Active Student</span>
-              <div style="font-size: 11px; font-weight: 800; color: #1e3a8a; margin-top: 4px;">ROLL: ${rollNo}</div>
-              <div style="font-size: 10px; font-weight: 700; color: #64748b;">UNIV: ${regNo}</div>
-            </td>
-          </tr>
-        </table>
+        <div class="id-pass-card">
+          <div class="id-pass-header">
+            <div>
+              <h1>${instName}</h1>
+              <p>${instSub}</p>
+              <p style="margin-top: 2px; font-weight: 700;">OFFICIAL STUDENT DIGITAL IDENTITY PASS</p>
+            </div>
+            <div class="id-pass-chip">SMART NFC / QR</div>
+          </div>
 
-        <div class="section-title">Official Student Identification Dossier</div>
-        <table class="meta-grid">
-          <tr>
-            <td class="meta-label">Full Name</td>
-            <td class="meta-val"><strong>${name}</strong></td>
-            <td class="meta-label">Roll / Reg No</td>
-            <td class="meta-val"><code>${rollNo}</code> / <code>${regNo}</code></td>
-          </tr>
-          <tr>
-            <td class="meta-label">Degree & Department</td>
-            <td class="meta-val">${program} in ${deptShort}</td>
-            <td class="meta-label">Class / Section</td>
-            <td class="meta-val">${classSec}</td>
-          </tr>
-          <tr>
-            <td class="meta-label">Academic Batch</td>
-            <td class="meta-val">${batch}</td>
-            <td class="meta-label">Current Standing</td>
-            <td class="meta-val">${year ? `${year} · ` : ""}${sem}</td>
-          </tr>
-          <tr>
-            <td class="meta-label">Date of Birth (DOB)</td>
-            <td class="meta-val">${dob}</td>
-            <td class="meta-label">Blood Group</td>
-            <td class="meta-val" style="color: #dc2626; font-weight: 800;">${blood}</td>
-          </tr>
-          <tr>
-            <td class="meta-label">Residential Status</td>
-            <td class="meta-val">${res}</td>
-            <td class="meta-label">Student Contact</td>
-            <td class="meta-val">${mobile}</td>
-          </tr>
-          <tr>
-            <td class="meta-label">Primary Guardian</td>
-            <td class="meta-val">${parentName} ${parentPhone !== "—" ? `(${parentPhone})` : ""}</td>
-            <td class="meta-label">Designated Tutor / Advisor</td>
-            <td class="meta-val">${advisorName} ${advisorPhone ? `(${advisorPhone})` : ""}</td>
-          </tr>
-        </table>
+          <div class="id-pass-body">
+            <div class="id-hero-row">
+              <div class="id-photo-box">
+                ${
+                  avatarUrl
+                    ? `<img src="${avatarUrl}" alt="${name}" onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'font-size:32px;\\'>🎓</div>';" />`
+                    : `<div style="font-size: 32px;">🎓</div>`
+                }
+              </div>
+              <div class="id-hero-details">
+                <h2>${name}</h2>
+                <div class="id-hero-roll">ROLL: ${rollNo} · UNIV REG: ${regNo}</div>
+                <div class="id-hero-dept">${program} — ${deptCompact} ${className ? `(${className})` : ""}</div>
+              </div>
+            </div>
 
-        <div class="section-title">Institutional Privileges & Approvals</div>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Facility / Privilege Area</th>
-              <th>Status</th>
-              <th>Authorization Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Campus Smart Turnstile Access</td>
-              <td><strong style="color: #10b981;">GRANTED</strong></td>
-              <td>RFID Turnstile & Biometric Automated Entry Gate</td>
-            </tr>
-            <tr>
-              <td>Central Library Borrowing Permit</td>
-              <td><strong style="color: #10b981;">ACTIVE</strong></td>
-              <td>Up to 4 Books + IEEE Digital Xplore Term Access</td>
-            </tr>
-            <tr>
-              <td>Autonomous Exam Hall Eligibility</td>
-              <td><strong style="color: #10b981;">VERIFIED</strong></td>
-              <td>Eligible for CIA-1, CIA-2 and End Semester Examination</td>
-            </tr>
-            <tr>
-              <td>High Performance Computing & AI Labs</td>
-              <td><strong style="color: #10b981;">AUTHORIZED</strong></td>
-              <td>NVIDIA GPU Compute Cluster & Spark Data Lab</td>
-            </tr>
-          </tbody>
-        </table>
+            <table class="id-matrix">
+              <tr>
+                <td class="id-lbl">Date of Birth</td>
+                <td class="id-val">${dob}</td>
+                <td class="id-lbl">Blood Group</td>
+                <td class="id-val" style="color: #ef4444;">${bloodGroup}</td>
+              </tr>
+              <tr>
+                <td class="id-lbl">Semester</td>
+                <td class="id-val">${semester}</td>
+                <td class="id-lbl">Academic Batch</td>
+                <td class="id-val" style="color: #10b981;">${batch}</td>
+              </tr>
+              <tr>
+                <td class="id-lbl">Residential Status</td>
+                <td class="id-val">${residentialStatus}</td>
+                <td class="id-lbl">Emergency Contact</td>
+                <td class="id-val">${parentPhone}</td>
+              </tr>
+              <tr>
+                <td class="id-lbl">Class Tutor / Advisor</td>
+                <td class="id-val" colspan="3">${typeof advisor === "string" ? advisor : "Faculty Advisor"} (Ph: ${advisorPhone})</td>
+              </tr>
+            </table>
 
-        <div class="footer-sig" style="margin-top: 40px;">
-          <div class="sig-block">Student Signature</div>
-          <div class="sig-block">Head of Department<br>(${deptShort})</div>
-          <div class="sig-block">Dean / University Registrar<br>(Official Seal)</div>
+            <div class="id-qr-box">
+              <div style="flex: 1; padding-right: 14px;">
+                <span class="id-pass-badge-active">✓ BIOMETRICALLY VERIFIED</span>
+                <div style="font-size: 10px; color: #475569; margin-top: 6px; line-height: 1.4;">
+                  Authorized for Campus Turnstiles, Library Circulation, RFID Exam Halls, and Laboratory Access.
+                </div>
+                <div style="font-size: 9px; color: #94a3b8; margin-top: 4px;">
+                  Issued: ${issuedDate} · Valid for Academic Tenure
+                </div>
+              </div>
+              <img class="id-qr-img" src="${qrApiUrl}" alt="Gate Pass QR" />
+            </div>
+
+            <div class="footer-sig" style="margin-top: 24px;">
+              <div class="sig-block">Student Signature</div>
+              <div class="sig-block">Class Tutor / Advisor<br>(${typeof advisor === "string" ? advisor.split("(")[0].trim() : "Faculty Advisor"})</div>
+              <div class="sig-block">Registrar / Principal<br>EduNex Autonomous</div>
+            </div>
+          </div>
         </div>
       </body>
     </html>
   `;
 
-  return printAndShare(html, `Student_ID_${rollNo}.pdf`, `Student ID Pass - ${name}`);
+  return printAndShare(html, `Student_ID_Pass_${rollNo}.pdf`, `Student Digital ID Pass - ${name}`);
 }
 
 /**
@@ -1155,253 +1269,6 @@ export async function shareExecutiveReportPdf(reportData = {}) {
   return printAndShare(html, `${title.replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.pdf`, `${title} - EduNex Analytics`);
 }
 
-/**
- * 12. STUDENT DIGITAL IDENTITY PASS PDF GENERATOR
- */
-export async function shareStudentIdCardPdf({ student = {}, institution = {} }) {
-  const name = student.name || "Student User";
-  const rollNo = student.rollNo || student.id || student.roll || "25BAD015";
-  const deptName = student.department || student.dept || student.program || "Artificial Intelligence & Data Science";
-  const deptCompact = formatDeptName(deptName, "compact");
-  const regNo = student.regNo || student.universityNo || formatUniversityRegNo(rollNo, deptName);
-  const program = student.program || student.degree || "B.Tech";
-  const className = student.class || student.section || student.className || "II - AI & DS 'A'";
-  const dob = student.dob || student.dateOfBirth || "—";
-  const bloodGroup = student.bloodGroup || "—";
-  const batch = student.batch || "2024–2028";
-  const semester = student.semester || "5th Semester";
-  const residentialStatus = student.residentialStatus || student.hostel || "Day Scholar";
-  const advisor = student.advisor || student.advisorName || student.mentor || student.mentorName || "Dr. S. K. Ramesh (HOD/AI&DS)";
-  const advisorPhone = student.advisorPhone || student.mentorPhone || "+91 94432 10987";
-  const parentPhone = student.parentPhone || student.fatherPhone || student.emergencyContact || "—";
-  const phone = student.phone || student.mobile || "—";
-  const avatarUrl = student.avatar || student.photo || student.profileImage || "";
-  const instName = (institution?.name || institution?.shortName || "EDUNEX AUTONOMOUS CAMPUS").toUpperCase();
-  const instSub = institution?.accreditation || institution?.address || "Affiliated to Anna University · Approved by AICTE · NAAC 'A++' Accredited";
-  const issuedDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-
-  const qrDataText = `EDUNEX:STUDENT|ROLL:${rollNo}|REG:${regNo}|NAME:${name}|DEPT:${deptCompact}|BATCH:${batch}|BLOOD:${bloodGroup}|STATUS:ACTIVE`;
-  const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(qrDataText)}&color=0f172a&bgcolor=ffffff`;
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Digital Identity Pass - ${name}</title>
-        <style>
-          ${BASE_CSS}
-          .id-pass-card {
-            max-width: 580px;
-            margin: 0 auto;
-            border: 2px solid #2563eb;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
-            background: #ffffff;
-          }
-          .id-pass-header {
-            background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
-            color: #ffffff;
-            padding: 16px 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-          }
-          .id-pass-header h1 {
-            font-size: 16px;
-            font-weight: 900;
-            margin: 0;
-            letter-spacing: 0.5px;
-          }
-          .id-pass-header p {
-            font-size: 9.5px;
-            margin: 3px 0 0 0;
-            opacity: 0.9;
-          }
-          .id-pass-chip {
-            background: #fde047;
-            color: #854d0e;
-            font-size: 9px;
-            font-weight: 900;
-            padding: 4px 8px;
-            border-radius: 4px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-          }
-          .id-pass-body {
-            padding: 20px;
-          }
-          .id-hero-row {
-            display: flex;
-            gap: 16px;
-            align-items: center;
-            border-bottom: 1.5px dashed #cbd5e1;
-            padding-bottom: 16px;
-            margin-bottom: 16px;
-          }
-          .id-photo-box {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            border: 3px solid #2563eb;
-            background: #eff6ff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            flex-shrink: 0;
-          }
-          .id-photo-box img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-          }
-          .id-hero-details h2 {
-            font-size: 17px;
-            font-weight: 800;
-            color: #0f172a;
-            margin: 0 0 4px 0;
-          }
-          .id-hero-roll {
-            font-size: 11.5px;
-            font-weight: 700;
-            color: #2563eb;
-            margin-bottom: 3px;
-          }
-          .id-hero-dept {
-            font-size: 11px;
-            color: #475569;
-            font-weight: 500;
-          }
-          .id-matrix {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 14px;
-          }
-          .id-matrix td {
-            padding: 6px 10px;
-            font-size: 11px;
-            border-bottom: 1px solid #f1f5f9;
-          }
-          .id-lbl {
-            color: #64748b;
-            font-weight: 600;
-            width: 25%;
-          }
-          .id-val {
-            color: #0f172a;
-            font-weight: 700;
-            width: 25%;
-          }
-          .id-qr-box {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 12px 18px;
-            margin-top: 14px;
-          }
-          .id-qr-img {
-            width: 85px;
-            height: 85px;
-            border-radius: 6px;
-            border: 1px solid #cbd5e1;
-            background: #ffffff;
-            padding: 2px;
-          }
-          .id-pass-badge-active {
-            display: inline-block;
-            background: #10b981;
-            color: #ffffff;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 0.5px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="id-pass-card">
-          <div class="id-pass-header">
-            <div>
-              <h1>${instName}</h1>
-              <p>${instSub}</p>
-              <p style="margin-top: 2px; font-weight: 700;">OFFICIAL STUDENT DIGITAL IDENTITY PASS</p>
-            </div>
-            <div class="id-pass-chip">SMART NFC / QR</div>
-          </div>
-
-          <div class="id-pass-body">
-            <div class="id-hero-row">
-              <div class="id-photo-box">
-                ${
-                  avatarUrl
-                    ? `<img src="${avatarUrl}" alt="${name}" onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'font-size:32px;\\'>🎓</div>';" />`
-                    : `<div style="font-size: 32px;">🎓</div>`
-                }
-              </div>
-              <div class="id-hero-details">
-                <h2>${name}</h2>
-                <div class="id-hero-roll">ROLL: ${rollNo} · UNIV REG: ${regNo}</div>
-                <div class="id-hero-dept">${program} — ${deptCompact} ${className ? `(${className})` : ""}</div>
-              </div>
-            </div>
-
-            <table class="id-matrix">
-              <tr>
-                <td class="id-lbl">Date of Birth</td>
-                <td class="id-val">${dob}</td>
-                <td class="id-lbl">Blood Group</td>
-                <td class="id-val" style="color: #ef4444;">${bloodGroup}</td>
-              </tr>
-              <tr>
-                <td class="id-lbl">Semester</td>
-                <td class="id-val">${semester}</td>
-                <td class="id-lbl">Academic Batch</td>
-                <td class="id-val" style="color: #10b981;">${batch}</td>
-              </tr>
-              <tr>
-                <td class="id-lbl">Residential Status</td>
-                <td class="id-val">${residentialStatus}</td>
-                <td class="id-lbl">Emergency Contact</td>
-                <td class="id-val">${parentPhone}</td>
-              </tr>
-              <tr>
-                <td class="id-lbl">Class Tutor / Advisor</td>
-                <td class="id-val" colspan="3">${advisor} (Ph: ${advisorPhone})</td>
-              </tr>
-            </table>
-
-            <div class="id-qr-box">
-              <div style="flex: 1; padding-right: 14px;">
-                <span class="id-pass-badge-active">✓ BIOMETRICALLY VERIFIED</span>
-                <div style="font-size: 10px; color: #475569; margin-top: 6px; line-height: 1.4;">
-                  Authorized for Campus Turnstiles, Library Circulation, RFID Exam Halls, and Laboratory Access.
-                </div>
-                <div style="font-size: 9px; color: #94a3b8; margin-top: 4px;">
-                  Issued: ${issuedDate} · Valid for Academic Tenure
-                </div>
-              </div>
-              <img class="id-qr-img" src="${qrApiUrl}" alt="Gate Pass QR" />
-            </div>
-
-            <div class="footer-sig" style="margin-top: 24px;">
-              <div class="sig-block">Student Signature</div>
-              <div class="sig-block">Class Tutor / Advisor<br>(${advisor.split("(")[0].trim()})</div>
-              <div class="sig-block">Registrar / Principal<br>EduNex Autonomous</div>
-            </div>
-          </div>
-        </div>
-      </body>
-    </html>
-  `;
-
-  return printAndShare(html, `Student_ID_Pass_${rollNo}.pdf`, `Student Digital ID Pass - ${name}`);
-}
 
 
 

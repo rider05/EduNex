@@ -192,6 +192,7 @@ export default function FullTimetable({ visible = true, onClose }) {
             : "";
         const year = student?.year || identity?.year || rawUser?.year || "";
         const semester = student?.semester || identity?.semester || rawUser?.semester || "";
+        const section = student?.section || student?.class || identity?.section || rawUser?.section || "";
         const rollNo = student?.rollNo || student?.roll || identity?.rollNo || "25BAD015";
         const regNo =
           student?.regNo && student.regNo !== rollNo
@@ -199,6 +200,14 @@ export default function FullTimetable({ visible = true, onClose }) {
             : student?.universityNo && student.universityNo !== rollNo
             ? student.universityNo
             : formatUniversityRegNo(rollNo, dept);
+
+        const resolvedAdvisor =
+          student?.advisor?.name ||
+          (typeof student?.advisor === "string" ? student.advisor : "") ||
+          student?.advisorName ||
+          student?.mentor?.name ||
+          (typeof student?.mentor === "string" ? student.mentor : "") ||
+          "";
 
         setStudentCohort({
           name: student?.name || identity?.name || rawUser?.name || "",
@@ -208,8 +217,8 @@ export default function FullTimetable({ visible = true, onClose }) {
           deptShort,
           year: typeof year === "number" ? `${year} Year` : year,
           semester: semester ? `${semester} (Odd)` : "",
-          section: section ? (section.includes("Section") ? section : `Section ${section}`) : "",
-          advisor: student?.advisor?.name || (typeof student?.advisor === "string" ? student.advisor : "") || "",
+          section: section ? (String(section).includes("Section") ? String(section) : `Section ${section}`) : "",
+          advisor: resolvedAdvisor,
         });
       } catch (e) {
         console.log("Error loading student cohort in Timetable:", e);
