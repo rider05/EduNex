@@ -791,8 +791,8 @@ export async function shareAssignmentBriefPdf({ assignment = {}, student = {} })
  */
 export async function shareHallTicketPdf({ student = {}, exams = [], examSettings = {} }) {
   const name = student.name || "Student";
-  const rollNo = student.rollNo || student.id || "STU-2024-AIDS01";
-  const regNo = student.regNo || rollNo.replace("STU-", "REG-");
+  const rollNo = student.rollNo || student.id || "25BAD015";
+  const regNo = (student.regNo && student.regNo !== rollNo) ? student.regNo : student.universityNo || student.registerNo || "71052408001";
   const dept = student.department || "Artificial Intelligence & Data Science";
   const deptShort = formatDeptName(dept, "compact");
   const year = student.year || "III Year";

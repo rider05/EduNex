@@ -2,24 +2,22 @@
   "expo": {
     "name": "EduNex",
     "slug": "EduNex",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "edunex",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.bkmsb.EduNex",
       "icon": "./assets/images/icon.png"
     },
     "android": {
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/icon.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.bkmsb.EduNex",
       "googleServicesFile": "./google-services.json"
@@ -53,14 +51,17 @@
       "expo-web-browser",
       "expo-video",
       "@react-native-community/datetimepicker",
-      "expo-font"
+      "expo-font",
+      "expo-image",
+      "expo-sharing",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
     "extra": {
-      "version": "1.0.1",
+      "version": "1.0.2",
       "router": {},
       "eas": {
         "projectId": "b37efc0b-d7f1-46b2-9780-37d34874d52a"

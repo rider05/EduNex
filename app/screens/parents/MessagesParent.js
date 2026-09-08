@@ -12,6 +12,7 @@ import {
   Modal,
   Share,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { secureGet, secureSet } from "../../services/secureStorage";
@@ -194,10 +195,15 @@ export default function MessagesParent() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.primaryBackground }]}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -535,6 +541,7 @@ export default function MessagesParent() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* ========================================================================= */}
       {/* 5. NOTICE INSPECTION DETAIL MODAL                                         */}

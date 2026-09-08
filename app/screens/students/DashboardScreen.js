@@ -22,6 +22,7 @@ import { formatDeptName } from "../../utils/deptFormatter";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { shareStudentIdCardPdf } from "../../utils/pdfGenerator";
 import { api } from "../../services/api";
+import { onNavigateToNotification } from "../../utils/notificationUtils";
 
 // Modals
 import FeesModal from "./modals/FeesModal";
@@ -32,8 +33,8 @@ import FullTimeTable from "./modals/FullTimeTable";
 import LeaveFormModal from "../../components/header/modal/LeaveFormModal";
 
 // Dynamic parser to convert standard time formats into minutes from midnight
-const parseTimeToMinutes = (timeStr) => {
-  if (!timeStr || typeof timeStr !== "string") return { startMin: 0, endMin: 0 };
+const parseTimeToMinutes = (timeStr, durationStr = "") => {
+  if (!timeStr || typeof timeStr !== "string") return { startMin: 0, endMin: 0, formattedTime: "—" };
   const parts = timeStr.split("-").map((s) => s.trim());
   const parseSingle = (s) => {
     if (!s) return 0;
@@ -50,8 +51,27 @@ const parseTimeToMinutes = (timeStr) => {
   };
 
   const startMin = parseSingle(parts[0]);
-  const endMin = parts[1] ? parseSingle(parts[1]) : startMin + 55;
-  return { startMin, endMin };
+  let dur = 55;
+  if (durationStr && typeof durationStr === "string") {
+    const dMatch = durationStr.match(/(\d+)/);
+    if (dMatch) dur = parseInt(dMatch[1], 10);
+  }
+  const endMin = parts[1] ? parseSingle(parts[1]) : startMin + dur;
+
+  // Format time range if parts had only single time
+  let formattedTime = timeStr;
+  if (parts.length === 1 && startMin > 0) {
+    const toTimeStr = (min) => {
+      const h24 = Math.floor(min / 60);
+      const m = min % 60;
+      const period = h24 >= 12 ? "PM" : "AM";
+      const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+      return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
+    };
+    formattedTime = `${toTimeStr(startMin)} - ${toTimeStr(endMin)}`;
+  }
+
+  return { startMin, endMin, formattedTime };
 };
 
 // Accurately derives period number (P1, P2, Break, P3, P4, Lunch, P5, P6, P7) purely based on time
@@ -249,16 +269,19 @@ export default function DashboardScreen() {
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       const [data, gradeLevels, noticesRes, instRes, assignRes, attSummary, timetableRes] = await Promise.all([
-        getStudentData().catch(() => null),
+        getStudentData(force).catch(() => null),
         getGradeLevels().catch(() => []),
-        getParentNotices().catch(() => []),
-        getInstitutions().catch(() => []),
-        getAssignments().catch(() => []),
+        getParentNotices(force).catch(() => []),
+        getInstitutions(force).catch(() => []),
+        getAssignments({}, force).catch(() => []),
         getStudentAttendanceSummary().catch(() => ({ summary: null, records: [] })),
-        api.get("/timetable").catch(() => null),
+        api.get("/timetable", {}, {}, { noCache: force }).catch(() => null),
       ]);
 
       const inst = Array.isArray(instRes) && instRes.length > 0 ? instRes[0] : null;
@@ -271,7 +294,8 @@ export default function DashboardScreen() {
         const computedGrade = calculateCurrentGrade(data.grade, data.cgpa, data.subjects);
         setStudentData({
           name: data.name || "Student User",
-          rollNo: data.rollNo || data.roll || "",
+          rollNo: data.rollNo || data.roll || "25BAD015",
+          regNo: data.regNo && data.regNo !== data.rollNo ? data.regNo : data.universityNo || data.registerNo || "71052408001",
           department: data.department || "",
           semester: data.semester || "",
           grade: computedGrade,
@@ -340,11 +364,28 @@ export default function DashboardScreen() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const unsubNav = onNavigateToNotification(({ target }) => {
+      if (
+        target === "fees" ||
+        target === "exam" ||
+        target === "attendance" ||
+        target === "library" ||
+        target === "timetable"
+      ) {
+        setVisibleModal(target);
+      } else if (target === "leave") {
+        setLeaveModalVisible(true);
+      }
+    });
+    return () => unsubNav();
+  }, []);
+
   useRefreshOnForeground(loadData);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 
@@ -413,26 +454,57 @@ export default function DashboardScreen() {
   const hasAttendanceData = attPctNum > 0 || hasBufferStats;
 
   const todayPeriods = useMemo(() => {
-    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const fullDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const shortDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const todayIndex = new Date().getDay();
-    // Default to "Mon" if today is weekend
-    const todayKey = todayIndex === 0 || todayIndex === 6 ? "Mon" : days[todayIndex];
+    // Default to Monday if today is Sunday (0) or Saturday (6)
+    const targetIdx = (todayIndex === 0 || todayIndex === 6) ? 1 : todayIndex;
+    const fullDayKey = fullDays[targetIdx];
+    const shortDayKey = shortDays[targetIdx];
 
     // 1. Check if we have live timetable from DB for this student's department
     let daySchedule = [];
     if (liveTimetable) {
-      const docs = Array.isArray(liveTimetable) ? liveTimetable : Array.isArray(liveTimetable.data) ? liveTimetable.data : [];
+      const docs = Array.isArray(liveTimetable)
+        ? liveTimetable
+        : Array.isArray(liveTimetable.data)
+        ? liveTimetable.data
+        : [];
       const dept = (studentData.department || "").toLowerCase();
-      const code = dept.includes("ai") ? "AIDS" : dept.includes("cse") || dept.includes("computer") ? "CSE" : dept.includes("it") ? "IT" : dept.includes("ece") ? "ECE" : dept.includes("mech") ? "MECH" : "AIDS";
-      const match = docs.find((d) =>
-        d.departmentCode === code ||
-        (d.departmentCode || "").toLowerCase() === code.toLowerCase() ||
-        (d.department || "").toLowerCase().includes(code.toLowerCase()) ||
-        (d.departmentName || "").toLowerCase().includes(dept)
-      ) || docs[0];
+      const code = dept.includes("ai") || dept.includes("& ds") || dept.includes("data science")
+        ? "AIDS"
+        : dept.includes("cse") || dept.includes("computer")
+        ? "CSE"
+        : dept.includes("it")
+        ? "IT"
+        : dept.includes("ece")
+        ? "ECE"
+        : dept.includes("mech")
+        ? "MECH"
+        : "AIDS";
 
-      if (match?.schedule && match.schedule[todayKey] && Array.isArray(match.schedule[todayKey]) && match.schedule[todayKey].length > 0) {
-        daySchedule = match.schedule[todayKey];
+      const match =
+        docs.find(
+          (d) =>
+            d.departmentCode === code ||
+            (d.departmentCode || "").toLowerCase() === code.toLowerCase() ||
+            (d.department || "").toLowerCase().includes(code.toLowerCase()) ||
+            (d.departmentName || "").toLowerCase().includes("intelligence") ||
+            (d.departmentName || "").toLowerCase().includes(dept)
+        ) || docs[0];
+
+      if (match?.schedule) {
+        const sched = match.schedule;
+        const candidate =
+          sched[fullDayKey] ||
+          sched[shortDayKey] ||
+          sched[fullDays[todayIndex]] ||
+          sched[shortDays[todayIndex]] ||
+          sched["Monday"] ||
+          sched["Mon"];
+        if (Array.isArray(candidate) && candidate.length > 0) {
+          daySchedule = candidate;
+        }
       }
     }
 
@@ -474,15 +546,31 @@ export default function DashboardScreen() {
       return [];
     }
 
+    let academicCounter = 0;
     return daySchedule.map((row, idx) => {
-      const { startMin, endMin } = parseTimeToMinutes(row.time);
-      const { periodTag, periodName, isBreak } = getPeriodTagFromTime(startMin, endMin, row.subject, row.isBreak);
+      const { startMin, endMin, formattedTime } = parseTimeToMinutes(row.time, row.duration);
+      const isLunch = String(row.subject || "").toLowerCase().includes("lunch");
+      const isTea = String(row.subject || "").toLowerCase().includes("tea") || String(row.subject || "").toLowerCase().includes("break");
+      const isBreak = row.isBreak || isLunch || isTea;
+
+      let periodName = "";
+      let periodTag = "";
+
+      if (isBreak) {
+        periodName = isLunch ? "Lunch Break" : "Tea Break";
+        periodTag = isLunch ? "Lunch" : "Break";
+      } else {
+        academicCounter++;
+        const isLab = /lab/i.test(String(row.subject || row.code || ""));
+        periodName = isLab ? `Lab (Period ${academicCounter})` : `Period ${academicCounter}`;
+        periodTag = `P${academicCounter}`;
+      }
 
       return {
         id: row.id || row._id || `period_${idx}`,
-        period: periodName,
+        period: row.period || periodName,
         periodTag,
-        time: row.time || "—",
+        time: formattedTime || row.time || "—",
         subject: row.subject || row.name || "Academic Class",
         code: row.code || "",
         faculty: row.faculty || row.teacher || (isBreak ? "Campus Facility" : "Faculty Instructor"),
@@ -1352,7 +1440,9 @@ export default function DashboardScreen() {
                 </View>
                 <View style={{ flex: 1, marginLeft: 14 }}>
                   <Text style={[styles.idCardStudentName, { color: colors.primaryText }]}>{studentData.name}</Text>
-                  <Text style={[styles.idCardRoll, { color: colors.primaryAccent }]}>REG ID: {studentData.rollNo}</Text>
+                  <Text style={[styles.idCardRoll, { color: colors.primaryAccent }]}>
+                    ROLL: {studentData.rollNo || "25BAD015"} · UNIV: {studentData.regNo || "71052408001"}
+                  </Text>
                   <Text style={[styles.idCardDept, { color: colors.secondaryText }]} numberOfLines={2}>
                     {formatDeptName(studentData.department, "compact")}
                   </Text>
@@ -1400,7 +1490,7 @@ export default function DashboardScreen() {
               {/* Dynamic QR Code */}
               <View style={[styles.qrCodeWrapper, { backgroundColor: "#FFFFFF", borderColor: colors.divider }]}>
                 <QRCode
-                  value={`EDUNEX:STUDENT|ROLL:${studentData.rollNo || "—"}|NAME:${studentData.name || "—"}|DOB:${studentData.dob || "—"}|BLOOD:${studentData.bloodGroup || "—"}|BATCH:${studentData.batch || "—"}`}
+                  value={`EDUNEX:STUDENT|ROLL:${studentData.rollNo || "25BAD015"}|REG:${studentData.regNo || "71052408001"}|NAME:${studentData.name || "—"}|DOB:${studentData.dob || "—"}|BLOOD:${studentData.bloodGroup || "—"}|BATCH:${studentData.batch || "—"}`}
                   size={120}
                   color="#0F172A"
                   backgroundColor="#FFFFFF"
@@ -1441,9 +1531,14 @@ export default function DashboardScreen() {
       </Modal>
 
       {/* ========================================================================= */}
-      {/* SUB-MODAL 4: COLLEGE LEAVE & GATE PASS APPLICATION SUITE                  */}
+      {/* SUB-MODALS & SYSTEM NOTIFICATION TARGETS                                  */}
       {/* ========================================================================= */}
-      <LeaveFormModal visible={leaveModalVisible} onClose={() => setLeaveModalVisible(false)} />
+      <LeaveFormModal visible={leaveModalVisible || visibleModal === "leave"} onClose={() => { setLeaveModalVisible(false); closeModal(); }} />
+      <FeesModal visible={visibleModal === "fees"} onClose={closeModal} />
+      <AttendanceModal visible={visibleModal === "attendance"} onClose={closeModal} />
+      <ExamModal visible={visibleModal === "exam"} onClose={closeModal} />
+      <LibraryModal visible={visibleModal === "library"} onClose={closeModal} />
+      <FullTimeTable visible={timetableModalVisible || visibleModal === "timetable"} onClose={() => { setTimetableModalVisible(false); closeModal(); }} />
     </View>
   );
 }

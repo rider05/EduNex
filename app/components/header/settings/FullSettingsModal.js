@@ -15,6 +15,7 @@ import {
   TextInput,
   ActivityIndicator,
   Pressable,
+  KeyboardAvoidingView,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -761,62 +762,67 @@ export default function FullSettingsModal({ visible, onClose }) {
       {/* ===== SUB-MODAL 2: EMERGENCY BROADCAST ===== */}
       <Modal visible={broadcastModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { backgroundColor: colors.cardBackground }]}>
-            <View style={styles.modalHeaderRow}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Icon name="bullhorn" size={24} color="#EF4444" />
-                <Text style={[styles.modalTitle, { color: "#EF4444" }]}>Emergency Broadcast</Text>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", alignItems: "center" }}
+          >
+            <View style={[styles.modalBox, { backgroundColor: colors.cardBackground }]}>
+              <View style={styles.modalHeaderRow}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Icon name="bullhorn" size={24} color="#EF4444" />
+                  <Text style={[styles.modalTitle, { color: "#EF4444" }]}>Emergency Broadcast</Text>
+                </View>
+                <TouchableOpacity onPress={() => setBroadcastModalVisible(false)}>
+                  <Icon name="close-circle" size={26} color={colors.secondaryText} />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={() => setBroadcastModalVisible(false)}>
-                <Icon name="close-circle" size={26} color={colors.secondaryText} />
+
+              <Text style={[styles.modalSubtitle, { color: colors.secondaryText }]}>
+                Send an immediate, high-priority announcement to students, faculty, and parents.
+              </Text>
+
+              <Text style={[styles.inputLabel, { color: colors.primaryText }]}>Notice Headline</Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  { color: colors.primaryText, borderColor: colors.divider, backgroundColor: colors.primaryBackground },
+                ]}
+                placeholder="e.g. Campus Holiday / Severe Weather Advisory"
+                placeholderTextColor={colors.secondaryText}
+                value={broadcastTitle}
+                onChangeText={setBroadcastTitle}
+              />
+
+              <Text style={[styles.inputLabel, { color: colors.primaryText, marginTop: 12 }]}>
+                Detailed Message
+              </Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  styles.modalTextArea,
+                  { color: colors.primaryText, borderColor: colors.divider, backgroundColor: colors.primaryBackground },
+                ]}
+                placeholder="Enter comprehensive instructions for campus members..."
+                placeholderTextColor={colors.secondaryText}
+                multiline
+                numberOfLines={4}
+                value={broadcastMessage}
+                onChangeText={setBroadcastMessage}
+              />
+
+              <TouchableOpacity
+                style={[styles.modalDoneBtn, { backgroundColor: "#EF4444", marginTop: 16 }]}
+                onPress={handleSendBroadcast}
+                disabled={broadcastSending}
+              >
+                {broadcastSending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalDoneBtnText}>Broadcast Notice Now</Text>
+                )}
               </TouchableOpacity>
             </View>
-
-            <Text style={[styles.modalSubtitle, { color: colors.secondaryText }]}>
-              Send an immediate, high-priority announcement to students, faculty, and parents.
-            </Text>
-
-            <Text style={[styles.inputLabel, { color: colors.primaryText }]}>Notice Headline</Text>
-            <TextInput
-              style={[
-                styles.modalInput,
-                { color: colors.primaryText, borderColor: colors.divider, backgroundColor: colors.primaryBackground },
-              ]}
-              placeholder="e.g. Campus Holiday / Severe Weather Advisory"
-              placeholderTextColor={colors.secondaryText}
-              value={broadcastTitle}
-              onChangeText={setBroadcastTitle}
-            />
-
-            <Text style={[styles.inputLabel, { color: colors.primaryText, marginTop: 12 }]}>
-              Detailed Message
-            </Text>
-            <TextInput
-              style={[
-                styles.modalInput,
-                styles.modalTextArea,
-                { color: colors.primaryText, borderColor: colors.divider, backgroundColor: colors.primaryBackground },
-              ]}
-              placeholder="Enter comprehensive instructions for campus members..."
-              placeholderTextColor={colors.secondaryText}
-              multiline
-              numberOfLines={4}
-              value={broadcastMessage}
-              onChangeText={setBroadcastMessage}
-            />
-
-            <TouchableOpacity
-              style={[styles.modalDoneBtn, { backgroundColor: "#EF4444", marginTop: 16 }]}
-              onPress={handleSendBroadcast}
-              disabled={broadcastSending}
-            >
-              {broadcastSending ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.modalDoneBtnText}>Broadcast Notice Now</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 

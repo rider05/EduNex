@@ -1,6 +1,6 @@
 import { secureGet, secureSet, secureClearEduNex } from "./secureStorage";
 import { api } from "./api";
-import { resolveIdentity, invalidateIdentity } from "./identityService";
+import { resolveIdentity, invalidateIdentity, refreshSessionUserProfile } from "./identityService";
 import { getDeterministicNickname } from "../utils/nicknameGenerator";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,11 +120,12 @@ export async function syncAfterLogin() {
   invalidateIdentity();
   syncWatermarks.clear();
   try {
+    await refreshSessionUserProfile();
     const identity = await resolveIdentity(true);
     if (identity.role === "staff") await getFacultyData();
     else if (identity.role === "parent") await getParentData();
     else if (identity.role === "admin") await getAdminData();
-    else await getStudentData();
+    else await getStudentData(true);
     return true;
   } catch (err) {
     console.warn("syncAfterLogin error:", err);
@@ -139,48 +140,26 @@ async function mergeIntoCache(patch) {
   return next;
 }
 
-/** Ensure-fetch pattern: GET → if empty → POST seed → re-GET */
-async function ensureCollection(endpoint, seedPayload) {
+async function ensureCollection(endpoint, params = {}, options = {}) {
   try {
-    const res = await api.get(endpoint, { limit: 100 });
-    const list = Array.isArray(res?.data) ? res.data : [];
-    if (list.length > 0) return list;
-  } catch {}
-
-  // Auto-seed
-  try {
-    await api.post(endpoint, seedPayload);
-  } catch (e) {
-    console.warn(`ensureCollection seed POST failed for ${endpoint}:`, e?.message);
+    const res = await api.get(endpoint, { limit: 100, ...params }, {}, options);
+    const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+    return list;
+  } catch (err) {
+    console.warn(`ensureCollection fetch failed for ${endpoint}:`, err?.message);
+    return [];
   }
-
-  // Re-fetch after seeding
-  try {
-    const res2 = await api.get(endpoint, { limit: 100 });
-    return Array.isArray(res2?.data) ? res2.data : [];
-  } catch {}
-  return [];
 }
 
-async function ensureDocByField(endpoint, field, value, seedPayload) {
+async function ensureDocByField(endpoint, field, value) {
   try {
     const res = await api.get(endpoint, { [field]: value, limit: 1 });
-    const doc = res?.data?.[0] || null;
-    if (doc) return doc;
-  } catch {}
-
-  try {
-    const created = await api.post(endpoint, seedPayload);
-    if (created?.data) return created.data;
-  } catch (e) {
-    console.warn(`ensureDocByField seed POST failed for ${endpoint}:`, e?.message);
+    const doc = res?.data?.[0] || (Array.isArray(res) ? res[0] : res?.data || null);
+    return doc;
+  } catch (err) {
+    console.warn(`ensureDocByField fetch failed for ${endpoint}:`, err?.message);
+    return null;
   }
-
-  try {
-    const res2 = await api.get(endpoint, { [field]: value, limit: 1 });
-    return res2?.data?.[0] || null;
-  } catch {}
-  return null;
 }
 
 // ─────────────────────────────────────────────
@@ -342,39 +321,6 @@ function calculateStudentAcademicMetrics(studentDoc) {
   };
 }
 
-const DEPARTMENT_STUDENT_ROSTERS = {
-  aids: [
-    { id: "stu_aids_1", name: "S. Kaviya Priya", rollNo: "STU-2024-AIDS08", cgpa: 9.42, grade: "O", dept: "AI & DS" },
-    { id: "stu_aids_2", name: "M. Rahul Krishnan", rollNo: "STU-2024-AIDS14", cgpa: 9.18, grade: "O", dept: "AI & DS" },
-    { id: "stu_aids_3", name: "R. Aishwarya Lakshmi", rollNo: "STU-2024-AIDS03", cgpa: 8.95, grade: "A+", dept: "AI & DS" },
-    { id: "stu_aids_4", name: "K. Vigneshwaran", rollNo: "STU-2024-AIDS22", cgpa: 8.78, grade: "A+", dept: "AI & DS" },
-    { id: "stu_aids_5", name: "P. Deepa", rollNo: "STU-2024-AIDS11", cgpa: 8.52, grade: "A", dept: "AI & DS" },
-    { id: "stu_aids_6", name: "T. Harish", rollNo: "STU-2024-AIDS19", cgpa: 8.40, grade: "A", dept: "AI & DS" },
-    { id: "stu_aids_7", name: "V. Nithya", rollNo: "STU-2024-AIDS31", cgpa: 8.25, grade: "A", dept: "AI & DS" },
-    { id: "stu_aids_8", name: "G. Naveen Kumar", rollNo: "STU-2024-AIDS16", cgpa: 8.10, grade: "A", dept: "AI & DS" },
-    { id: "stu_aids_9", name: "S. Subhashini", rollNo: "STU-2024-AIDS27", cgpa: 7.95, grade: "B+", dept: "AI & DS" },
-    { id: "stu_aids_10", name: "B. Dinesh", rollNo: "STU-2024-AIDS05", cgpa: 7.80, grade: "B+", dept: "AI & DS" },
-  ],
-  cse: [
-    { id: "stu_cse_1", name: "A. Harshavardhan", rollNo: "STU-2024-CSE01", cgpa: 9.50, grade: "O", dept: "CSE" },
-    { id: "stu_cse_2", name: "P. Sneha", rollNo: "STU-2024-CSE12", cgpa: 9.25, grade: "O", dept: "CSE" },
-    { id: "stu_cse_3", name: "K. Karthik", rollNo: "STU-2024-CSE07", cgpa: 9.02, grade: "O", dept: "CSE" },
-    { id: "stu_cse_4", name: "M. Sandhiya", rollNo: "STU-2024-CSE19", cgpa: 8.75, grade: "A+", dept: "CSE" },
-    { id: "stu_cse_5", name: "R. Varun", rollNo: "STU-2024-CSE24", cgpa: 8.45, grade: "A", dept: "CSE" },
-  ],
-  it: [
-    { id: "stu_it_1", name: "S. Monisha", rollNo: "STU-2024-IT04", cgpa: 9.38, grade: "O", dept: "IT" },
-    { id: "stu_it_2", name: "N. Gokul", rollNo: "STU-2024-IT10", cgpa: 9.15, grade: "O", dept: "IT" },
-    { id: "stu_it_3", name: "D. Swetha", rollNo: "STU-2024-IT18", cgpa: 8.90, grade: "A+", dept: "IT" },
-    { id: "stu_it_4", name: "J. Praveen", rollNo: "STU-2024-IT21", cgpa: 8.60, grade: "A+", dept: "IT" },
-  ],
-  ece: [
-    { id: "stu_ece_1", name: "V. Dhanush", rollNo: "STU-2024-ECE02", cgpa: 9.45, grade: "O", dept: "ECE" },
-    { id: "stu_ece_2", name: "L. Keerthana", rollNo: "STU-2024-ECE09", cgpa: 9.20, grade: "O", dept: "ECE" },
-    { id: "stu_ece_3", name: "C. Ragavan", rollNo: "STU-2024-ECE15", cgpa: 8.88, grade: "A+", dept: "ECE" },
-  ],
-};
-
 export function getOrdinalSuffix(n) {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
@@ -382,29 +328,23 @@ export function getOrdinalSuffix(n) {
 }
 
 export function calculateRealStudentRank(studentDoc, allStudents = []) {
-  const deptNorm = String(studentDoc?.department || studentDoc?.dept || "aids").toLowerCase().replace(/[^a-z]/g, "");
-
-  let defaultList = DEPARTMENT_STUDENT_ROSTERS.aids;
-  for (const [k, list] of Object.entries(DEPARTMENT_STUDENT_ROSTERS)) {
-    if (deptNorm.includes(k)) {
-      defaultList = list;
-      break;
-    }
-  }
-
   const studentCgpa = parseFloat(studentDoc?.cgpa) || 8.65;
   const studentRoll = String(studentDoc?.rollNo || studentDoc?.roll || studentDoc?.id || "CURRENT_USER").trim();
   const studentName = String(studentDoc?.name || studentDoc?.username || "You").trim();
 
-  // Combine roster
+  // Combine roster from actual DB records
   const combinedMap = new Map();
-  defaultList.forEach((s) => combinedMap.set(String(s.rollNo || s.id), { ...s }));
 
   (Array.isArray(allStudents) ? allStudents : []).forEach((s) => {
-    if (s && (s.rollNo || s.id)) {
-      combinedMap.set(String(s.rollNo || s.id), {
-        ...s,
-        cgpa: parseFloat(s.cgpa) || 8.0,
+    if (s && (s.rollNo || s.roll || s.id)) {
+      const key = String(s.rollNo || s.roll || s.id).trim();
+      combinedMap.set(key, {
+        id: s.id || key,
+        name: s.name || s.username || key,
+        rollNo: s.rollNo || s.roll || key,
+        cgpa: parseFloat(s.cgpa) || parseFloat(s.gpa) || 8.0,
+        grade: s.grade || "A",
+        dept: s.department || s.dept || studentDoc?.department || "AI & DS",
       });
     }
   });
@@ -416,7 +356,7 @@ export function calculateRealStudentRank(studentDoc, allStudents = []) {
     rollNo: studentRoll,
     cgpa: studentCgpa,
     grade: studentDoc?.grade || "A+",
-    dept: studentDoc?.department || "AI & DS",
+    dept: studentDoc?.department || studentDoc?.dept || "AI & DS",
     isCurrentUser: true,
   });
 
@@ -427,7 +367,7 @@ export function calculateRealStudentRank(studentDoc, allStudents = []) {
   const studentIndex = sorted.findIndex(
     (s) => s.rollNo === studentRoll || s.id === studentDoc?.id || s.isCurrentUser
   );
-  const realRankNumber = studentIndex !== -1 ? studentIndex + 1 : 5;
+  const realRankNumber = studentIndex !== -1 ? studentIndex + 1 : 1;
   const rankText = `${getOrdinalSuffix(realRankNumber)} in Department`;
 
   // Top 3 with medals
@@ -461,6 +401,14 @@ function enrichStudentDoc(doc) {
   clone.grade = metrics.grade;
   clone.rank = metrics.rank;
 
+  // University Registration Number (Distinct from Department Roll Number)
+  if (!clone.regNo || clone.regNo === clone.rollNo) {
+    clone.regNo = clone.universityNo || clone.registerNo || clone.registerNumber || "71052408001";
+  }
+  clone.universityNo = clone.regNo;
+  clone.registerNo = clone.regNo;
+  clone.registerNumber = clone.regNo;
+
   return clone;
 }
 
@@ -480,9 +428,27 @@ export async function getDepartmentTopRanks(department = "AI & DS", currentStude
   }
 }
 
-export async function getStudentData() {
+export async function getStudentData(force = false) {
   const db = await getDatabase();
   const cached = db.primaryStudent;
+
+  // Force a fresh backend fetch (used after login / profile re-sync)
+  // so a previously cached or seeded student doc can't shadow the real one.
+  if (force) {
+    try {
+      const { doc } = await fetchStudentDoc();
+      if (doc) {
+        const enriched = enrichStudentDoc(doc);
+        await mergeIntoCache({ primaryStudent: enriched });
+        notifyDataSubscribers("primaryStudent", enriched);
+        return enriched;
+      }
+    } catch (e) {
+      console.warn("Forced student sync error:", e?.message || e);
+    }
+    if (cached) return enrichStudentDoc(cached);
+    return null;
+  }
 
   // Background delta sync check
   if (shouldSyncDelta("primaryStudent", 25)) {
@@ -509,135 +475,89 @@ export async function getStudentData() {
     return enriched;
   }
 
-  // Auto-seed a student document
-  const rollNo = identity.rollNo || (identity.username === "velu" ? "STU-2024-AIDS01" : identity.username) || "STU-2024-AIDS01";
-  const seedDoc = {
-    rollNo,
-    name: identity.user?.profile?.name || "Velu",
-    nickname: getDeterministicNickname(rollNo),
-    residentialStatus: "Day Scholar (Inside)",
-    motherName: "—",
-    email: `${identity.username || "velu"}@edunex.edu`,
-    phone: "+91 98000 10001",
-    mobile: "+91 98000 10001",
-    gender: "Male",
-    bloodGroup: "O+",
-    dob: "15 May 2004",
-    department: "Artificial Intelligence & Data Science",
-    departmentCode: "aids",
-    dept: "AI & DS",
+  // Fallback to session user doc if not found in DB
+  const rollNo = identity.rollNo || (identity.username ? String(identity.username).toUpperCase() : "");
+  const regNo = identity.student?.regNo || identity.user?.regNo || identity.user?.profile?.regNo || "71052408001";
+  
+  if (!rollNo && !identity.user) return null;
+
+  const sessionDoc = {
+    rollNo: rollNo || "25BAD015",
+    regNo,
+    universityNo: regNo,
+    registerNo: regNo,
+    registerNumber: regNo,
+    name: identity.user?.profile?.name || identity.user?.name || identity.username || "Student",
+    nickname: getDeterministicNickname(rollNo || "25BAD015"),
+    residentialStatus: identity.user?.residentialStatus || "Day Scholar",
+    motherName: identity.user?.motherName || "—",
+    email: identity.user?.email || `${identity.username || "student"}@edunex.edu`,
+    phone: identity.user?.phone || identity.user?.mobile || "",
+    mobile: identity.user?.mobile || identity.user?.phone || "",
+    gender: identity.user?.gender || "Male",
+    bloodGroup: identity.user?.bloodGroup || "—",
+    dob: identity.user?.dob || "—",
+    department: identity.user?.department || "Artificial Intelligence & Data Science",
+    departmentCode: identity.user?.departmentCode || "aids",
+    dept: identity.user?.dept || "AI & DS",
     deptShort: "AI & DS",
     departmentShort: "AI & DS",
-    degree: "B.Tech in Artificial Intelligence & Data Science",
-    program: "B.Tech",
-    year: "III Year",
-    semester: "5th Semester",
-    section: "AI & DS - A",
-    class: "AI & DS - A",
-    batch: "2024-2028",
+    degree: identity.user?.degree || "B.Tech in Artificial Intelligence & Data Science",
+    program: identity.user?.program || "B.Tech",
+    year: identity.user?.year || "I Year",
+    semester: identity.user?.semester || "Sem I",
+    section: identity.user?.section || "A",
+    class: identity.user?.class || "AI & DS - A",
+    batch: identity.user?.batch || "2024-2028",
     lateral: false,
     hostel: false,
-    residential: "Day Scholar (Inside)",
+    residential: identity.user?.residentialStatus || "Day Scholar",
     status: "active",
-    cgpa: "8.65",
-    gpa: "8.80",
-    rank: "5th in Department",
-    creditsEarned: 92,
+    cgpa: identity.user?.cgpa || "—",
+    gpa: identity.user?.gpa || "—",
+    rank: "—",
+    creditsEarned: 0,
     totalCredits: 160,
-    grade: "A",
-    feeStatus: "Pending (Term 5)",
-    attendance: {
-      percentage: "93.4%",
-      status: "Good Standing",
-      attendedClasses: 184,
-      totalClasses: 197,
+    grade: "—",
+    feeStatus: "—",
+    attendance: identity.user?.attendance || {
+      percentage: "—",
+      status: "—",
+      attendedClasses: 0,
+      totalClasses: 0,
     },
-    fees: {
-      total: 100000,
-      paid: 125000,
-      due: 35000,
-      dueDate: "15 Sep 2026",
-      dueFees: "Rs. 35,000",
-      paidFees: "Rs. 1,25,000",
-      totalFees: "Rs. 1,60,000",
-      feeStatus: "Pending (Term 5)",
-      dueInvoices: [
-        { id: "INV-STU-2024-AIDS01-05", invoiceNo: "INV/2026/05/01", title: "Tuition & Core Computing Fee (Sem 5)", category: "Tuition", amount: 35000, dueDate: "15 Sep 2026", status: "due", term: "Odd '26 (Sem 5)", description: "5th Semester Academic Tuition, AI High-Compute GPU Lab Access & IEEE Digital Library Subscription" },
-      ],
-      history: [
-        { id: "TXN-STU-2024-AIDS01-04", receiptNo: "REC-2026-0801", title: "Tuition & Laboratory Fee - Semester 4", amount: 45000, date: "12 Jan 2026, 10:30 AM", method: "Online NetBanking (HDFC Bank)", txnId: "TXN-EDX-880101", status: "completed" },
-        { id: "TXN-STU-2024-AIDS01-03", receiptNo: "REC-2025-0401", title: "Tuition & Development Fee - Semester 3", amount: 40000, date: "15 Jul 2025, 02:15 PM", method: "UPI (Google Pay)", txnId: "TXN-EDX-770102", status: "completed" },
-        { id: "TXN-STU-2024-AIDS01-02", receiptNo: "REC-2025-0101", title: "Tuition & Practical Lab Fee - Semester 2", amount: 40000, date: "10 Jan 2025, 11:00 AM", method: "Online NetBanking (SBI)", txnId: "TXN-EDX-660103", status: "completed" },
-      ],
+    fees: identity.user?.fees || {
+      total: 0,
+      paid: 0,
+      due: 0,
+      dueInvoices: [],
+      history: [],
     },
-    subjects: [
-      { code: "AD-506", name: "Machine Learning", title: "Machine Learning", type: "Theory", credits: 4, faculty: "Mr. S. Chandramohan", grade: "A", marks: 87, attendance: "92%", staffHours: "38 / 40 Hours", attendedHours: 38, totalHours: 40, attendancePct: 95, unitsCovered: "4 / 5 Units", syllabusCovered: 82, activeUnit: "Unit 5: Deep Learning Essentials", ciaScore: "44 / 50", gradeExpected: "A", color: "#10B981", icon: "brain", units: ["Unit 1: Supervised Learning (Completed)", "Unit 2: Unsupervised Learning (Completed)", "Unit 3: Neural Networks & Backpropagation (In Progress)"] },
-      { code: "AD-502", name: "Big Data Analytics", title: "Big Data Analytics", type: "Theory", credits: 4, faculty: "Ms. M. Malliga", grade: "A", marks: 84, attendance: "89%", staffHours: "36 / 40 Hours", attendedHours: 36, totalHours: 40, attendancePct: 90, unitsCovered: "4 / 5 Units", syllabusCovered: 80, activeUnit: "Unit 5: Spark & Streaming", ciaScore: "42 / 50", gradeExpected: "A", color: "#F59E0B", icon: "database-search", units: ["Unit 1: Hadoop Ecosystem (Completed)", "Unit 2: MapReduce & HDFS (Completed)", "Unit 3: Hive & Pig (In Progress)"] },
-      { code: "AD-501", name: "Software Engineering", title: "Software Engineering", type: "Theory", credits: 3, faculty: "Ms. Arul Mozhi", grade: "A+", marks: 90, attendance: "95%", staffHours: "34 / 36 Hours", attendedHours: 34, totalHours: 36, attendancePct: 94.4, unitsCovered: "4.5 / 5 Units", syllabusCovered: 88, activeUnit: "Unit 5: DevOps & CI/CD", ciaScore: "47 / 50", gradeExpected: "A+", color: "#F59E0B", icon: "source-branch", units: ["Unit 1: SDLC & Agile (Completed)", "Unit 2: UML & Design Patterns (Completed)", "Unit 3: Testing & QA (In Progress)"] },
-      { code: "AD-504", name: "Applied Design Thinking", title: "Applied Design Thinking", type: "Theory", credits: 3, faculty: "Ms. Arul Mozhi", grade: "A", marks: 82, attendance: "91%", staffHours: "26 / 30 Hours", attendedHours: 26, totalHours: 30, attendancePct: 86.7, unitsCovered: "3 / 5 Units", syllabusCovered: 74, activeUnit: "Unit 4: Prototyping & Testing", ciaScore: "40 / 50", gradeExpected: "A", color: "#8B5CF6", icon: "lightbulb-on-outline", units: ["Unit 1: Empathize & Define (Completed)", "Unit 2: Ideate & Storyboard (Completed)", "Unit 3: Prototyping (In Progress)"] },
-      { code: "AD-505", name: "Fundamentals of Cloud Computing", title: "Fundamentals of Cloud Computing", type: "Theory", credits: 3, faculty: "Mr. S. Chandramohan", grade: "A", marks: 80, attendance: "88%", staffHours: "28 / 32 Hours", attendedHours: 28, totalHours: 32, attendancePct: 87.5, unitsCovered: "4 / 5 Units", syllabusCovered: 78, activeUnit: "Unit 5: Cloud Security", ciaScore: "41 / 50", gradeExpected: "A", color: "#0EA5E9", icon: "cloud-outline", units: ["Unit 1: IaaS/PaaS/SaaS (Completed)", "Unit 2: Virtualization (Completed)", "Unit 3: AWS/Azure/GCP (In Progress)"] },
-      { code: "AD-509", name: "Explainable AI", title: "Explainable AI", type: "Theory", credits: 3, faculty: "Mr. S. Chandramohan", grade: "A+", marks: 88, attendance: "94%", staffHours: "30 / 32 Hours", attendedHours: 30, totalHours: 32, attendancePct: 93.8, unitsCovered: "4 / 5 Units", syllabusCovered: 82, activeUnit: "Unit 5: Fairness & Bias", ciaScore: "46 / 50", gradeExpected: "A+", color: "#6366F1", icon: "account-eye-outline", units: ["Unit 1: Interpretability (Completed)", "Unit 2: LIME & SHAP (Completed)", "Unit 3: Counterfactuals (In Progress)"] },
-      { code: "AD-503", name: "Industry Oriented Course", title: "Industry Oriented Course", type: "Theory", credits: 3, faculty: "Ms. M. Malliga", grade: "A", marks: 85, attendance: "90%", staffHours: "24 / 28 Hours", attendedHours: 24, totalHours: 28, attendancePct: 85.7, unitsCovered: "3 / 5 Units", syllabusCovered: 76, activeUnit: "Project Sprint 2", ciaScore: "43 / 50", gradeExpected: "A", color: "#14B8A6", icon: "briefcase-outline", units: ["Module 1: Industry Case Studies (Completed)", "Module 2: Live Project (In Progress)"] },
-      { code: "AD-513", name: "Machine Learning Laboratory", title: "Machine Learning Laboratory", type: "Practical Lab", credits: 2, faculty: "Mr. S. Chandramohan", grade: "O", marks: 94, attendance: "98%", staffHours: "38 / 40 Hours", attendedHours: 38, totalHours: 40, attendancePct: 95, unitsCovered: "5 / 6 Modules", syllabusCovered: 92, activeUnit: "Mini Project: EDA Pipeline", ciaScore: "48 / 50", gradeExpected: "O", color: "#10B981", icon: "flask-outline", units: ["Exp 1-2: Python & NumPy (Completed)", "Exp 3-4: Regression & Classifiers (Completed)", "Exp 5-6: Neural Network Lab (In Progress)"] },
-      { code: "AD-514", name: "Big Data Analytics Laboratory", title: "Big Data Analytics Laboratory", type: "Practical Lab", credits: 2, faculty: "Ms. M. Malliga", grade: "A+", marks: 91, attendance: "96%", staffHours: "37 / 40 Hours", attendedHours: 37, totalHours: 40, attendancePct: 92.5, unitsCovered: "5 / 6 Modules", syllabusCovered: 90, activeUnit: "Spark SQL Project", ciaScore: "46 / 50", gradeExpected: "A+", color: "#F59E0B", icon: "chart-box-outline", units: ["Exp 1-2: HDFS Commands (Completed)", "Exp 3-4: MapReduce Jobs (Completed)", "Exp 5-6: Spark Streaming (In Progress)"] },
-      { code: "AD-511", name: "Software Engineering Laboratory", title: "Software Engineering Laboratory", type: "Practical Lab", credits: 2, faculty: "Ms. Arul Mozhi", grade: "A", marks: 89, attendance: "95%", staffHours: "36 / 40 Hours", attendedHours: 36, totalHours: 40, attendancePct: 90, unitsCovered: "5 / 6 Modules", syllabusCovered: 88, activeUnit: "UML Case Study", ciaScore: "45 / 50", gradeExpected: "A", color: "#F59E0B", icon: "code-tags", units: ["Exp 1-3: Requirements & Use Cases (Completed)", "Exp 4-6: Sequence & Class Diagrams (Completed)"] },
-      { code: "AD-508", name: "Placement & Training", title: "Placement & Training", type: "Theory", credits: 1, faculty: "Ms. M. Malliga", grade: "A", marks: 85, attendance: "95%", staffHours: "20 / 22 Hours", attendedHours: 20, totalHours: 22, attendancePct: 90.9, unitsCovered: "DSA, Aptitude & Mock Interviews", syllabusCovered: 90, activeUnit: "Technical Coding Round Mastery", ciaScore: "—", gradeExpected: "Pass", color: "#14B8A6", icon: "briefcase-outline", units: ["DSA Interview Patterns (Completed)", "Quantitative Aptitude (Completed)", "System Design Fundamentals (In Progress)"] },
-      { code: "AD-510", name: "Seminar on Emerging Trends", title: "Seminar on Emerging Trends", type: "Theory", credits: 1, faculty: "Ms. Z. Ananth Angel", grade: "A+", marks: 90, attendance: "100%", staffHours: "15 / 15 Hours", attendedHours: 15, totalHours: 15, attendancePct: 100, unitsCovered: "Research Presentations", syllabusCovered: 100, activeUnit: "Technical Paper Presentation", ciaScore: "—", gradeExpected: "A+", color: "#6366F1", icon: "presentation", units: ["Literature Survey (Completed)", "Technical Presentation (Completed)"] },
-      { code: "AD-507", name: "Mentor & Tutor Ward", title: "Mentor & Tutor Ward", type: "Theory", credits: 1, faculty: "Ms. Z. Ananth Angel", grade: "O", marks: 95, attendance: "100%", staffHours: "15 / 15 Hours", attendedHours: 15, totalHours: 15, attendancePct: 100, unitsCovered: "Academic & Career Counseling", syllabusCovered: 100, activeUnit: "Quarterly Review", ciaScore: "—", gradeExpected: "O", color: "#6366F1", icon: "account-supervisor-outline", units: ["Semester Goal Setting (Completed)", "Mid-Term Academic Progress Review (Completed)"] },
-      { code: "AD-512", name: "NPTEL / Library", title: "NPTEL / Library", type: "Theory", credits: 1, faculty: "Ms. Z. Ananth Angel", grade: "A", marks: 88, attendance: "95%", staffHours: "15 / 16 Hours", attendedHours: 15, totalHours: 16, attendancePct: 93.8, unitsCovered: "Self-Paced Certification", syllabusCovered: 85, activeUnit: "NPTEL Deep Learning Assignment 6", ciaScore: "—", gradeExpected: "Elite", color: "#64748B", icon: "book-reader", units: ["NPTEL Deep Learning Course (In Progress)", "IEEE Xplore Research Reading (Completed)"] },
-    ],
-    schedule: [
-      { time: "09:00 AM - 09:55 AM", subject: "Machine Learning", code: "ML", faculty: "Mr. S. Chandramohan", room: "D205", color: "#10B981" },
-      { time: "09:55 AM - 10:50 AM", subject: "Software Engineering", code: "SE", faculty: "Ms. Arul Mozhi", room: "D205", color: "#F59E0B" },
-      { time: "11:10 AM - 12:00 PM", subject: "Machine Learning", code: "ML", faculty: "Mr. S. Chandramohan", room: "D205", color: "#10B981" },
-      { time: "12:00 PM - 04:10 PM", subject: "Big Data Analytics Lab", code: "BDA LAB", faculty: "Ms. M. Malliga", room: "Big Data Lab", color: "#3B82F6" },
-      { time: "04:10 PM - 05:00 PM", subject: "Explainable AI", code: "X-AI", faculty: "Mr. S. Chandramohan", room: "D205", color: "#6366F1" },
-    ],
-    library: {
-      books: 2,
-      dueIn: "8 days",
+    subjects: Array.isArray(identity.user?.subjects) ? identity.user.subjects : [],
+    schedule: Array.isArray(identity.user?.schedule) ? identity.user.schedule : [],
+    library: identity.user?.library || {
+      books: 0,
+      dueIn: "—",
       fine: 0,
-      borrowed: [
-        { id: "BK-001", title: "Pattern Recognition and Machine Learning", author: "Christopher M. Bishop", dueDate: "10 Sep 2026", issuedDate: "20 Aug 2026" },
-        { id: "BK-002", title: "Hadoop: The Definitive Guide", author: "Tom White", dueDate: "15 Sep 2026", issuedDate: "22 Aug 2026" },
-      ],
+      borrowed: [],
     },
-    parent: {
-      name: "Kumar",
-      relation: "Father",
-      phone: "+91 98000 10003",
-      email: "kumar@edunex.edu",
-      address: "15, Gandhipuram, Coimbatore, Tamil Nadu 641012",
-    },
-    advisor: {
-      name: "Ms. Z. Ananth Angel",
-      id: "STF-AIDS001",
-      designation: "Assistant Professor & Class Tutor (III AI&DS-A)",
-      department: "Artificial Intelligence & Data Science",
-      email: "ananthangel@edunex.edu",
-      phone: "+91 98000 10005",
-      room: "D205",
-      cabin: "Department of AI & DS, Cabin D205",
-    },
-    nextExam: {
-      subject: "Machine Learning",
-      date: "18 Sep 2026",
-      time: "10:00 AM - 01:00 PM",
-      room: "Exam Hall D2",
-    },
+    parent: identity.user?.parent || null,
+    advisor: identity.user?.advisor || null,
   };
 
-  const created = await ensureDocByField("/students", "rollNo", rollNo, seedDoc);
-  if (created) {
-    await mergeIntoCache({ primaryStudent: created });
-    return created;
-  }
-  return seedDoc;
+  const enriched = enrichStudentDoc(sessionDoc);
+  await mergeIntoCache({ primaryStudent: enriched });
+  return enriched;
 }
 
 export async function getStudentSubjects() {
   const student = (await getStudentData()) || (await getDatabase()).primaryStudent;
-  return Array.isArray(student?.subjects) ? student.subjects : [];
+  if (Array.isArray(student?.subjects) && student.subjects.length > 0) {
+    return student.subjects;
+  }
+  // If subjects empty on student doc, fetch from the database /subjects catalog
+  const catalog = await getSubjects();
+  return catalog;
 }
 
 export async function getStudentFees() {
@@ -653,9 +573,9 @@ export async function getStudentFees() {
   }
 
   let feesObj = {
-    total: 160000,
-    paid: 125000,
-    due: 35000,
+    total: 0,
+    paid: 0,
+    due: 0,
     dueInvoices: [],
     history: [],
     breakdown: [],
@@ -666,8 +586,8 @@ export async function getStudentFees() {
   if (studentId) {
     try {
       const [studentDocRes, feesListRes] = await Promise.allSettled([
-        api.get(`/students/${studentId}`),
-        api.get(`/fees?studentId=${studentId}`),
+        api.get(`/students/${encodeURIComponent(studentId)}`),
+        api.get("/fees", { studentId }),
       ]);
 
       if (studentDocRes.status === "fulfilled" && studentDocRes.value?.data?.fees) {
@@ -679,34 +599,41 @@ export async function getStudentFees() {
         const dueItems = feeRecords.filter(f => f.status?.toLowerCase() === "pending" || f.status?.toLowerCase() === "due");
         const paidItems = feeRecords.filter(f => f.status?.toLowerCase() === "paid" || f.status?.toLowerCase() === "completed");
 
-        if (dueItems.length > 0) {
-          feesObj.dueInvoices = dueItems.map(d => ({
-            id: d.id || d.invoiceId,
-            invoiceNo: d.invoiceId || d.invoiceNo || d.id,
-            title: d.item || d.title,
-            category: d.category || "Tuition",
-            amount: Number(d.amount) || 0,
-            dueDate: d.dueDate || "15 Sep 2026",
-            status: "due",
-            term: d.semester || "5th Semester",
-            description: d.description || `${d.semester || "5th Semester"} Tuition & Lab Fee`,
-            icon: "school-outline",
-            iconBg: "#2563EB",
-          }));
-        }
+        const paidSum = paidItems.reduce((s, p) => s + (Number(p.amount) || Number(p.paid) || 0), 0);
+        const dueSum = dueItems.reduce((s, d) => s + (Number(d.amount) || 0), 0);
 
-        if (paidItems.length > 0) {
-          feesObj.history = paidItems.map(p => ({
-            id: p.id || p.invoiceId,
-            receiptNo: p.receiptNo || p.invoiceId || p.id,
-            title: p.item || p.title,
-            amount: Number(p.amount) || 0,
-            date: p.paymentDate || p.date || "10 Jan 2026",
-            method: p.method || "Online NetBanking / UPI",
-            txnId: p.txnId || p.transactionId || `TXN-${p.id}`,
-            status: "completed",
-          }));
-        }
+        feesObj.paid = paidSum;
+        feesObj.due = dueSum;
+        feesObj.total = paidSum + dueSum;
+        feesObj.paidFees = `Rs. ${paidSum.toLocaleString("en-IN")}`;
+        feesObj.dueFees = `Rs. ${dueSum.toLocaleString("en-IN")}`;
+        feesObj.totalFees = `Rs. ${(paidSum + dueSum).toLocaleString("en-IN")}`;
+        feesObj.feeStatus = dueSum > 0 ? "Pending Dues" : "All Fees Cleared";
+
+        feesObj.dueInvoices = dueItems.map(d => ({
+          id: d.id || d.invoiceId,
+          invoiceNo: d.invoiceId || d.invoiceNo || d.id,
+          title: d.item || d.title || "Academic Fee",
+          category: d.category || "Tuition",
+          amount: Number(d.amount) || 0,
+          dueDate: d.dueDate || "—",
+          status: "due",
+          term: d.semester || "Semester",
+          description: d.description || `${d.semester || ""} Tuition & Lab Fee`,
+          icon: "school-outline",
+          iconBg: "#2563EB",
+        }));
+
+        feesObj.history = paidItems.map(p => ({
+          id: p.id || p.invoiceId,
+          receiptNo: p.receiptNo || p.invoiceId || p.id,
+          title: p.item || p.title || "Fee Payment",
+          amount: Number(p.amount) || 0,
+          date: p.paymentDate || p.date || "—",
+          method: p.method || "Online Payment",
+          txnId: p.txnId || p.transactionId || `TXN-${p.id}`,
+          status: "completed",
+        }));
       }
     } catch (e) {
       console.log("Error querying live fees from backend:", e);
@@ -721,7 +648,17 @@ export async function getStudentFees() {
 
 export async function getStudentSchedule() {
   const student = (await getStudentData()) || (await getDatabase()).primaryStudent;
-  return Array.isArray(student?.schedule) ? student.schedule : [];
+  if (Array.isArray(student?.schedule) && student.schedule.length > 0) {
+    return student.schedule;
+  }
+  // Try fetching timetable for student
+  try {
+    const tt = await getTimetable();
+    const today = new Date().toLocaleDateString("en-US", { weekday: "long" });
+    const daySchedule = tt?.[0]?.schedule?.[today] || tt?.[0]?.schedule?.["Monday"] || [];
+    if (daySchedule.length > 0) return daySchedule;
+  } catch {}
+  return [];
 }
 
 export async function getStudentLibrary() {
@@ -745,8 +682,8 @@ export async function getGradeLevels() {
 
   let list = [];
   try {
-    const rawList = await ensureCollection("/gradeLevels", defaultScale);
-    if (Array.isArray(rawList)) {
+    const rawList = await ensureCollection("/gradeLevels");
+    if (Array.isArray(rawList) && rawList.length > 0) {
       const seen = new Set();
       list = rawList.filter((item) => {
         const g = item?.grade?.trim?.() || "";
@@ -766,71 +703,17 @@ export async function getGradeLevels() {
 // 📋 ASSIGNMENTS & ATTENDANCE SERVICES
 // ─────────────────────────────────────────────
 
-export async function getAssignments(params = {}) {
-  const identity = await resolveIdentity();
+export async function getAssignments(params = {}, force = false) {
   const endpoint = "/assignments";
   const query = { sort: "-createdAt", limit: 50, ...params };
 
-  let list = [];
   try {
-    const res = await api.get(endpoint, query);
-    list = Array.isArray(res?.data) ? res.data : [];
-  } catch {}
-
-  // Auto-seed if empty for student
-  if (list.length === 0 && identity.role === "student") {
-    const student = (await getStudentData()) || (await getDatabase()).primaryStudent;
-    const rollNo = student?.rollNo || identity.rollNo || identity.username;
-    const seedDocs = [
-      {
-        title: "Machine Learning - Neural Network Backpropagation",
-        subject: "Machine Learning",
-        subjectCode: "AD-506",
-        assignedBy: "Mr. S. Chandramohan",
-        assignedTo: rollNo,
-        assignedToName: student?.name || "Student",
-        description: "Implement backpropagation for a 3-layer neural network on the MNIST dataset.",
-        dueDate: "28 Aug 2026",
-        status: "Pending",
-        totalMarks: 50,
-        obtainedMarks: null,
-      },
-      {
-        title: "Big Data Analytics - MapReduce Word Count",
-        subject: "Big Data Analytics",
-        subjectCode: "AD-502",
-        assignedBy: "Ms. M. Malliga",
-        assignedTo: rollNo,
-        assignedToName: student?.name || "Student",
-        description: "Write a MapReduce job to compute word frequency over a given text corpus.",
-        dueDate: "01 Sep 2026",
-        status: "Submitted",
-        totalMarks: 50,
-        obtainedMarks: 42,
-      },
-      {
-        title: "Software Engineering - Test Case Design",
-        subject: "Software Engineering",
-        subjectCode: "AD-501",
-        assignedBy: "Ms. Arul Mozhi",
-        assignedTo: rollNo,
-        assignedToName: student?.name || "Student",
-        description: "Design black-box and white-box test cases for an ATM cash withdrawal system.",
-        dueDate: "05 Sep 2026",
-        status: "Pending",
-        totalMarks: 30,
-        obtainedMarks: null,
-      },
-    ];
-    for (const doc of seedDocs) {
-      try { await api.post(endpoint, doc); } catch {}
-    }
-    try {
-      const res2 = await api.get(endpoint, query);
-      list = Array.isArray(res2?.data) ? res2.data : [];
-    } catch {}
+    const res = await api.get(endpoint, query, {}, { noCache: force });
+    return Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+  } catch (e) {
+    console.warn("getAssignments error:", e?.message || e);
+    return [];
   }
-  return list;
 }
 
 export async function submitAssignment(asgId, submissionData = {}) {
@@ -1016,69 +899,13 @@ export async function getStudentAttendanceSummary() {
 }
 
 export async function getTimetable(params = {}) {
-  let list = [];
   try {
     const res = await api.get("/timetable", { limit: 10, ...params });
-    list = Array.isArray(res?.data) ? res.data : [];
-  } catch {}
-
-  if (list.length === 0) {
-    // Auto-seed a default timetable for III Year AI & DS Section A
-    const seedSchedule = {
-      departmentCode: "AIDS",
-      departmentName: "Artificial Intelligence & Data Science",
-      year: 3,
-      section: "A",
-      schedule: {
-        Monday: [
-          { time: "9:00 AM", duration: "60m", subject: "Machine Learning", teacher: "Mr. S. Chandramohan", room: "D205", color: "#10B981", isBreak: false },
-          { time: "10:00 AM", duration: "15m", subject: "Break", teacher: "", room: "", color: "#64748b", isBreak: true },
-          { time: "10:15 AM", duration: "60m", subject: "Software Engineering", teacher: "Ms. Arul Mozhi", room: "D205", color: "#F59E0B", isBreak: false },
-          { time: "11:15 AM", duration: "60m", subject: "Big Data Analytics", teacher: "Ms. M. Malliga", room: "D205", color: "#3B82F6", isBreak: false },
-          { time: "12:15 PM", duration: "60m", subject: "Lunch Break", teacher: "", room: "", color: "#64748b", isBreak: true },
-          { time: "1:15 PM", duration: "60m", subject: "Machine Learning", teacher: "Mr. S. Chandramohan", room: "D205", color: "#10B981", isBreak: false },
-        ],
-        Tuesday: [
-          { time: "9:00 AM", duration: "60m", subject: "Software Engineering", teacher: "Ms. Arul Mozhi", room: "D205", color: "#F59E0B", isBreak: false },
-          { time: "10:00 AM", duration: "15m", subject: "Break", teacher: "", room: "", color: "#64748b", isBreak: true },
-          { time: "10:15 AM", duration: "60m", subject: "Machine Learning", teacher: "Mr. S. Chandramohan", room: "D205", color: "#10B981", isBreak: false },
-          { time: "11:15 AM", duration: "60m", subject: "Cloud Computing", teacher: "Mr. S. Chandramohan", room: "D205", color: "#0EA5E9", isBreak: false },
-          { time: "12:15 PM", duration: "60m", subject: "Lunch Break", teacher: "", room: "", color: "#64748b", isBreak: true },
-          { time: "1:15 PM", duration: "120m", subject: "Machine Learning Lab", teacher: "Mr. S. Chandramohan", room: "AI&DS Lab 1", color: "#10B981", isBreak: false },
-        ],
-        Wednesday: [
-          { time: "9:00 AM", duration: "60m", subject: "Big Data Analytics", teacher: "Ms. M. Malliga", room: "D205", color: "#3B82F6", isBreak: false },
-          { time: "10:00 AM", duration: "15m", subject: "Break", teacher: "", room: "", color: "#64748b", isBreak: true },
-          { time: "10:15 AM", duration: "60m", subject: "Explainable AI", teacher: "Mr. S. Chandramohan", room: "D205", color: "#6366F1", isBreak: false },
-          { time: "11:15 AM", duration: "60m", subject: "Machine Learning", teacher: "Mr. S. Chandramohan", room: "D205", color: "#10B981", isBreak: false },
-          { time: "12:15 PM", duration: "60m", subject: "Lunch Break", teacher: "", room: "", color: "#64748b", isBreak: true },
-          { time: "1:15 PM", duration: "120m", subject: "Big Data Analytics Lab", teacher: "Ms. M. Malliga", room: "Big Data Lab", color: "#3B82F6", isBreak: false },
-        ],
-        Thursday: [
-          { time: "9:00 AM", duration: "60m", subject: "Cloud Computing", teacher: "Mr. S. Chandramohan", room: "D205", color: "#0EA5E9", isBreak: false },
-          { time: "10:00 AM", duration: "15m", subject: "Break", teacher: "", room: "", color: "#64748b", isBreak: true },
-          { time: "10:15 AM", duration: "60m", subject: "Big Data Analytics", teacher: "Ms. M. Malliga", room: "D205", color: "#3B82F6", isBreak: false },
-          { time: "11:15 AM", duration: "60m", subject: "Applied Design Thinking", teacher: "Ms. Arul Mozhi", room: "D205", color: "#8B5CF6", isBreak: false },
-          { time: "12:15 PM", duration: "60m", subject: "Lunch Break", teacher: "", room: "", color: "#64748b", isBreak: true },
-          { time: "1:15 PM", duration: "120m", subject: "Software Engineering Lab", teacher: "Ms. Arul Mozhi", room: "AI&DS Lab 1", color: "#F59E0B", isBreak: false },
-        ],
-        Friday: [
-          { time: "9:00 AM", duration: "60m", subject: "Explainable AI", teacher: "Mr. S. Chandramohan", room: "D205", color: "#6366F1", isBreak: false },
-          { time: "10:00 AM", duration: "15m", subject: "Break", teacher: "", room: "", color: "#64748b", isBreak: true },
-          { time: "10:15 AM", duration: "60m", subject: "Machine Learning", teacher: "Mr. S. Chandramohan", room: "D205", color: "#10B981", isBreak: false },
-          { time: "11:15 AM", duration: "60m", subject: "Big Data Analytics", teacher: "Ms. M. Malliga", room: "D205", color: "#3B82F6", isBreak: false },
-          { time: "12:15 PM", duration: "60m", subject: "Lunch Break", teacher: "", room: "", color: "#64748b", isBreak: true },
-          { time: "1:15 PM", duration: "60m", subject: "Placement & Training", teacher: "Ms. M. Malliga", room: "D205", color: "#14B8A6", isBreak: false },
-        ],
-      },
-    };
-    try { await api.post("/timetable", seedSchedule); } catch {}
-    try {
-      const res2 = await api.get("/timetable", { limit: 10, ...params });
-      list = Array.isArray(res2?.data) ? res2.data : [];
-    } catch {}
+    return Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+  } catch (err) {
+    console.warn("getTimetable error:", err?.message || err);
+    return [];
   }
-  return list;
 }
 
 // –––––––––––––––––––––––––––––––––––––––––––––
@@ -1130,9 +957,36 @@ export function enrichSubjectFromCatalog(subject, catalog) {
 // 👨‍🏫 FACULTY DATA SERVICES
 // –––––––––––––––––––––––––––––––––––––––––––––
 
-export async function getFacultyData() {
+export async function getFacultyData(force = false) {
   const db = await getDatabase();
   const cached = db.primaryFaculty;
+
+  if (force) {
+    try {
+      const identity = await resolveIdentity(true);
+      let doc = null;
+      if (identity.staffId) {
+        doc = await api
+          .get(`/staff/${encodeURIComponent(identity.staffId)}`, {}, {}, { noCache: true })
+          .then((r) => r?.data || null)
+          .catch(() => null);
+      }
+      if (!doc && identity.username) {
+        doc = await api
+          .get("/staff", { q: identity.username, limit: 1 }, {}, { noCache: true })
+          .then((r) => r?.data?.[0] || null)
+          .catch(() => null);
+      }
+      if (doc) {
+        await mergeIntoCache({ primaryFaculty: doc });
+        notifyDataSubscribers("primaryFaculty", doc);
+        return doc;
+      }
+    } catch (e) {
+      console.warn("Forced faculty sync error:", e?.message);
+    }
+    if (cached) return cached;
+  }
 
   // Background delta sync check
   if (shouldSyncDelta("primaryFaculty", 25)) {
@@ -1174,57 +1028,45 @@ export async function getFacultyData() {
     return doc;
   }
 
-  // Auto-seed staff
+  // Fallback to session user doc
   const staffId = identity.staffId || identity.username || "STF001";
-  const seedDoc = {
+  const sessionDoc = {
     staffId,
-    name: identity.user?.profile?.name || "Ms. Z. Ananth Angel",
-    email: `${identity.username}@edunex.edu`,
-    phone: "+91 98000 10005",
-    address: "Staff Quarters, EduNex Campus",
-    gender: "Female",
-    bloodGroup: "B+",
-    dob: "10 Aug 1990",
-    department: "Artificial Intelligence & Data Science",
-    departmentCode: "aids",
-    position: "Assistant Professor",
-    designation: "Assistant Professor & Class Tutor",
-    qualification: "M.Tech in Artificial Intelligence",
-    qualifications: "M.Tech in Artificial Intelligence",
-    specialization: "Machine Learning & Pattern Recognition",
-    experience: "5 Years Academic",
-    aicteId: "AIDS-AP-2021-045",
-    publications: 3,
-    grants: 1,
-    cabin: "Department of AI & DS, Cabin D205",
-    consultation: "Mon-Wed 2:00 PM - 4:00 PM",
-    portfolios: "Class Tutor, III AI&DS-A",
-    classTeacher: "AI & DS - A",
+    name: identity.user?.profile?.name || identity.user?.name || identity.username || "Faculty Member",
+    email: identity.user?.email || `${identity.username}@edunex.edu`,
+    phone: identity.user?.phone || identity.user?.mobile || "",
+    address: identity.user?.address || "Staff Quarters, EduNex Campus",
+    gender: identity.user?.gender || "Female",
+    bloodGroup: identity.user?.bloodGroup || "—",
+    dob: identity.user?.dob || "—",
+    department: identity.user?.department || "Artificial Intelligence & Data Science",
+    departmentCode: identity.user?.departmentCode || "aids",
+    position: identity.user?.position || "Faculty",
+    designation: identity.user?.designation || "Assistant Professor & Class Tutor",
+    qualification: identity.user?.qualification || "M.Tech",
+    qualifications: identity.user?.qualifications || "M.Tech",
+    specialization: identity.user?.specialization || "Artificial Intelligence",
+    experience: identity.user?.experience || "—",
+    aicteId: identity.user?.aicteId || "—",
+    publications: identity.user?.publications || 0,
+    grants: identity.user?.grants || 0,
+    cabin: identity.user?.cabin || "Department of AI & DS, Cabin D205",
+    consultation: identity.user?.consultation || "Mon-Wed 2:00 PM - 4:00 PM",
+    portfolios: identity.user?.portfolios || "Class Tutor, III AI&DS-A",
+    classTeacher: identity.user?.classTeacher || "AI & DS - A",
     status: "active",
-    coursesTaught: [
-      { code: "AD-506", name: "Machine Learning", class: "AI & DS - A (Year 3)", studentsCount: 60 },
-      { code: "AD-505", name: "Fundamentals of Cloud Computing", class: "AI & DS - A (Year 3)", studentsCount: 60 },
-      { code: "AD-509", name: "Explainable AI", class: "AI & DS - A (Year 3)", studentsCount: 60 },
-    ],
-    todaySchedule: [
-      { time: "09:00 AM - 10:30 AM", subject: "Machine Learning", class: "AI & DS - A", room: "D205", type: "Lecture" },
-      { time: "11:00 AM - 12:30 PM", subject: "Cloud Computing", class: "AI & DS - A", room: "D205", type: "Lecture" },
-      { time: "02:00 PM - 03:30 PM", subject: "Machine Learning Lab Practicals", class: "AI & DS - A", room: "AI&DS Lab 1", type: "Lab" },
-    ],
-    summary: {
-      classesToday: 3,
-      totalStudents: 60,
-      pendingReports: 1,
-      averageAttendance: "93.4%",
+    coursesTaught: Array.isArray(identity.user?.coursesTaught) ? identity.user.coursesTaught : [],
+    todaySchedule: Array.isArray(identity.user?.todaySchedule) ? identity.user.todaySchedule : [],
+    summary: identity.user?.summary || {
+      classesToday: 0,
+      totalStudents: 0,
+      pendingReports: 0,
+      averageAttendance: "—",
     },
   };
 
-  const created = await ensureDocByField("/staff", "staffId", staffId, seedDoc);
-  if (created) {
-    await mergeIntoCache({ primaryFaculty: created });
-    return created;
-  }
-  return seedDoc;
+  await mergeIntoCache({ primaryFaculty: sessionDoc });
+  return sessionDoc;
 }
 
 export async function getFacultyMenteeIds() {
@@ -1286,10 +1128,33 @@ export async function toggleStudentMenteeStatus(studentId) {
   return { menteeIds: updated, isMentee: updated.includes(sId) };
 }
 
-export async function getFacultyRoster(className) {
-  const identity = await resolveIdentity();
+export async function getFacultyRoster(className, force = false) {
+  const identity = await resolveIdentity(force);
   const targetClass = className || identity.className || "";
   const storedMentees = (await getFacultyMenteeIds()) || [];
+
+  if (force) {
+    try {
+      const params = targetClass ? { class: targetClass } : {};
+      const res = await api.get("/students", { ...params, sort: "rollNo", limit: 200 }, {}, { noCache: true });
+      const roster = Array.isArray(res?.data) ? res.data : [];
+      if (roster.length > 0) {
+        await mergeIntoCache({ studentsRoster: roster });
+        notifyDataSubscribers("roster", roster);
+        return roster.map((s) => {
+          const sId = String(s.id || s._id || s.rollNo || s.roll || "");
+          const isMenteeFlag = storedMentees.includes(sId) || storedMentees.includes(String(s.rollNo || s.roll)) || Boolean(s.isMentee);
+          return {
+            ...s,
+            isMentee: isMenteeFlag,
+            __class: s.class || s.section || targetClass,
+          };
+        });
+      }
+    } catch (e) {
+      console.warn("Forced roster sync error:", e?.message);
+    }
+  }
 
   // 1. Instant Cache Return (0ms latency from encrypted store)
   const db = await getDatabase();
@@ -1425,10 +1290,42 @@ export async function updateStudentAttendance(rollNo, isPresent) {
 // 👨‍👩‍👧 PARENT DATA SERVICES
 // ─────────────────────────────────────────────
 
-export async function getParentData() {
+export async function getParentData(force = false) {
   const db = await getDatabase();
   const cachedParent = db.primaryParent;
   const cachedWard = db.primaryStudent;
+
+  if (force) {
+    try {
+      const identity = await resolveIdentity(true);
+      let parent = null;
+      if (identity.parentId) {
+        parent = await api
+          .get(`/parents/${encodeURIComponent(identity.parentId)}`, {}, {}, { noCache: true })
+          .then((r) => r?.data || null)
+          .catch(() => null);
+      }
+      if (!parent && identity.parent) parent = identity.parent;
+      let ward = null;
+      const targetRoll = parent?.wardRollNo || identity.wardRollNo || parent?.studentID;
+      if (targetRoll) {
+        ward =
+          (await api
+            .get(`/students/${encodeURIComponent(targetRoll)}`, {}, {}, { noCache: true })
+            .then((r) => r?.data || null)
+            .catch(() => null)) || null;
+      }
+      if (parent || ward) {
+        await mergeIntoCache({
+          ...(parent ? { primaryParent: parent } : {}),
+          ...(ward ? { primaryStudent: ward } : {}),
+        });
+        notifyDataSubscribers("parentData", { parent, ward });
+      }
+    } catch (e) {
+      console.warn("Forced parent sync error:", e?.message);
+    }
+  }
 
   // Background delta sync check
   if (shouldSyncDelta("primaryParent", 25)) {
@@ -1463,8 +1360,10 @@ export async function getParentData() {
     })();
   }
 
+  if (!force && cachedParent && cachedWard) return { ...(cachedParent || {}), ward: cachedWard };
+
   const identity = await resolveIdentity();
-  let parent = cachedParent || null;
+  let parent = (!force && cachedParent) || null;
   if (!parent && identity.parentId) {
     parent = await api
       .get(`/parents/${encodeURIComponent(identity.parentId)}`)
@@ -1503,25 +1402,21 @@ export async function getParentData() {
     const db = await getDatabase();
     parent = db.primaryParent;
     ward = db.primaryStudent;
-    if (!parent && !ward) {
-      // Auto-seed parent
-      const parentId = identity.parentId || identity.username || "PAR001";
-      const wardRollNo = identity.wardRollNo || "STU-2024-AIDS01";
-      const seedParent = {
-        parentId,
-        name: identity.user?.profile?.name || identity.username || "Parent",
-        email: `${identity.username}@edunex.edu`,
-        phone: "+91 98000 00003",
-        address: "15, Gandhipuram, Coimbatore, Tamil Nadu 641012",
-        wardRollNo,
-        relation: "Father",
-        occupation: "Business Owner",
-        secondaryGuardian: "",
-        secondaryPhone: "",
+    if (!ward) {
+      ward = await getStudentData();
+    }
+    if (!parent && ward?.parent) {
+      parent = {
+        parentId: identity.parentId || identity.username || "PAR001",
+        name: ward.parent.name || ward.fatherName || identity.user?.profile?.name || "Parent",
+        email: ward.parent.email || `${identity.username || "parent"}@edunex.edu`,
+        phone: ward.parent.phone || ward.parentPhone || "",
+        address: ward.parent.address || ward.address || "",
+        wardRollNo: ward.rollNo || "25BAD015",
+        relation: ward.parent.relation || "Father",
+        occupation: ward.parent.occupation || "Guardian",
         status: "active",
       };
-      parent = await ensureDocByField("/parents", "parentId", parentId, seedParent);
-      ward = await getStudentData();
     }
   }
 
@@ -1537,8 +1432,8 @@ export async function getParentData() {
     parentName: parent?.name || "",
     guardianId: parent?.parentId || parent?.id || parent?.guardianId || "",
     wardName: ward?.name || "",
-    rollNo: ward?.rollNo || ward?.roll || "",
-    regNo: ward?.regNo || "",
+    rollNo: ward?.rollNo || ward?.roll || "25BAD015",
+    regNo: ward?.regNo || ward?.universityNo || ward?.registerNo || "71052408001",
     department: ward?.department || "",
     deptShort: ward?.deptShort || "",
     year: ward?.year || "",
@@ -1568,8 +1463,8 @@ export async function getParentData() {
   const wardInfo = {
     ...(ward || {}),
     name: ward?.name || "",
-    rollNo: ward?.rollNo || ward?.roll || "",
-    regNo: ward?.regNo || "",
+    rollNo: ward?.rollNo || ward?.roll || "25BAD015",
+    regNo: ward?.regNo || ward?.universityNo || ward?.registerNo || "71052408001",
     class: ward?.class || ward?.section || "",
     department: ward?.department || "",
     year: ward?.year || "",
@@ -1588,23 +1483,26 @@ export async function getParentData() {
   return { ...(parent || {}), ward: wardInfo, overview, circulars, timeline, permits };
 }
 
-export async function getParentNotices() {
+export async function getParentNotices(force = false) {
   const db = await getDatabase();
-  const cached = Array.isArray(db.notices) && db.notices.length > 0 ? db.notices : null;
+  const cached = (!force && Array.isArray(db.notices) && db.notices.length > 0) ? db.notices : null;
+
+  if (force) {
+    try {
+      const list = await ensureCollection("/notices");
+      const clean = normalizeNotices(list);
+      await mergeIntoCache({ notices: clean });
+      notifyDataSubscribers("notices", clean);
+      return clean;
+    } catch (e) {
+      console.warn("Forced notices sync error:", e?.message);
+    }
+  }
 
   if (shouldSyncDelta("notices", 30)) {
     (async () => {
       try {
-        const list = await ensureCollection("/notices", [
-          {
-            subject: "Mid-Semester Exam Schedule",
-            message: "The mid-semester examinations for Odd Semester 2026 will commence from 15th September. Students are advised to prepare well and carry their ID cards.",
-            sender: "Ms. Z. Ananth Angel (Class Tutor)",
-            senderRole: "staff",
-            date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
-            isNew: true,
-          },
-        ]);
+        const list = await ensureCollection("/notices");
         const clean = normalizeNotices(list);
         await mergeIntoCache({ notices: clean });
         notifyDataSubscribers("notices", clean);
@@ -1616,24 +1514,7 @@ export async function getParentNotices() {
 
   if (cached) return cached;
 
-  const list = await ensureCollection("/notices", [
-    {
-      subject: "Mid-Semester Exam Schedule",
-      message: "The mid-semester examinations for Odd Semester 2026 will commence from 15th September. Students are advised to prepare well and carry their ID cards.",
-      sender: "Ms. Z. Ananth Angel (Class Tutor)",
-      senderRole: "staff",
-      date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
-      isNew: true,
-    },
-    {
-      subject: "Assignment Submission Reminder",
-      message: "Students who have not submitted the Machine Learning (AD-506) Neural Network Backpropagation assignment are requested to submit by 26th August. Late submissions will receive reduced marks.",
-      sender: "Ms. Z. Ananth Angel (Class Tutor)",
-      senderRole: "staff",
-      date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
-      isNew: false,
-    },
-  ]);
+  const list = await ensureCollection("/notices");
   const clean = normalizeNotices(list);
   await mergeIntoCache({ notices: clean });
   return clean;
@@ -1660,14 +1541,29 @@ function normalizeNotices(list) {
 }
 
 /** Alias so admin/staff notice feeds can import one consistent getter. */
-export async function getNoticesList(params = {}) {
+export async function getNoticesList(params = {}, force = false) {
   const db = await getDatabase();
-  const cached = Array.isArray(db.notices) && db.notices.length > 0 ? db.notices : null;
+  const cached = (!force && Array.isArray(db.notices) && db.notices.length > 0) ? db.notices : null;
+
+  if (force) {
+    try {
+      const list = await ensureCollection("/notices", params);
+      const clean = normalizeNotices(list);
+      await mergeIntoCache({ notices: clean });
+      notifyDataSubscribers("notices", clean);
+      if (params.senderRole) {
+        return normalizeNotices(clean.filter((n) => n.senderRole === params.senderRole));
+      }
+      return clean;
+    } catch (e) {
+      console.warn("Forced notices list sync error:", e?.message);
+    }
+  }
 
   if (shouldSyncDelta("notices_list", 30)) {
     (async () => {
       try {
-        const list = await ensureCollection("/notices", {});
+        const list = await ensureCollection("/notices", params);
         const clean = normalizeNotices(list);
         await mergeIntoCache({ notices: clean });
         notifyDataSubscribers("notices", clean);
@@ -1682,7 +1578,7 @@ export async function getNoticesList(params = {}) {
     return normalizeNotices(cached);
   }
 
-  const list = await ensureCollection("/notices", {});
+  const list = await ensureCollection("/notices", params);
   if (params.senderRole) {
     return normalizeNotices(list.filter((n) => n.senderRole === params.senderRole));
   }
@@ -1693,19 +1589,34 @@ export async function getNoticesList(params = {}) {
 // 🛡️ ADMIN DATA SERVICES
 // ─────────────────────────────────────────────
 
-export async function getAdminData() {
+export async function getAdminData(force = false) {
   const db = await getDatabase();
   const cachedAdmin = db.primaryAdmin;
   const cachedInst = db.institution;
   const cachedDepts = db.departments;
+
+  if (force) {
+    try {
+      const [instList, deptList] = await Promise.all([
+        ensureCollection("/institutions"),
+        ensureCollection("/departments"),
+      ]);
+      const inst = instList.length > 0 ? instList[0] : null;
+      await mergeIntoCache({ institution: inst, departments: deptList });
+      notifyDataSubscribers("adminData", { institution: inst, departments: deptList });
+      return { ...(cachedAdmin || {}), institution: inst, departments: deptList };
+    } catch (e) {
+      console.warn("Forced admin sync error:", e?.message);
+    }
+  }
 
   if (cachedInst && Array.isArray(cachedDepts) && cachedDepts.length > 0) {
     if (shouldSyncDelta("adminData", 30)) {
       (async () => {
         try {
           const [instList, deptList] = await Promise.all([
-            ensureCollection("/institutions", {}),
-            ensureCollection("/departments", []),
+            ensureCollection("/institutions"),
+            ensureCollection("/departments"),
           ]);
           if (instList.length > 0) {
             await mergeIntoCache({ institution: instList[0], departments: deptList });
@@ -1721,27 +1632,8 @@ export async function getAdminData() {
   let departments = [];
 
   const [instList, deptList] = await Promise.all([
-    ensureCollection("/institutions", {
-      name: "EduNex Institute of Technology & Science",
-      shortName: "EduNex Tech",
-      code: "EDUNEX-ENGG-042",
-      address: "Campus Boulevard, Tech Park Road, Coimbatore - 641014, Tamil Nadu",
-      academicYear: "2025 - 2026",
-      currentTerm: "Odd Semester (Term 3)",
-      accreditation: "NAAC A++ Accredited & Autonomous",
-      totalCourses: "3",
-      activePrograms: "1",
-      monthlyFeeCollection: "Rs.4.5L",
-      systemHealth: "100%",
-      contact: {
-        phone: "+91 422 298 7654",
-        email: "info@edunex.edu",
-        website: "https://edunex.edu",
-      },
-    }),
-    ensureCollection("/departments", [
-      { name: "Artificial Intelligence & Data Science", code: "AIDS", short: "AI&DS", hod: "Ms. Z. Ananth Angel", totalStudents: 1, facultyCount: 1 },
-    ]),
+    ensureCollection("/institutions"),
+    ensureCollection("/departments"),
   ]);
 
   if (instList.length > 0) institution = instList[0];
@@ -1755,25 +1647,11 @@ export async function getAdminData() {
   return { ...(admin || {}), institution, departments };
 }
 
-export async function getInstitutions() {
-  const list = await ensureCollection("/institutions", {
-    name: "EduNex Institute of Technology & Science",
-    shortName: "EduNex Tech",
-    code: "EDUNEX-ENGG-042",
-    address: "Campus Boulevard, Tech Park Road, Coimbatore - 641014, Tamil Nadu",
-    academicYear: "2025 - 2026",
-    currentTerm: "Odd Semester (Term 3)",
-    accreditation: "NAAC A++ Accredited & Autonomous",
-    totalCourses: "3",
-    activePrograms: "1",
-    monthlyFeeCollection: "Rs.4.5L",
-    systemHealth: "100%",
-    contact: {
-      phone: "+91 422 298 7654",
-      email: "info@edunex.edu",
-      website: "https://edunex.edu",
-    },
-  });
+export async function getInstitutions(force = false) {
+  if (force) {
+    api.invalidateCache("institution");
+  }
+  const list = await ensureCollection("/institutions");
   if (list.length > 0) {
     await mergeIntoCache({ institution: list[0] });
   }
@@ -1902,20 +1780,7 @@ export async function sendMessage(messageData) {
 // ─────────────────────────────────────────────
 
 export async function getFeesSummary(params = {}) {
-  const list = await ensureCollection("/fees", [
-    {
-      studentId: "STU-2024-AIDS01",
-      rollNo: "STU-2024-AIDS01",
-      studentName: "Velu",
-      invoiceId: "INV-STU-2024-AIDS01-05",
-      item: "Tuition & Core Computing Fee (Sem 5)",
-      amount: 35000,
-      paid: 0,
-      status: "Pending",
-      dueDate: "15 Sep 2026",
-      semester: "5th Semester",
-    },
-  ]);
+  const list = await ensureCollection("/fees", params);
   const paid = list.filter((f) => f.status === "Paid" || (Number(f.paid) > 0 && Number(f.paid) >= Number(f.amount)));
   const pending = list.filter((f) => !(f.status === "Paid") && !(Number(f.paid) > 0 && Number(f.paid) >= Number(f.amount)));
   const totalAmount = list.reduce((s, f) => s + (Number(f.amount) || 0), 0);
@@ -1929,43 +1794,26 @@ export async function getFeesSummary(params = {}) {
     feeCollectionPct: `${pct}%`,
     feeCollectedStudents: paid.length,
     feePendingStudents: pending.length,
-    dueInvoices: list.filter((f) => f.invoiceId?.startsWith?.("INV")),
-    recentPayments: list.filter((f) => f.invoiceId?.startsWith?.("TXN")),
+    dueInvoices: list.filter((f) => String(f.status || "").toLowerCase() !== "paid"),
+    recentPayments: list.filter((f) => String(f.status || "").toLowerCase() === "paid"),
   };
 }
 
 export async function getExams(params = {}) {
-  const list = await ensureCollection("/exams", [
-    {
-      semester: "5th Semester",
-      examName: "CIA-2 (Continuous Internal Assessment)",
-      subject: "Machine Learning",
-      subjectCode: "AD-506",
-      date: "18 Nov 2026",
-      time: "10:00 AM - 01:00 PM",
-      room: "Exam Hall D2",
-      hallCapacity: 120,
-      proctor: "Mr. S. Chandramohan",
-      status: "Scheduled",
-    },
-  ]);
-  const halls = [...new Set(list.map((e) => e.room).filter(Boolean))];
+  const list = await ensureCollection("/exams", params);
+  const halls = [...new Set(list.map((e) => e.room || e.hall).filter(Boolean))];
   return { records: list, halls, exams: list };
 }
 
 export async function getTransport(params = {}) {
-  const list = await ensureCollection("/transport", [
-    { route: "Route 1 - Gandhipuram CLG", type: "transport", driver: "Ramesh", bus: "TN-38-AE-4521", status: "On Route", speed: "42 km/h" },
-  ]);
+  const list = await ensureCollection("/transport", params);
   const transportRoutes = list.filter((t) => t.type === "transport" || !t.type);
   const fleetRoutes = list.filter((t) => t.type === "fleet");
   return { records: list, transportRoutes, fleetRoutes };
 }
 
 export async function getInfrastructure(params = {}) {
-  const list = await ensureCollection("/infrastructure", [
-    { category: "hostel", name: "Boys Hostel", occupancy: "93%", occupiedBeds: 93, totalBeds: 100, warden: "Revathi" },
-  ]);
+  const list = await ensureCollection("/infrastructure", params);
   const byCat = (cat) => list.find((i) => i.category === cat) || {};
   const hostel = byCat("hostel");
   const labs = byCat("labs");
@@ -1996,36 +1844,12 @@ export async function getSystemLogs(params = {}) {
 }
 
 export async function getPermits(params = {}) {
-  const list = await ensureCollection("/permits", [
-    {
-      studentId: "STU-2024-AIDS01",
-      rollNo: "STU-2024-AIDS01",
-      studentName: "Velu",
-      type: "entry",
-      gate: "Main Gate",
-      place: "Campus",
-      time: "08:45 AM",
-      date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
-      status: "granted",
-    },
-  ]);
+  const list = await ensureCollection("/permits", params);
   return list.filter((p) => p && (Boolean(p.studentName?.trim?.()) || Boolean(p.rollNo?.trim?.()) || Boolean(p.place?.trim?.())));
 }
 
 export async function getReports(params = {}) {
-  const list = await ensureCollection("/reports", [
-    {
-      title: "Academic Performance - AI & DS",
-      category: "academic",
-      desc: "Semester-wise performance across AI & DS batches.",
-      statPrimary: "8.65",
-      statPrimaryLabel: "Avg CGPA",
-      statSecondary: "97.6%",
-      statSecondaryLabel: "Pass Rate",
-      highlights: ["Top performer batch: III Year AI&DS-A (avg 8.65)"],
-      details: { "Total Students": "1", "Passed": "1" },
-    },
-  ]);
+  const list = await ensureCollection("/reports", params);
   return list;
 }
 

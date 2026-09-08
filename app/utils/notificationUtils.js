@@ -1,5 +1,5 @@
 // utils/notificationUtils.js
-import * as Notifications from "expo-notifications";
+import * as Notifications from "./safeNotifications";
 import * as Haptics from "expo-haptics";
 import { secureGet, secureSet } from "../services/secureStorage";
 import { showToast } from "./toastService";
@@ -24,33 +24,107 @@ export function handleNotificationAction(notifData) {
   const title = (notifData.title || notifData.subject || "").toLowerCase();
   const text = (notifData.message || notifData.text || "").toLowerCase();
   const meta = notifData.metadata || notifData.data || {};
+  const notifType = (meta.type || notifData.type || "").toLowerCase();
 
-  let targetModal = "notify";
+  let targetModal = "notice_detail";
 
   if (
     title.includes("leave") ||
     title.includes("gate pass") ||
     title.includes("on-duty") ||
-    title.includes("od") ||
+    title.includes("od ") ||
+    title.includes(" od") ||
     text.includes("leave request") ||
+    text.includes("gate pass") ||
     meta.leaveId
   ) {
     if (meta.targetRole === "staff" || notifData.targetRole === "staff") {
       targetModal = "staff_leave";
+    } else if (meta.targetRole === "parent" || notifData.targetRole === "parent") {
+      targetModal = "entryexit";
     } else {
       targetModal = "leave";
     }
-  } else if (title.includes("hostel") || title.includes("outing") || text.includes("hostel pass")) {
+  } else if (
+    title.includes("hostel") ||
+    title.includes("outing") ||
+    text.includes("hostel pass") ||
+    text.includes("hostel warden") ||
+    notifType === "hostel"
+  ) {
     targetModal = "hostel";
-  } else if (title.includes("assignment") || text.includes("assignment")) {
+  } else if (
+    title.includes("fee") ||
+    title.includes("invoice") ||
+    title.includes("dues") ||
+    title.includes("payment") ||
+    text.includes("fee due") ||
+    text.includes("tuition fee") ||
+    text.includes("receipt") ||
+    notifType === "fees"
+  ) {
+    targetModal = "fees";
+  } else if (
+    title.includes("assignment") ||
+    text.includes("assignment") ||
+    title.includes("homework") ||
+    notifType === "assignment"
+  ) {
     targetModal = "assignment";
-  } else if (title.includes("test") || text.includes("class test") || title.includes("exam")) {
+  } else if (
+    title.includes("class test") ||
+    title.includes("quiz") ||
+    notifType === "test"
+  ) {
     targetModal = "test";
-  } else if (title.includes("bus") || title.includes("transport") || text.includes("bus")) {
+  } else if (
+    title.includes("exam") ||
+    title.includes("cia") ||
+    title.includes("assessment") ||
+    text.includes("exam timetable") ||
+    text.includes("cia exam") ||
+    notifType === "exam"
+  ) {
+    targetModal = "exam";
+  } else if (
+    title.includes("bus") ||
+    title.includes("transport") ||
+    text.includes("bus location") ||
+    text.includes("boarding point") ||
+    notifType === "bus"
+  ) {
     targetModal = "bus";
   } else if (
-    meta.type === "chat" ||
-    notifData.type === "chat" ||
+    title.includes("mess") ||
+    title.includes("canteen") ||
+    title.includes("menu") ||
+    notifType === "mess"
+  ) {
+    targetModal = "mess";
+  } else if (
+    title.includes("library") ||
+    title.includes("book") ||
+    text.includes("library due") ||
+    notifType === "library"
+  ) {
+    targetModal = "library";
+  } else if (
+    title.includes("attendance") ||
+    text.includes("shortage") ||
+    text.includes("present") ||
+    text.includes("absent") ||
+    notifType === "attendance"
+  ) {
+    targetModal = "attendance";
+  } else if (
+    title.includes("timetable") ||
+    title.includes("schedule") ||
+    text.includes("period") ||
+    notifType === "timetable"
+  ) {
+    targetModal = "timetable";
+  } else if (
+    notifType === "chat" ||
     title.includes("chat") ||
     title.includes("message") ||
     title.includes("tutor") ||

@@ -1,6 +1,6 @@
 import React from "react";
 import { Platform } from "react-native";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { createBottomTabNavigator } from "expo-router/js-tabs";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import { emitRouteChange } from "../../services/navigationEvents";

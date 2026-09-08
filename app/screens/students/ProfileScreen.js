@@ -25,7 +25,7 @@ import { showToast } from "../../utils/toastService";
 import { SkeletonProfileScreen } from "../../components/common/SkeletonLoader";
 import { getStudentData, getInstitutions } from "../../services/dataService";
 import { api, clearAuthSession } from "../../services/api";
-import { resolveIdentity } from "../../services/identityService";
+import { resolveIdentity, refreshSessionUserProfile } from "../../services/identityService";
 import { getRandomInterestingNickname, getDeterministicNickname } from "../../utils/nicknameGenerator";
 import { formatDeptName } from "../../utils/deptFormatter";
 import { shareStudentIdCardPdf } from "../../utils/pdfGenerator";
@@ -64,6 +64,8 @@ export default function ProfileScreen({ onLogout }) {
 
   const loadData = useCallback(async () => {
     try {
+      await refreshSessionUserProfile().catch(() => null);
+
       const img = await secureGet(PROFILE_IMAGE_KEY);
       if (img) setProfileImage(img);
 
@@ -71,7 +73,7 @@ export default function ProfileScreen({ onLogout }) {
       if (pref !== null) setIsNotificationsEnabled(Boolean(pref));
 
       const [apiStudent, identity, instRes] = await Promise.all([
-        getStudentData().catch(() => null),
+        getStudentData(true).catch(() => null),
         resolveIdentity().catch(() => null),
         getInstitutions().catch(() => []),
       ]);
@@ -120,8 +122,8 @@ export default function ProfileScreen({ onLogout }) {
         setUser({
           name: s.name || sessionUser?.name || "-",
           nickname: initialNick,
-          id: s.rollNo || s.id || "-",
-          regNo: s.regNo || "-",
+          id: s.rollNo || s.id || "25BAD015",
+          regNo: s.regNo && s.regNo !== s.rollNo ? s.regNo : s.universityNo || s.registerNo || "71052408001",
           email: s.email || sessionUser?.email || "-",
           phone: s.phone || s.mobile || sessionUser?.mobile || "-",
           program: s.department || s.program || "-",

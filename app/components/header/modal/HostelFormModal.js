@@ -14,6 +14,7 @@ import {
   RefreshControl,
   Platform,
   StatusBar,
+  KeyboardAvoidingView,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -955,7 +956,10 @@ export default function HostelFormModal({ visible, onClose }) {
   // ---------------- 5. NEW HOSTEL PASS APPLICATION FORM ----------------
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <View style={styles.overlayFull}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.overlayFull}
+      >
         {/* App Header */}
         <View style={[styles.fullHeader, { backgroundColor: colors.primaryAccent }]}>
           <TouchableOpacity onPress={onClose} style={styles.headerBtn}>
@@ -1391,7 +1395,7 @@ export default function HostelFormModal({ visible, onClose }) {
             <View style={{ height: 30 }} />
           </ScrollView>
         </Animated.View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

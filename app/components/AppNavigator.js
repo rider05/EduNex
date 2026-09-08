@@ -1,5 +1,5 @@
 import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createBottomTabNavigator } from 'expo-router/js-tabs';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import DashboardScreen from '../screens/DashboardScreen';
 import AcademicsScreen from '../screens/AcademicsScreen';

@@ -9,6 +9,8 @@ import {
   Easing,
   TextInput,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../../context/ThemeContext";
@@ -94,16 +96,20 @@ export default function MessagesModal({ visible, onClose, colors: propColors }) 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
-        <Animated.View
-          style={[
-            styles.modalContainer,
-            {
-              backgroundColor: colors.cardBackground || "#FFFFFF",
-              borderColor: colors.divider || "rgba(0,0,0,0.1)",
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ width: "100%", alignItems: "center" }}
         >
+          <Animated.View
+            style={[
+              styles.modalContainer,
+              {
+                backgroundColor: colors.cardBackground || "#FFFFFF",
+                borderColor: colors.divider || "rgba(0,0,0,0.1)",
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
           {/* Header */}
           <View style={styles.header}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
@@ -227,8 +233,9 @@ export default function MessagesModal({ visible, onClose, colors: propColors }) 
             <Text style={styles.closeText}>Close</Text>
           </TouchableOpacity>
         </Animated.View>
-      </Animated.View>
-    </Modal>
+      </KeyboardAvoidingView>
+    </Animated.View>
+  </Modal>
   );
 }
 

@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -693,108 +695,113 @@ export default function DashboardAdmin() {
       {/* ========================================================================= */}
       <Modal visible={publishModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { backgroundColor: colors.cardBackground }]}>
-            <View style={styles.modalTopBar}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <Icon name="bullhorn-outline" size={24} color="#10B981" />
-                <Text style={[styles.modalHeading, { color: colors.primaryText }]}>Publish Circular Notice</Text>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", alignItems: "center" }}
+          >
+            <View style={[styles.modalBox, { backgroundColor: colors.cardBackground }]}>
+              <View style={styles.modalTopBar}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Icon name="bullhorn-outline" size={24} color="#10B981" />
+                  <Text style={[styles.modalHeading, { color: colors.primaryText }]}>Publish Circular Notice</Text>
+                </View>
+                <TouchableOpacity onPress={() => setPublishModalVisible(false)}>
+                  <Icon name="close-circle" size={24} color={colors.secondaryText} />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={() => setPublishModalVisible(false)}>
-                <Icon name="close-circle" size={24} color={colors.secondaryText} />
+
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }} keyboardShouldPersistTaps="handled">
+                <Text style={[styles.inputLabel, { color: colors.primaryText }]}>Circular Title *</Text>
+                <TextInput
+                  style={[styles.modalInput, { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider }]}
+                  placeholder="e.g. Annual Sports Meet 2025 Registration"
+                  placeholderTextColor={colors.secondaryText}
+                  value={newNoticeTitle}
+                  onChangeText={setNewNoticeTitle}
+                />
+
+                <Text style={[styles.inputLabel, { color: colors.primaryText, marginTop: 10 }]}>Target Audience</Text>
+                <View style={styles.pillRow}>
+                  {["All", "Students", "Staff", "Parents"].map((aud) => (
+                    <TouchableOpacity
+                      key={aud}
+                      style={[
+                        styles.choicePill,
+                        newNoticeAudience === aud
+                          ? { backgroundColor: colors.primaryAccent }
+                          : { backgroundColor: colors.primaryBackground, borderColor: colors.divider, borderWidth: 1 },
+                      ]}
+                      onPress={() => setNewNoticeAudience(aud)}
+                    >
+                      <Text
+                        style={[
+                          styles.choicePillText,
+                          { color: newNoticeAudience === aud ? "#fff" : colors.primaryText },
+                        ]}
+                      >
+                        {aud}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={[styles.inputLabel, { color: colors.primaryText, marginTop: 10 }]}>Category</Text>
+                <View style={styles.pillRow}>
+                  {["Academic", "Urgent", "Event", "Examinations"].map((cat) => (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[
+                        styles.choicePill,
+                        newNoticeCategory === cat
+                          ? { backgroundColor: "#10B981" }
+                          : { backgroundColor: colors.primaryBackground, borderColor: colors.divider, borderWidth: 1 },
+                      ]}
+                      onPress={() => setNewNoticeCategory(cat)}
+                    >
+                      <Text
+                        style={[
+                          styles.choicePillText,
+                          { color: newNoticeCategory === cat ? "#fff" : colors.primaryText },
+                        ]}
+                      >
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={[styles.inputLabel, { color: colors.primaryText, marginTop: 10 }]}>Notice Details *</Text>
+                <TextInput
+                  style={[
+                    styles.modalInput,
+                    styles.textArea,
+                    { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider },
+                  ]}
+                  placeholder="Write full circular instructions and details..."
+                  placeholderTextColor={colors.secondaryText}
+                  multiline
+                  numberOfLines={4}
+                  value={newNoticeBody}
+                  onChangeText={setNewNoticeBody}
+                />
+              </ScrollView>
+
+              <TouchableOpacity
+                style={[styles.modalActionBtn, { backgroundColor: "#10B981", marginTop: 12 }]}
+                onPress={handlePublishNotice}
+                disabled={isPublishing}
+              >
+                {isPublishing ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Icon name="send-check" size={18} color="#fff" />
+                    <Text style={styles.modalActionBtnText}>Broadcast Circular to Portals</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-              <Text style={[styles.inputLabel, { color: colors.primaryText }]}>Circular Title *</Text>
-              <TextInput
-                style={[styles.modalInput, { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider }]}
-                placeholder="e.g. Annual Sports Meet 2025 Registration"
-                placeholderTextColor={colors.secondaryText}
-                value={newNoticeTitle}
-                onChangeText={setNewNoticeTitle}
-              />
-
-              <Text style={[styles.inputLabel, { color: colors.primaryText, marginTop: 10 }]}>Target Audience</Text>
-              <View style={styles.pillRow}>
-                {["All", "Students", "Staff", "Parents"].map((aud) => (
-                  <TouchableOpacity
-                    key={aud}
-                    style={[
-                      styles.choicePill,
-                      newNoticeAudience === aud
-                        ? { backgroundColor: colors.primaryAccent }
-                        : { backgroundColor: colors.primaryBackground, borderColor: colors.divider, borderWidth: 1 },
-                    ]}
-                    onPress={() => setNewNoticeAudience(aud)}
-                  >
-                    <Text
-                      style={[
-                        styles.choicePillText,
-                        { color: newNoticeAudience === aud ? "#fff" : colors.primaryText },
-                      ]}
-                    >
-                      {aud}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={[styles.inputLabel, { color: colors.primaryText, marginTop: 10 }]}>Category</Text>
-              <View style={styles.pillRow}>
-                {["Academic", "Urgent", "Event", "Examinations"].map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[
-                      styles.choicePill,
-                      newNoticeCategory === cat
-                        ? { backgroundColor: "#10B981" }
-                        : { backgroundColor: colors.primaryBackground, borderColor: colors.divider, borderWidth: 1 },
-                    ]}
-                    onPress={() => setNewNoticeCategory(cat)}
-                  >
-                    <Text
-                      style={[
-                        styles.choicePillText,
-                        { color: newNoticeCategory === cat ? "#fff" : colors.primaryText },
-                      ]}
-                    >
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={[styles.inputLabel, { color: colors.primaryText, marginTop: 10 }]}>Notice Details *</Text>
-              <TextInput
-                style={[
-                  styles.modalInput,
-                  styles.textArea,
-                  { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider },
-                ]}
-                placeholder="Write full circular instructions and details..."
-                placeholderTextColor={colors.secondaryText}
-                multiline
-                numberOfLines={4}
-                value={newNoticeBody}
-                onChangeText={setNewNoticeBody}
-              />
-            </ScrollView>
-
-            <TouchableOpacity
-              style={[styles.modalActionBtn, { backgroundColor: "#10B981", marginTop: 12 }]}
-              onPress={handlePublishNotice}
-              disabled={isPublishing}
-            >
-              {isPublishing ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Icon name="send-check" size={18} color="#fff" />
-                  <Text style={styles.modalActionBtnText}>Broadcast Circular to Portals</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 

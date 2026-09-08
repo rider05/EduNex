@@ -11,6 +11,8 @@ import {
   Alert,
   StyleSheet,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../../context/ThemeContext";
@@ -104,17 +106,21 @@ function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
         <Animated.View style={[modalStyles.overlay, { opacity: opacityAnim }]}>
-          <TouchableWithoutFeedback>
-            <Animated.View
-              style={[
-                modalStyles.card,
-                {
-                  backgroundColor: colors.cardBackground,
-                  borderColor: colors.divider,
-                  transform: [{ scale: scaleAnim }],
-                },
-              ]}
-            >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", alignItems: "center" }}
+          >
+            <TouchableWithoutFeedback>
+              <Animated.View
+                style={[
+                  modalStyles.card,
+                  {
+                    backgroundColor: colors.cardBackground,
+                    borderColor: colors.divider,
+                    transform: [{ scale: scaleAnim }],
+                  },
+                ]}
+              >
               {/* Header */}
               <View style={modalStyles.headerRow}>
                 <View style={[modalStyles.headerIconCircle, { backgroundColor: colors.primaryAccent + "18" }]}>
@@ -268,7 +274,8 @@ function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
               </View>
             </Animated.View>
           </TouchableWithoutFeedback>
-        </Animated.View>
+        </KeyboardAvoidingView>
+      </Animated.View>
       </TouchableWithoutFeedback>
     </Modal>
   );

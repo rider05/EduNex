@@ -83,7 +83,7 @@ export default function FeedbackBugModal({ visible, onClose, initialScreen = "" 
         device: {
           platform: Platform.OS,
           version: String(Platform.Version),
-          appVersion: "1.0.1 (EduNex Ecosystem)",
+          appVersion: "1.0.2 (EduNex Ecosystem)",
         },
       };
 

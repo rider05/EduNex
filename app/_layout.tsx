@@ -2,10 +2,11 @@ import React, { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import * as Notifications from "expo-notifications";
+import * as Notifications from "./utils/safeNotifications";
 import * as NavigationBar from "expo-navigation-bar";
 import { startRealtimeWatcher, setupPushNotificationPermissions } from "./services/realtimeNotificationService";
 import { notifyChatSubscribers } from "./services/chatService";
+import { handleNotificationAction } from "./utils/notificationUtils";
 import { checkAppUpdate } from "./services/updateService";
 import GlobalCallOverlay from "./components/common/GlobalCallOverlay";
 import AppUpdateModal from "./components/common/AppUpdateModal";
@@ -18,8 +19,8 @@ export default function RootLayout() {
     // 0. System Navigation Bar Configuration (Android Immersive Mode)
     if (Platform.OS === "android") {
       try {
-        NavigationBar.setVisibilityAsync("hidden").catch(() => {});
-        NavigationBar.setBehaviorAsync("inset-swipe").catch(() => {});
+        (NavigationBar as any)?.setVisibilityAsync?.("hidden")?.catch?.(() => {});
+        (NavigationBar as any)?.setBehaviorAsync?.("inset-swipe")?.catch?.(() => {});
       } catch (err) {
         console.warn("NavigationBar setup error:", err);
       }
@@ -47,9 +48,10 @@ export default function RootLayout() {
     const updateCheckTimer = setInterval(performUpdateCheck, 120000); // Periodic check every 2 mins
 
     // 4. Listen for background & lockscreen notification taps / Answer / Decline actions
-    const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+    const responseSub = Notifications.addNotificationResponseReceivedListener((response: any) => {
       try {
-        const data = response.notification?.request?.content?.data;
+        const content = response.notification?.request?.content;
+        const data = (content?.data as any) || {};
         const actionId = response.actionIdentifier;
 
         if (data?.type === "incoming_call") {
@@ -67,6 +69,16 @@ export default function RootLayout() {
               ...data,
             });
           }
+        } else {
+          // Forward general notification taps directly to modal navigation
+          const notifPayload = {
+            title: content?.title || data?.title || "",
+            message: content?.body || data?.message || data?.text || "",
+            metadata: data,
+            data: data,
+            ...data,
+          };
+          handleNotificationAction(notifPayload);
         }
       } catch (err) {
         console.warn("Notification response error:", err);

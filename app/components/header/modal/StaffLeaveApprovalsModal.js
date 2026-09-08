@@ -11,6 +11,8 @@ import {
   RefreshControl,
   Alert,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -310,7 +312,10 @@ export default function StaffLeaveApprovalsModal({ visible, onClose }) {
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.modalOverlay}
+      >
         <Animated.View
           style={[
             styles.modalContainer,
@@ -692,7 +697,7 @@ export default function StaffLeaveApprovalsModal({ visible, onClose }) {
             </Text>
           </View>
         </Animated.View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

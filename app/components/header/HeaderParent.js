@@ -56,8 +56,23 @@ export default function HeaderParent() {
     });
 
     const unsub = onNavigateToNotification(({ target }) => {
-      if (target === "chat" || target === "assignment" || target === "feedback" || target === "entryexit") {
-        setActiveModal(target);
+      if (
+        target === "chat" ||
+        target === "assignment" ||
+        target === "feedback" ||
+        target === "entryexit" ||
+        target === "leave" ||
+        target === "hostel" ||
+        target === "exam" ||
+        target === "test"
+      ) {
+        if (target === "leave" || target === "hostel") {
+          setActiveModal("entryexit");
+        } else if (target === "exam" || target === "test") {
+          setActiveModal("assignment");
+        } else {
+          setActiveModal(target);
+        }
       }
     });
 

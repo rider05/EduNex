@@ -1,4 +1,4 @@
-import { secureGet } from "./secureStorage";
+import { secureGet, secureSet } from "./secureStorage";
 import { api } from "./api";
 
 // Resolves the logged-in user's real records (student / staff / parent / admin)
@@ -18,6 +18,57 @@ export async function getSessionUser() {
   try {
     return await secureGet("userData");
   } catch {
+    return null;
+  }
+}
+
+/**
+ * Re-fetch the logged-in user's account record from the backend and merge the
+ * freshest profile (e.g. profile data synced from the student record) into the
+ * stored session, then drop the cached identity so it re-resolves.
+ * Returns the merged account doc, or null if nothing changed / on failure.
+ */
+export async function refreshSessionUserProfile() {
+  const stored = await getSessionUser();
+  if (!stored) return null;
+
+  const account =
+    stored?.data && typeof stored.data === "object" && !Array.isArray(stored.data) && (stored.data.username || stored.data.email)
+      ? stored.data
+      : stored?.user && typeof stored.user === "object" && !Array.isArray(stored.user) && (stored.user.username || stored.user.email)
+      ? stored.user
+      : stored;
+
+  const username = norm(account?.username || account?.name);
+  const email = norm(account?.email);
+  const q = username || email;
+  if (!q) return null;
+
+  try {
+    const res = await api.get("/users", { q, limit: 5 }, {}, { noCache: true });
+    const list = Array.isArray(res?.data) ? res.data : [];
+    const match =
+      list.find((u) => u && (norm(u.username) === username || norm(u.email) === email)) || list[0] || null;
+    if (!match) return null;
+
+    const clean = { ...match };
+    delete clean.passwordHash;
+    delete clean.password;
+
+    const merged = { ...stored };
+    Object.keys(clean).forEach((k) => {
+      merged[k] = clean[k];
+    });
+    delete merged.passwordHash;
+    delete merged.password;
+    delete merged.data;
+    delete merged.user;
+
+    await secureSet("userData", merged);
+    invalidateIdentity();
+    return merged;
+  } catch (e) {
+    console.warn("refreshSessionUserProfile error:", e?.message || e);
     return null;
   }
 }

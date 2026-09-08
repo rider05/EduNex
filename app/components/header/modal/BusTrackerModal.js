@@ -11,6 +11,7 @@ import {
   Share,
   Platform,
   StatusBar,
+  KeyboardAvoidingView,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../../context/ThemeContext";
@@ -297,7 +298,11 @@ export default function BusTrackerModal({ visible, onClose }) {
         </View>
 
         {/* Content Body */}
-        <View style={[styles.bodyContainer, { backgroundColor: colors.cardBackground }]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
+          <View style={[styles.bodyContainer, { backgroundColor: colors.cardBackground }]}>
           {/* Search Box */}
           <View style={[styles.searchBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
             <Icon name="magnify" size={18} color={colors.secondaryText} />
@@ -532,6 +537,7 @@ export default function BusTrackerModal({ visible, onClose }) {
             </View>
           </ScrollView>
         </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );

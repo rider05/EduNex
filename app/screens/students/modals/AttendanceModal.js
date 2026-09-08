@@ -96,30 +96,12 @@ export default function AttendanceModal({ visible, onClose }) {
         });
       }
 
-      // If no raw daily logs found, calculate baseline semester records for the academic year
-      if (Object.keys(grouped).length === 0) {
-        const semesterMonths = [
-          { month: "August", present: 22, absent: 2, od: 1, total: 25 },
-          { month: "September", present: 24, absent: 1, od: 2, total: 27 },
-          { month: "October", present: 20, absent: 3, od: 1, total: 24 },
-          { month: "November", present: 23, absent: 1, od: 2, total: 26 },
-        ];
-        semesterMonths.forEach((m) => {
-          grouped[m.month] = {
-            ...m,
-            pct: Math.round(((m.present + m.od) / m.total) * 1000) / 10,
-          };
-          totalAll += m.total;
-          attendedAll += m.present + m.od;
-        });
-      } else {
-        // Calculate percentages for each month
-        Object.keys(grouped).forEach((k) => {
-          const item = grouped[k];
-          const attended = item.present + item.od;
-          item.pct = item.total > 0 ? Math.round((attended / item.total) * 1000) / 10 : 0;
-        });
-      }
+      // Calculate percentages for each month from live DB records
+      Object.keys(grouped).forEach((k) => {
+        const item = grouped[k];
+        const attended = item.present + item.od;
+        item.pct = item.total > 0 ? Math.round((attended / item.total) * 1000) / 10 : 0;
+      });
 
       setMonthlyStats(grouped);
       setOverallTotal(totalAll);

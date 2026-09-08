@@ -14,6 +14,7 @@ import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { ToastProvider, useAppToast } from "./utils/AnimatedToast";
 import { setToastRef } from "./utils/toastService";
 import { onUnauthorized, clearAuthSession } from "./services/api";
+import { resolveIdentity } from "./services/identityService";
 
 // Headers
 import Header from "./components/header/Header";
@@ -47,7 +48,7 @@ function IndexCore() {
   useEffect(() => {
     if (Platform.OS === "android") {
       try {
-        NavigationBar.setButtonStyleAsync("light").catch(() => {});
+        (NavigationBar as any)?.setButtonStyleAsync?.("light")?.catch?.(() => {});
       } catch {
         // Suppress on edge-to-edge Android
       }

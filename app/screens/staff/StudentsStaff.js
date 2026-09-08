@@ -11,6 +11,8 @@ import {
   RefreshControl,
   Share,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
@@ -766,7 +768,7 @@ export default function StudentsStaff() {
       )}
 
       {/* ========================================================================= */}
-      {/* 5. ASSIGN / MANAGE MENTEE WARDS MODAL                                     */}
+      {/* 5. ASSIGN SPECIAL MENTEE / COUNSELOR COHORT MODAL                          */}
       {/* ========================================================================= */}
       <Modal
         visible={assignModalVisible}
@@ -775,153 +777,156 @@ export default function StudentsStaff() {
         onRequestClose={() => setAssignModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.assignModalCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
-            <View style={styles.modalHeaderRow}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-                <View style={[styles.iconWrapRound, { backgroundColor: "#F59E0B18" }]}>
-                  <Icon name="account-multiple-plus" size={22} color="#F59E0B" />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", alignItems: "center" }}
+          >
+            <View style={[styles.assignModalCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <View style={styles.modalHeaderRow}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                  <View style={[styles.iconWrapRound, { backgroundColor: "#F59E0B18" }]}>
+                    <Icon name="account-multiple-plus" size={22} color="#F59E0B" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.modalStudentName, { color: colors.primaryText }]}>
+                      Manage Mentee Ward Special List
+                    </Text>
+                    <Text style={[styles.modalStudentSub, { color: colors.secondaryText }]}>
+                      {menteeStudents.length} student{menteeStudents.length === 1 ? "" : "s"} currently assigned as your mentees
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.modalStudentName, { color: colors.primaryText }]}>
-                    Manage Mentee Ward Special List
-                  </Text>
-                  <Text style={[styles.modalStudentSub, { color: colors.secondaryText }]}>
-                    {menteeStudents.length} student{menteeStudents.length === 1 ? "" : "s"} currently assigned as your mentees
-                  </Text>
-                </View>
+
+                <TouchableOpacity onPress={() => setAssignModalVisible(false)}>
+                  <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
+                </TouchableOpacity>
               </View>
 
-              <TouchableOpacity onPress={() => setAssignModalVisible(false)}>
-                <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Search Input inside modal */}
-            <View style={[styles.searchBar, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, marginBottom: 8 }]}>
-              <Icon name="magnify" size={18} color={colors.secondaryText} />
-              <TextInput
-                style={[styles.searchInput, { color: colors.primaryText }]}
-                placeholder="Search by student name or roll..."
-                placeholderTextColor={colors.disabledText}
-                value={assignSearchText}
-                onChangeText={setAssignSearchText}
-              />
-              {assignSearchText.length > 0 && (
-                <TouchableOpacity onPress={() => setAssignSearchText("")}>
-                  <Icon name="close-circle" size={16} color={colors.secondaryText} />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Filter pills inside modal */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 6, marginBottom: 10 }}
-            >
-              {["All", "Assigned", "Unassigned", "Section A", "Section B"].map((sec) => {
-                const isSel = assignFilterSection === sec;
-                return (
-                  <TouchableOpacity
-                    key={sec}
-                    style={[
-                      styles.filterPill,
-                      isSel
-                        ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
-                        : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
-                    ]}
-                    onPress={() => setAssignFilterSection(sec)}
-                  >
-                    <Text style={[styles.filterPillText, { color: isSel ? "#FFFFFF" : colors.primaryText }]}>
-                      {sec}
-                    </Text>
+              {/* Search Input inside modal */}
+              <View style={[styles.searchBar, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, marginBottom: 8 }]}>
+                <Icon name="magnify" size={18} color={colors.secondaryText} />
+                <TextInput
+                  style={[styles.searchInput, { color: colors.primaryText }]}
+                  placeholder="Search by student name or roll..."
+                  placeholderTextColor={colors.disabledText}
+                  value={assignSearchText}
+                  onChangeText={setAssignSearchText}
+                />
+                {assignSearchText.length > 0 && (
+                  <TouchableOpacity onPress={() => setAssignSearchText("")}>
+                    <Icon name="close-circle" size={16} color={colors.secondaryText} />
                   </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                )}
+              </View>
 
-            {/* Student List with 1-tap Add/Remove */}
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }}>
-              <View style={{ gap: 8 }}>
-                {assignModalStudents.map((st) => (
-                  <View
-                    key={st.id}
-                    style={[
-                      styles.assignStudentRow,
-                      {
-                        backgroundColor: colors.primaryBackground,
-                        borderColor: st.isMentee ? "#F59E0B55" : colors.divider,
-                      },
-                    ]}
-                  >
-                    <View style={styles.assignRowLeft}>
-                      <View
-                        style={[
-                          styles.avatarCircleSmall,
-                          { backgroundColor: st.isMentee ? "#F59E0B" : colors.primaryAccent },
-                        ]}
-                      >
-                        <Text style={styles.avatarSmallText}>
-                          {st.name
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .slice(0, 2)}
-                        </Text>
-                      </View>
-
-                      <View style={{ flex: 1, marginLeft: 10 }}>
-                        <Text style={[styles.assignStudentName, { color: colors.primaryText }]} numberOfLines={1}>
-                          {st.name}
-                        </Text>
-                        <Text style={[styles.assignStudentSub, { color: colors.secondaryText }]}>
-                          {st.roll} · {st.section} · Att: {st.attendance}
-                        </Text>
-                      </View>
-                    </View>
-
+              {/* Filter pills inside modal */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 6, marginBottom: 10 }}
+              >
+                {["All", "Assigned", "Unassigned", "Section A", "Section B"].map((sec) => {
+                  const isSel = assignFilterSection === sec;
+                  return (
                     <TouchableOpacity
+                      key={sec}
                       style={[
-                        styles.assignToggleBtn,
-                        st.isMentee
-                          ? { backgroundColor: "#EF444418", borderColor: "#EF444444" }
-                          : { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent },
+                        styles.filterPill,
+                        isSel
+                          ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
+                          : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
                       ]}
-                      onPress={() => handleToggleMentee(st)}
-                      activeOpacity={0.8}
+                      onPress={() => setAssignFilterSection(sec)}
                     >
-                      <Icon
-                        name={st.isMentee ? "close-circle-outline" : "star-plus"}
-                        size={14}
-                        color={st.isMentee ? "#EF4444" : "#FFFFFF"}
-                      />
-                      <Text
-                        style={[
-                          styles.assignToggleBtnText,
-                          { color: st.isMentee ? "#EF4444" : "#FFFFFF" },
-                        ]}
-                      >
-                        {st.isMentee ? "Remove" : "+ Assign"}
+                      <Text style={[styles.filterPillText, { color: isSel ? "#FFFFFF" : colors.primaryText }]}>
+                        {sec}
                       </Text>
                     </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
+                  );
+                })}
+              </ScrollView>
 
-            <TouchableOpacity
-              style={[styles.doneBtn, { backgroundColor: colors.primaryAccent }]}
-              onPress={() => setAssignModalVisible(false)}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.doneBtnText}>Done ({menteeStudents.length} Assigned)</Text>
-            </TouchableOpacity>
-          </View>
+              {/* Student List with 1-tap Add/Remove */}
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }} keyboardShouldPersistTaps="handled">
+                <View style={{ gap: 8 }}>
+                  {assignModalStudents.map((st) => (
+                    <View
+                      key={st.id}
+                      style={[
+                        styles.assignStudentRow,
+                        {
+                          backgroundColor: colors.primaryBackground,
+                          borderColor: st.isMentee ? "#F59E0B55" : colors.divider,
+                        },
+                      ]}
+                    >
+                      <View style={styles.assignRowLeft}>
+                        <View
+                          style={[
+                            styles.avatarCircleSmall,
+                            { backgroundColor: st.isMentee ? "#F59E0B" : colors.primaryAccent },
+                          ]}
+                        >
+                          <Text style={styles.avatarSmallText}>
+                            {st.name
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .slice(0, 2)}
+                          </Text>
+                        </View>
+
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <Text style={[styles.assignStudentName, { color: colors.primaryText }]} numberOfLines={1}>
+                            {st.name}
+                          </Text>
+                          <Text style={[styles.assignStudentSub, { color: colors.secondaryText }]}>
+                            {st.roll} · {st.section} · Att: {st.attendance}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.assignToggleBtn,
+                          st.isMentee
+                            ? { backgroundColor: "#EF444418", borderColor: "#EF444444" }
+                            : { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent },
+                        ]}
+                        onPress={() => handleToggleMentee(st)}
+                        activeOpacity={0.8}
+                      >
+                        <Icon
+                          name={st.isMentee ? "close-circle-outline" : "star-plus"}
+                          size={14}
+                          color={st.isMentee ? "#EF4444" : "#FFFFFF"}
+                        />
+                        <Text
+                          style={[
+                            styles.assignToggleBtnText,
+                            { color: st.isMentee ? "#EF4444" : "#FFFFFF" },
+                          ]}
+                        >
+                          {st.isMentee ? "Remove" : "+ Assign"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+
+              <TouchableOpacity
+                style={[styles.doneBtn, { backgroundColor: colors.primaryAccent }]}
+                onPress={() => setAssignModalVisible(false)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.doneBtnText}>Done ({menteeStudents.length} Assigned)</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
-      {/* ========================================================================= */}
-      {/* 6. CALL CONFIRMATION MODAL                                                */}
       {/* ========================================================================= */}
       <Modal visible={callConfirmVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>

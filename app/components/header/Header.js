@@ -133,9 +133,10 @@ export default function Header() {
         target === "chat" ||
         target === "bus" ||
         target === "mess" ||
-        target === "notify"
+        target === "notify" ||
+        target === "notice_detail"
       ) {
-        setActiveModal(target);
+        setActiveModal(target === "notice_detail" ? "notify" : target);
       }
     });
 

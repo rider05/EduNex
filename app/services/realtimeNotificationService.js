@@ -1,5 +1,5 @@
 import { AppState, Platform } from "react-native";
-import * as Notifications from "expo-notifications";
+import * as Notifications from "../utils/safeNotifications";
 import * as Haptics from "expo-haptics";
 import { api } from "./api";
 import { resolveIdentity } from "./identityService";

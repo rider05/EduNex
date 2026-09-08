@@ -8,6 +8,8 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -107,7 +109,10 @@ export default function FeedbackModal({ visible, onClose }) {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.overlay}
+      >
         <View style={[styles.modalContainer, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
           {/* Header */}
           <View style={styles.header}>
@@ -300,7 +305,7 @@ export default function FeedbackModal({ visible, onClose }) {
             )}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

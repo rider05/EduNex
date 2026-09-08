@@ -140,9 +140,10 @@ export default function HeaderStaff() {
         target === "groupMsg" ||
         target === "chat" ||
         target === "notify" ||
-        target === "notification"
+        target === "notification" ||
+        target === "notice_detail"
       ) {
-        setActiveModal(target);
+        setActiveModal(target === "notice_detail" ? "notify" : target);
       }
     });
 

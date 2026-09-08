@@ -263,6 +263,52 @@ export default function NotificationModal({ visible, onClose }) {
 
   const styles = getStyles(colors, isDarkMode);
 
+  const [selectedNotice, setSelectedNotice] = useState(null);
+
+  const handleCardTap = (note) => {
+    const title = (note.title || "").toLowerCase();
+    const text = (note.text || note.message || "").toLowerCase();
+    const meta = note.metadata || note.data || {};
+    const notifType = (meta.type || note.type || "").toLowerCase();
+
+    const isActionable =
+      title.includes("leave") ||
+      title.includes("gate pass") ||
+      title.includes("on-duty") ||
+      title.includes("od ") ||
+      title.includes(" od") ||
+      title.includes("hostel") ||
+      title.includes("outing") ||
+      title.includes("fee") ||
+      title.includes("invoice") ||
+      title.includes("dues") ||
+      title.includes("assignment") ||
+      title.includes("class test") ||
+      title.includes("exam") ||
+      title.includes("bus") ||
+      title.includes("chat") ||
+      title.includes("message") ||
+      title.includes("tutor") ||
+      title.includes("faculty") ||
+      notifType === "leave" ||
+      notifType === "hostel" ||
+      notifType === "fees" ||
+      notifType === "assignment" ||
+      notifType === "test" ||
+      notifType === "exam" ||
+      notifType === "bus" ||
+      notifType === "chat";
+
+    if (isActionable) {
+      onClose?.();
+      setTimeout(() => {
+        handleNotificationAction(note);
+      }, 150);
+    } else {
+      setSelectedNotice(note);
+    }
+  };
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -288,7 +334,7 @@ export default function NotificationModal({ visible, onClose }) {
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <Icon name="bell-ring-outline" size={22} color="#FFF" />
-                <Text style={styles.headerTitle}>Notifications</Text>
+                <Text style={styles.headerTitle}>Notifications & Circulars</Text>
               </View>
               <TouchableOpacity
                 style={styles.closeBtn}
@@ -305,7 +351,7 @@ export default function NotificationModal({ visible, onClose }) {
           {notifications.length > 0 && (
             <View style={styles.toolbarRow}>
               <Text style={[styles.toolbarCount, { color: isDarkMode ? "#94A3B8" : "#64748B" }]}>
-                {notifications.length} {notifications.length === 1 ? "Notification" : "Notifications"}
+                {notifications.length} {notifications.length === 1 ? "Notice" : "Notices & Alerts"}
               </Text>
               <TouchableOpacity
                 style={styles.clearAllBtn}
@@ -348,15 +394,10 @@ export default function NotificationModal({ visible, onClose }) {
                       key={note.id}
                       style={styles.cardItem}
                       activeOpacity={0.7}
-                      onPress={() => {
-                        onClose?.();
-                        setTimeout(() => {
-                          handleNotificationAction(note);
-                        }, 120);
-                      }}
+                      onPress={() => handleCardTap(note)}
                     >
-                      <View style={[styles.iconContainer, { backgroundColor: note.color + "22" }]}>
-                        <Icon name={note.icon} size={24} color={note.color} />
+                      <View style={[styles.iconContainer, { backgroundColor: (note.color || "#4F46E5") + "22" }]}>
+                        <Icon name={note.icon || "bell-outline"} size={24} color={note.color || "#4F46E5"} />
                       </View>
                       <View style={styles.textSection}>
                         <Text style={[styles.cardTitle, { color: isDarkMode ? "#FFF" : "#000" }]}>
@@ -365,6 +406,11 @@ export default function NotificationModal({ visible, onClose }) {
                         <Text style={[styles.cardText, { color: isDarkMode ? "#D3D3D3" : "#555" }]} numberOfLines={2}>
                           {note.text}
                         </Text>
+                        {note.createdAt && (
+                          <Text style={[styles.cardDate, { color: isDarkMode ? "#777" : "#999" }]}>
+                            {new Date(note.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </Text>
+                        )}
                       </View>
                       <TouchableOpacity
                         style={[
@@ -393,6 +439,58 @@ export default function NotificationModal({ visible, onClose }) {
             }
           </ScrollView>
         </Animated.View>
+
+        {/* Detailed Circular / Notice Inspection Modal */}
+        {selectedNotice && (
+          <Modal visible={Boolean(selectedNotice)} transparent animationType="fade" onRequestClose={() => setSelectedNotice(null)}>
+            <View style={styles.detailOverlay}>
+              <View style={[styles.detailCard, { backgroundColor: isDarkMode ? "#1E1B4B" : "#FFFFFF" }]}>
+                <View style={styles.detailHeader}>
+                  <View style={[styles.iconContainer, { backgroundColor: (selectedNotice.color || "#4F46E5") + "25" }]}>
+                    <Icon name={selectedNotice.icon || "bullhorn-outline"} size={26} color={selectedNotice.color || "#4F46E5"} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={[styles.detailTitle, { color: isDarkMode ? "#FFFFFF" : "#0F172A" }]}>
+                      {selectedNotice.title}
+                    </Text>
+                    <Text style={[styles.detailDate, { color: isDarkMode ? "#94A3B8" : "#64748B" }]}>
+                      {selectedNotice.createdAt ? new Date(selectedNotice.createdAt).toLocaleString() : "Official Campus Bulletin"}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setSelectedNotice(null)} style={styles.detailCloseBtn}>
+                    <Icon name="close" size={20} color={isDarkMode ? "#CBD5E1" : "#475569"} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={styles.detailBody} showsVerticalScrollIndicator={false}>
+                  <Text style={[styles.detailMessage, { color: isDarkMode ? "#E2E8F0" : "#334155" }]}>
+                    {selectedNotice.text || selectedNotice.message || "No further details provided."}
+                  </Text>
+                </ScrollView>
+
+                <View style={styles.detailActions}>
+                  <TouchableOpacity
+                    style={[styles.detailDismissBtn, { backgroundColor: isDarkMode ? "#312E81" : "#EEF2FF" }]}
+                    onPress={() => {
+                      handleDismissNotification(selectedNotice.id);
+                      setSelectedNotice(null);
+                    }}
+                  >
+                    <Icon name="check-circle-outline" size={16} color="#4F46E5" />
+                    <Text style={[styles.detailDismissText, { color: "#4F46E5" }]}>Dismiss Notice</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.detailDoneBtn, { backgroundColor: "#4F46E5" }]}
+                    onPress={() => setSelectedNotice(null)}
+                  >
+                    <Text style={styles.detailDoneText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        )}
       </View>
     </Modal>
   );
@@ -538,6 +636,11 @@ const getStyles = (colors, isDarkMode) =>
       fontSize: 12,
       lineHeight: 16,
     },
+    cardDate: {
+      fontSize: 10,
+      marginTop: 3,
+      fontWeight: "500",
+    },
     dismissCardBtn: {
       width: 26,
       height: 26,
@@ -559,5 +662,86 @@ const getStyles = (colors, isDarkMode) =>
     emptySubText: {
       fontSize: 12,
       marginTop: 4,
+    },
+    /* Detail View Modal Styles */
+    detailOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.6)",
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 20,
+    },
+    detailCard: {
+      width: "100%",
+      maxHeight: "80%",
+      borderRadius: 22,
+      padding: 20,
+      elevation: 20,
+      shadowColor: "#000",
+      shadowOpacity: 0.25,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 6 },
+    },
+    detailHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 16,
+    },
+    detailTitle: {
+      fontSize: 16,
+      fontWeight: "800",
+      letterSpacing: -0.2,
+    },
+    detailDate: {
+      fontSize: 11,
+      marginTop: 2,
+      fontWeight: "500",
+    },
+    detailCloseBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: "rgba(100,116,139,0.12)",
+      justifyContent: "center",
+      alignItems: "center",
+      marginLeft: 8,
+    },
+    detailBody: {
+      maxHeight: 260,
+      marginBottom: 20,
+    },
+    detailMessage: {
+      fontSize: 13.5,
+      lineHeight: 22,
+      fontWeight: "400",
+    },
+    detailActions: {
+      flexDirection: "row",
+      gap: 10,
+      justifyContent: "flex-end",
+    },
+    detailDismissBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+    },
+    detailDismissText: {
+      fontSize: 12.5,
+      fontWeight: "700",
+    },
+    detailDoneBtn: {
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    detailDoneText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "800",
     },
   });

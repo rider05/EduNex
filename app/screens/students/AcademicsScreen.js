@@ -9,6 +9,8 @@ import {
   TextInput,
   Modal,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import * as DocumentPicker from "expo-document-picker";
@@ -74,20 +76,20 @@ const mapSubjectsToCourses = (subjects) =>
 const mapAssignment = (a, i) => ({
   id: a.id || a._id || `asg_${i + 1}`,
   title: a.title || a.subject || "Assignment",
-  subject: a.subject || "Course Core",
-  code: a.subjectCode || `SUB-${i + 1}`,
-  dueDate: a.dueDate || "Due this week",
-  faculty: a.assignedBy || "Course Faculty",
+  subject: a.subject || a.title || "Course Subject",
+  code: a.subjectCode || a.code || "",
+  dueDate: a.dueDate || "Due soon",
+  faculty: a.assignedBy || a.faculty || "Course Faculty",
   status: a.status === "Pending" ? "Pending Submission" : a.status || "Pending Submission",
-  marks: a.totalMarks ? `${a.totalMarks} Marks` : "50 Marks",
-  totalMarks: a.totalMarks || 50,
-  obtainedMarks: a.obtainedMarks,
-  gradedScore: a.obtainedMarks != null ? `${a.obtainedMarks} / ${a.totalMarks || 50} Marks` : null,
+  marks: a.totalMarks ? `${a.totalMarks} Marks` : a.marks ? `${a.marks} Marks` : "—",
+  totalMarks: Number(a.totalMarks) || Number(a.marks) || 0,
+  obtainedMarks: a.obtainedMarks != null ? Number(a.obtainedMarks) : null,
+  gradedScore: a.obtainedMarks != null ? `${a.obtainedMarks} / ${a.totalMarks || a.marks || "—"} Marks` : null,
   color: ["#4F46E5", "#DB2777", "#0D9488", "#7C3AED"][i % 4],
   desc: a.description || "Course assignment submission.",
-  feedback: a.feedback || (a.status === "Submitted" ? "Submitted on time. Awaiting instructor grading." : null),
-  submittedFile: a.submittedFile || (a.status === "Submitted" ? { name: `${a.subjectCode || "Course"}_Solution.pdf`, size: "1.85 MB" } : null),
-  submissionDate: a.submissionDate || (a.status === "Submitted" ? "01 Sep 2026, 04:30 PM" : null),
+  feedback: a.feedback || null,
+  submittedFile: a.submittedFile || null,
+  submissionDate: a.submissionDate || a.submittedAt || null,
   submissionRemarks: a.submissionRemarks || "",
   repoLink: a.repoLink || "",
 });
@@ -134,11 +136,14 @@ export default function AcademicsScreen() {
     semester: "",
   });
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
+      if (force) {
+        api.clearCache();
+      }
       const [student, asgRes, attSummary, subjectCatalog] = await Promise.all([
-        getStudentData().catch(() => null),
-        getAssignments().catch(() => []),
+        getStudentData(force).catch(() => null),
+        getAssignments({}, force).catch(() => []),
         getStudentAttendanceSummary().catch(() => null),
         getSubjects().catch(() => []),
       ]);
@@ -210,7 +215,7 @@ export default function AcademicsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData(true);
     setRefreshing(false);
   }, [loadData]);
 
@@ -933,121 +938,126 @@ export default function AcademicsScreen() {
           {submittingAsg && (
             <Modal transparent visible={!!submittingAsg} animationType="fade" onRequestClose={() => setSubmittingAsg(null)}>
               <View style={styles.submissionDialogOverlay}>
-                <View
-                  style={[
-                    styles.submissionDialogCard,
-                    { backgroundColor: colors.cardBackground, borderColor: colors.divider },
-                  ]}
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === "ios" ? "padding" : "height"}
+                  style={{ width: "100%", alignItems: "center" }}
                 >
-                  <View style={styles.dialogHeader}>
-                    <View style={[styles.dialogIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
-                      <Icon name="cloud-upload-outline" size={24} color={colors.primaryAccent} />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 10 }}>
-                      <Text style={[styles.dialogTitle, { color: colors.primaryText }]}>Submit Assignment</Text>
-                      <Text style={[styles.dialogAsgName, { color: colors.secondaryText }]} numberOfLines={1}>
-                        {submittingAsg.code}: {submittingAsg.title}
-                      </Text>
-                    </View>
-                    <TouchableOpacity onPress={() => setSubmittingAsg(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Icon name="close" size={20} color={colors.secondaryText} />
-                    </TouchableOpacity>
-                  </View>
-
-                  <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380, marginTop: 12 }}>
-                    {/* Real File Picker Attachment Area */}
-                    <Text style={[styles.fieldLabel, { color: colors.primaryText }]}>Attach Solution Document</Text>
-                    {selectedFile ? (
-                      <View style={[styles.attachedFileBox, { backgroundColor: "#10B98112", borderColor: "#10B98140" }]}>
-                        <Icon name="file-check" size={26} color="#10B981" />
-                        <View style={{ flex: 1, marginLeft: 10 }}>
-                          <Text style={[styles.attachedFileName, { color: colors.primaryText }]} numberOfLines={1}>
-                            {selectedFile.name}
-                          </Text>
-                          <Text style={[styles.attachedFileSize, { color: colors.secondaryText }]}>
-                            {selectedFile.size} · Document Attached
-                          </Text>
-                        </View>
-                        <TouchableOpacity onPress={() => setSelectedFile(null)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                          <Icon name="close-circle" size={20} color="#EF4444" />
-                        </TouchableOpacity>
+                  <View
+                    style={[
+                      styles.submissionDialogCard,
+                      { backgroundColor: colors.cardBackground, borderColor: colors.divider },
+                    ]}
+                  >
+                    <View style={styles.dialogHeader}>
+                      <View style={[styles.dialogIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
+                        <Icon name="cloud-upload-outline" size={24} color={colors.primaryAccent} />
                       </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={[styles.uploadBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
-                        onPress={handlePickDocument}
-                        activeOpacity={0.7}
-                      >
-                        <Icon name="file-upload-outline" size={32} color={colors.primaryAccent} />
-                        <Text style={[styles.uploadBoxText, { color: colors.primaryText }]}>
-                          Select Document (PDF, ZIP, DOCX, Code)
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={[styles.dialogTitle, { color: colors.primaryText }]}>Submit Assignment</Text>
+                        <Text style={[styles.dialogAsgName, { color: colors.secondaryText }]} numberOfLines={1}>
+                          {submittingAsg.code}: {submittingAsg.title}
                         </Text>
-                        <Text style={[styles.uploadBoxSub, { color: colors.secondaryText }]}>
-                          Tap to browse local device files · Max 25 MB
-                        </Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setSubmittingAsg(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Icon name="close" size={20} color={colors.secondaryText} />
                       </TouchableOpacity>
-                    )}
-
-                    {/* GitHub / Demo URL Input */}
-                    <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 12 }]}>
-                      Repository / Project URL (Optional)
-                    </Text>
-                    <View style={[styles.inputRow, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
-                      <Icon name="link-variant" size={18} color={colors.secondaryText} />
-                      <TextInput
-                        style={[styles.linkInput, { color: colors.primaryText }]}
-                        placeholder="https://github.com/username/repo or Drive link"
-                        placeholderTextColor={colors.disabledText}
-                        value={repoLink}
-                        onChangeText={setRepoLink}
-                        autoCapitalize="none"
-                      />
                     </View>
 
-                    {/* Submission Remarks & Approach */}
-                    <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 12 }]}>
-                      Remarks / Notes for Faculty
-                    </Text>
-                    <TextInput
-                      style={[
-                        styles.remarksInput,
-                        { backgroundColor: colors.primaryBackground, borderColor: colors.divider, color: colors.primaryText },
-                      ]}
-                      placeholder="Add methodology notes, dependencies, or submission remarks..."
-                      placeholderTextColor={colors.disabledText}
-                      value={submissionRemarks}
-                      onChangeText={setSubmissionRemarks}
-                      multiline
-                      numberOfLines={3}
-                    />
-                  </ScrollView>
-
-                  {/* Actions */}
-                  <View style={styles.dialogActionsRow}>
-                    <TouchableOpacity
-                      style={[styles.dialogCancelBtn, { borderColor: colors.divider }]}
-                      onPress={() => setSubmittingAsg(null)}
-                      disabled={isSubmittingFile}
-                    >
-                      <Text style={[styles.dialogCancelBtnText, { color: colors.secondaryText }]}>Cancel</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.dialogSubmitBtn, { backgroundColor: colors.primaryAccent }]}
-                      onPress={handleConfirmAssignmentSubmit}
-                      disabled={isSubmittingFile}
-                      activeOpacity={0.85}
-                    >
-                      {isSubmittingFile ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
+                    <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380, marginTop: 12 }} keyboardShouldPersistTaps="handled">
+                      {/* Real File Picker Attachment Area */}
+                      <Text style={[styles.fieldLabel, { color: colors.primaryText }]}>Attach Solution Document</Text>
+                      {selectedFile ? (
+                        <View style={[styles.attachedFileBox, { backgroundColor: "#10B98112", borderColor: "#10B98140" }]}>
+                          <Icon name="file-check" size={26} color="#10B981" />
+                          <View style={{ flex: 1, marginLeft: 10 }}>
+                            <Text style={[styles.attachedFileName, { color: colors.primaryText }]} numberOfLines={1}>
+                              {selectedFile.name}
+                            </Text>
+                            <Text style={[styles.attachedFileSize, { color: colors.secondaryText }]}>
+                              {selectedFile.size} · Document Attached
+                            </Text>
+                          </View>
+                          <TouchableOpacity onPress={() => setSelectedFile(null)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                            <Icon name="close-circle" size={20} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
                       ) : (
-                        <Text style={styles.dialogSubmitBtnText}>
-                          {submittingAsg.status === "Submitted" ? "Update Solution" : "Submit Work"}
-                        </Text>
+                        <TouchableOpacity
+                          style={[styles.uploadBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
+                          onPress={handlePickDocument}
+                          activeOpacity={0.7}
+                        >
+                          <Icon name="file-upload-outline" size={32} color={colors.primaryAccent} />
+                          <Text style={[styles.uploadBoxText, { color: colors.primaryText }]}>
+                            Select Document (PDF, ZIP, DOCX, Code)
+                          </Text>
+                          <Text style={[styles.uploadBoxSub, { color: colors.secondaryText }]}>
+                            Tap to browse local device files · Max 25 MB
+                          </Text>
+                        </TouchableOpacity>
                       )}
-                    </TouchableOpacity>
+
+                      {/* GitHub / Demo URL Input */}
+                      <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 12 }]}>
+                        Repository / Project URL (Optional)
+                      </Text>
+                      <View style={[styles.inputRow, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+                        <Icon name="link-variant" size={18} color={colors.secondaryText} />
+                        <TextInput
+                          style={[styles.linkInput, { color: colors.primaryText }]}
+                          placeholder="https://github.com/username/repo or Drive link"
+                          placeholderTextColor={colors.disabledText}
+                          value={repoLink}
+                          onChangeText={setRepoLink}
+                          autoCapitalize="none"
+                        />
+                      </View>
+
+                      {/* Submission Remarks & Approach */}
+                      <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 12 }]}>
+                        Remarks / Notes for Faculty
+                      </Text>
+                      <TextInput
+                        style={[
+                          styles.remarksInput,
+                          { backgroundColor: colors.primaryBackground, borderColor: colors.divider, color: colors.primaryText },
+                        ]}
+                        placeholder="Add methodology notes, dependencies, or submission remarks..."
+                        placeholderTextColor={colors.disabledText}
+                        value={submissionRemarks}
+                        onChangeText={setSubmissionRemarks}
+                        multiline
+                        numberOfLines={3}
+                      />
+                    </ScrollView>
+
+                    {/* Actions */}
+                    <View style={styles.dialogActionsRow}>
+                      <TouchableOpacity
+                        style={[styles.dialogCancelBtn, { borderColor: colors.divider }]}
+                        onPress={() => setSubmittingAsg(null)}
+                        disabled={isSubmittingFile}
+                      >
+                        <Text style={[styles.dialogCancelBtnText, { color: colors.secondaryText }]}>Cancel</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.dialogSubmitBtn, { backgroundColor: colors.primaryAccent }]}
+                        onPress={handleConfirmAssignmentSubmit}
+                        disabled={isSubmittingFile}
+                        activeOpacity={0.85}
+                      >
+                        {isSubmittingFile ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <Text style={styles.dialogSubmitBtnText}>
+                            {submittingAsg.status === "Submitted" ? "Update Solution" : "Submit Work"}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
+                </KeyboardAvoidingView>
               </View>
             </Modal>
           )}

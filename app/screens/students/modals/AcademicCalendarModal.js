@@ -11,6 +11,7 @@ import {
   StatusBar,
   RefreshControl,
   ActivityIndicator,
+  KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -198,18 +199,23 @@ export default function AcademicCalendarModal({ visible, onClose }) {
           </ScrollView>
         </View>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollBody}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => fetchCalendar(true)}
-              tintColor={colors.primaryAccent}
-              colors={[colors.primaryAccent]}
-            />
-          }
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
         >
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollBody}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => fetchCalendar(true)}
+                tintColor={colors.primaryAccent}
+                colors={[colors.primaryAccent]}
+              />
+            }
+          >
           {/* LOADING STATE */}
           {loading && !calendarData && (
             <View style={styles.loadingBox}>
@@ -715,6 +721,7 @@ export default function AcademicCalendarModal({ visible, onClose }) {
 
           <View style={{ height: 40 }} />
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );

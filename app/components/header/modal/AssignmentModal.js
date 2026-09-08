@@ -9,6 +9,8 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../../context/ThemeContext";
@@ -502,7 +504,10 @@ export default function AssignmentModal({ visible, onClose, colors: propColors }
       {/* CREATE NEW ASSIGNMENT MODAL (SCOPED STRICTLY TO ASSIGNED SUBJECTS)          */}
       {/* ========================================================================= */}
       <Modal transparent visible={showCreateModal} animationType="fade" onRequestClose={() => setShowCreateModal(false)}>
-        <View style={styles.createModalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.createModalOverlay}
+        >
           <View style={[styles.createModalCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
             <View style={styles.createModalHeader}>
               <View style={[styles.createIconWrap, { backgroundColor: colors.primaryAccent + "18" }]}>
@@ -636,7 +641,7 @@ export default function AssignmentModal({ visible, onClose, colors: propColors }
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ========================================================================= */}

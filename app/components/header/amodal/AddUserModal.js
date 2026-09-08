@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Switch,
   Animated,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import * as DocumentPicker from "expo-document-picker";
@@ -708,7 +710,10 @@ export default function AddUserModal({ visible, onClose }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.overlay}
+      >
         <View style={[styles.modalCard, { backgroundColor: colors.cardBackground }]}>
           {/* Header */}
           <View style={styles.modalHeader}>
@@ -1554,7 +1559,7 @@ export default function AddUserModal({ visible, onClose }) {
           </Animated.View>
         )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       {/* Dropdown Options Modal */}
       <Modal visible={pickerModal.visible} transparent animationType="fade">

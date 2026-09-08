@@ -9,6 +9,8 @@ import {
   Easing,
   TextInput,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../../context/ThemeContext";
@@ -129,134 +131,139 @@ export default function AssignmentReportModal({ visible, onClose, colors: propCo
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
-        <Animated.View
-          style={[
-            styles.modalContainer,
-            {
-              backgroundColor: colors.cardBackground || "#FFFFFF",
-              borderColor: colors.divider || "rgba(0,0,0,0.1)",
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ width: "100%", alignItems: "center" }}
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-              <View style={[styles.iconWrap, { backgroundColor: "#E67E2218" }]}>
-                <Icon name="file-document-edit" size={24} color="#E67E22" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.title, { color: colors.primaryText }]}>Assignment & CIA Submissions</Text>
-                <Text style={[styles.subtitle, { color: colors.secondaryText }]}>
-                  Review lab experiments & grade Continuous Assessment files
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity onPress={onClose} style={styles.closeIconBtn}>
-              <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Filter Pills */}
-          <View style={styles.filterRow}>
-            {["All", "Pending", "Graded"].map((f) => {
-              const isSel = activeFilter === f;
-              return (
-                <TouchableOpacity
-                  key={f}
-                  style={[
-                    styles.filterPill,
-                    isSel
-                      ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
-                      : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
-                  ]}
-                  onPress={() => setActiveFilter(f)}
-                >
-                  <Text style={[styles.filterPillText, { color: isSel ? "#FFFFFF" : colors.secondaryText }]}>
-                    {f}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Search Box */}
-          <View style={[styles.searchBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
-            <Icon name="magnify" size={18} color={colors.secondaryText} />
-            <TextInput
-              style={[styles.searchInput, { color: colors.primaryText }]}
-              placeholder="Search by student or topic..."
-              placeholderTextColor={colors.disabledText}
-              value={search}
-              onChangeText={setSearch}
-            />
-            {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch("")}>
-                <Icon name="close-circle" size={16} color={colors.secondaryText} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Reports List */}
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
-            {filtered.map((item) => (
-              <View
-                key={item.id}
-                style={[styles.reportCard, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
-              >
+          <Animated.View
+            style={[
+              styles.modalContainer,
+              {
+                backgroundColor: colors.cardBackground || "#FFFFFF",
+                borderColor: colors.divider || "rgba(0,0,0,0.1)",
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            {/* Header */}
+            <View style={styles.header}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                <View style={[styles.iconWrap, { backgroundColor: "#E67E2218" }]}>
+                  <Icon name="file-document-edit" size={24} color="#E67E22" />
+                </View>
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    <Text style={[styles.studentName, { color: colors.primaryText }]} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <View
-                      style={[
-                        styles.statusTag,
-                        { backgroundColor: item.status === "Graded" ? "#10B98118" : "#F59E0B18" },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.statusTagText,
-                          { color: item.status === "Graded" ? "#10B981" : "#D97706" },
-                        ]}
-                      >
-                        {item.status} ({item.marks})
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Text style={[styles.topicText, { color: colors.secondaryText }]} numberOfLines={2}>
-                    {item.topic}
-                  </Text>
-                  <Text style={[styles.dateText, { color: colors.disabledText }]}>
-                    Submitted: {item.submittedOn}
+                  <Text style={[styles.title, { color: colors.primaryText }]}>Assignment & CIA Submissions</Text>
+                  <Text style={[styles.subtitle, { color: colors.secondaryText }]}>
+                    Review lab experiments & grade Continuous Assessment files
                   </Text>
                 </View>
-
-                {item.status === "Pending" && (
-                  <TouchableOpacity
-                    style={[styles.gradeBtn, { backgroundColor: colors.primaryAccent }]}
-                    onPress={() => handleGrade(item.id)}
-                  >
-                    <Icon name="check" size={15} color="#FFFFFF" />
-                    <Text style={styles.gradeBtnText}>Grade</Text>
-                  </TouchableOpacity>
-                )}
               </View>
-            ))}
-          </ScrollView>
 
-          {/* Done Button */}
-          <TouchableOpacity
-            style={[styles.closeButton, { backgroundColor: colors.primaryAccent }]}
-            onPress={onClose}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.closeText}>Close</Text>
-          </TouchableOpacity>
-        </Animated.View>
+              <TouchableOpacity onPress={onClose} style={styles.closeIconBtn}>
+                <Icon name="close-circle-outline" size={24} color={colors.secondaryText} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Filter Pills */}
+            <View style={styles.filterRow}>
+              {["All", "Pending", "Graded"].map((f) => {
+                const isSel = activeFilter === f;
+                return (
+                  <TouchableOpacity
+                    key={f}
+                    style={[
+                      styles.filterPill,
+                      isSel
+                        ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
+                        : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                    ]}
+                    onPress={() => setActiveFilter(f)}
+                  >
+                    <Text style={[styles.filterPillText, { color: isSel ? "#FFFFFF" : colors.secondaryText }]}>
+                      {f}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Search Box */}
+            <View style={[styles.searchBox, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
+              <Icon name="magnify" size={18} color={colors.secondaryText} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.primaryText }]}
+                placeholder="Search by student or topic..."
+                placeholderTextColor={colors.disabledText}
+                value={search}
+                onChangeText={setSearch}
+              />
+              {search.length > 0 && (
+                <TouchableOpacity onPress={() => setSearch("")}>
+                  <Icon name="close-circle" size={16} color={colors.secondaryText} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Reports List */}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+              {filtered.map((item) => (
+                <View
+                  key={item.id}
+                  style={[styles.reportCard, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <Text style={[styles.studentName, { color: colors.primaryText }]} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <View
+                        style={[
+                          styles.statusTag,
+                          { backgroundColor: item.status === "Graded" ? "#10B98118" : "#F59E0B18" },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusTagText,
+                            { color: item.status === "Graded" ? "#10B981" : "#D97706" },
+                          ]}
+                        >
+                          {item.status} ({item.marks})
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={[styles.topicText, { color: colors.secondaryText }]} numberOfLines={2}>
+                      {item.topic}
+                    </Text>
+                    <Text style={[styles.dateText, { color: colors.disabledText }]}>
+                      Submitted: {item.submittedOn}
+                    </Text>
+                  </View>
+
+                  {item.status === "Pending" && (
+                    <TouchableOpacity
+                      style={[styles.gradeBtn, { backgroundColor: colors.primaryAccent }]}
+                      onPress={() => handleGrade(item.id)}
+                    >
+                      <Icon name="check" size={15} color="#FFFFFF" />
+                      <Text style={styles.gradeBtnText}>Grade</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+
+            {/* Done Button */}
+            <TouchableOpacity
+              style={[styles.closeButton, { backgroundColor: colors.primaryAccent }]}
+              onPress={onClose}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.closeText}>Close</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </KeyboardAvoidingView>
       </Animated.View>
     </Modal>
   );

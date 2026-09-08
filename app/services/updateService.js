@@ -9,7 +9,7 @@ export const CURRENT_APP_VERSION =
   Constants.manifest2?.extra?.expoClient?.version ||
   Constants.expoConfig?.extra?.version ||
   Constants.manifest?.version ||
-  "1.0.1";
+  "1.0.2";
 
 const DISMISSED_UPDATE_KEY = "edunex_dismissed_update_version";
 

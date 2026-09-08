@@ -12,6 +12,8 @@ import {
   Alert,
   RefreshControl,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
@@ -476,138 +478,143 @@ export default function ManageUsersAdmin() {
       {/* ========================================================================= */}
       <Modal visible={editModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.cardBackground }]}>
-            {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={[styles.avatarCircle, { backgroundColor: getRoleBadgeStyle(editRole).bg }]}>
-                  <Icon name={getRoleBadgeStyle(editRole).icon} size={22} color={getRoleBadgeStyle(editRole).text} />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", alignItems: "center" }}
+          >
+            <View style={[styles.modalCard, { backgroundColor: colors.cardBackground }]}>
+              {/* Modal Header */}
+              <View style={styles.modalHeader}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={[styles.avatarCircle, { backgroundColor: getRoleBadgeStyle(editRole).bg }]}>
+                    <Icon name={getRoleBadgeStyle(editRole).icon} size={22} color={getRoleBadgeStyle(editRole).text} />
+                  </View>
+                  <View>
+                    <Text style={[styles.modalTitle, { color: colors.primaryText }]}>User Profile & Access</Text>
+                    <Text style={[styles.modalSub, { color: colors.secondaryText }]}>MongoDB Document ID: {selectedUser?.id?.slice(-8)}</Text>
+                  </View>
                 </View>
-                <View>
-                  <Text style={[styles.modalTitle, { color: colors.primaryText }]}>User Profile & Access</Text>
-                  <Text style={[styles.modalSub, { color: colors.secondaryText }]}>MongoDB Document ID: {selectedUser?.id?.slice(-8)}</Text>
-                </View>
-              </View>
-              <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Icon name="close-circle" size={24} color={colors.secondaryText} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
-              {/* Form Fields */}
-              <Text style={[styles.fieldLabel, { color: colors.primaryText }]}>Full Name *</Text>
-              <TextInput
-                style={[styles.inputField, { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider }]}
-                value={editName}
-                onChangeText={setEditName}
-                placeholder="User's Full Name"
-                placeholderTextColor={colors.secondaryText}
-              />
-
-              <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 10 }]}>Username / System ID</Text>
-              <TextInput
-                style={[styles.inputField, { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider }]}
-                value={editUsername}
-                onChangeText={setEditUsername}
-                placeholder="e.g. 25ACSE001"
-                placeholderTextColor={colors.secondaryText}
-                autoCapitalize="characters"
-              />
-
-              <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 10 }]}>Email Address</Text>
-              <TextInput
-                style={[styles.inputField, { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider }]}
-                value={editEmail}
-                onChangeText={setEditEmail}
-                placeholder="Email Address"
-                placeholderTextColor={colors.secondaryText}
-                keyboardType="email-address"
-              />
-
-              <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 10 }]}>Mobile Number</Text>
-              <TextInput
-                style={[styles.inputField, { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider }]}
-                value={editMobile}
-                onChangeText={setEditMobile}
-                placeholder="Mobile Number"
-                placeholderTextColor={colors.secondaryText}
-                keyboardType="phone-pad"
-              />
-
-              <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 10 }]}>Department</Text>
-              <TextInput
-                style={[styles.inputField, { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider }]}
-                value={editDept}
-                onChangeText={setEditDept}
-                placeholder="Department (e.g. CSE, AI-DS)"
-                placeholderTextColor={colors.secondaryText}
-              />
-
-              {/* Role Select Options */}
-              <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 12 }]}>Role Assignment</Text>
-              <View style={styles.rolePickerRow}>
-                {["student", "staff", "parent", "admin"].map((r) => {
-                  const b = getRoleBadgeStyle(r);
-                  const isSel = editRole === r;
-                  return (
-                    <TouchableOpacity
-                      key={r}
-                      style={[
-                        styles.rolePickerOption,
-                        isSel
-                          ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
-                          : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
-                      ]}
-                      onPress={() => setEditRole(r)}
-                    >
-                      <Icon name={b.icon} size={16} color={isSel ? "#fff" : colors.secondaryText} />
-                      <Text style={[styles.rolePickerText, { color: isSel ? "#fff" : colors.primaryText }]}>
-                        {b.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                <TouchableOpacity onPress={() => setEditModalVisible(false)}>
+                  <Icon name="close-circle" size={24} color={colors.secondaryText} />
+                </TouchableOpacity>
               </View>
 
-              {/* Reset Password Action */}
-              <TouchableOpacity
-                style={[styles.resetPasswordBtn, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
-                onPress={handleResetPassword}
-                disabled={isResettingPassword}
-              >
-                <Icon name="key-change" size={18} color={colors.primaryAccent} />
-                <Text style={[styles.resetPasswordText, { color: colors.primaryAccent }]}>
-                  {isResettingPassword ? "Resetting Password..." : "Reset User Password (edunex123)"}
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }} keyboardShouldPersistTaps="handled">
+                {/* Form Fields */}
+                <Text style={[styles.fieldLabel, { color: colors.primaryText }]}>Full Name *</Text>
+                <TextInput
+                  style={[styles.inputField, { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider }]}
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="User's Full Name"
+                  placeholderTextColor={colors.secondaryText}
+                />
 
-            {/* Modal Actions */}
-            <View style={styles.modalActionRow}>
-              <TouchableOpacity
-                style={[styles.deleteBtn, { backgroundColor: "#EF4444" }]}
-                onPress={handleDeleteUser}
-              >
-                <Icon name="delete-outline" size={18} color="#fff" />
-                <Text style={styles.actionBtnText}>Delete</Text>
-              </TouchableOpacity>
+                <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 10 }]}>Username / System ID</Text>
+                <TextInput
+                  style={[styles.inputField, { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider }]}
+                  value={editUsername}
+                  onChangeText={setEditUsername}
+                  placeholder="e.g. 25ACSE001"
+                  placeholderTextColor={colors.secondaryText}
+                  autoCapitalize="characters"
+                />
 
-              <TouchableOpacity
-                style={[styles.saveBtn, { backgroundColor: colors.primaryAccent }]}
-                onPress={handleSaveEdit}
-                disabled={isSavingEdit}
-              >
-                {isSavingEdit ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Icon name="content-save-outline" size={18} color="#fff" />
-                    <Text style={styles.actionBtnText}>Save Changes</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+                <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 10 }]}>Email Address</Text>
+                <TextInput
+                  style={[styles.inputField, { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider }]}
+                  value={editEmail}
+                  onChangeText={setEditEmail}
+                  placeholder="Email Address"
+                  placeholderTextColor={colors.secondaryText}
+                  keyboardType="email-address"
+                />
+
+                <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 10 }]}>Mobile Number</Text>
+                <TextInput
+                  style={[styles.inputField, { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider }]}
+                  value={editMobile}
+                  onChangeText={setEditMobile}
+                  placeholder="Mobile Number"
+                  placeholderTextColor={colors.secondaryText}
+                  keyboardType="phone-pad"
+                />
+
+                <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 10 }]}>Department</Text>
+                <TextInput
+                  style={[styles.inputField, { backgroundColor: colors.primaryBackground, color: colors.primaryText, borderColor: colors.divider }]}
+                  value={editDept}
+                  onChangeText={setEditDept}
+                  placeholder="Department (e.g. CSE, AI-DS)"
+                  placeholderTextColor={colors.secondaryText}
+                />
+
+                {/* Role Select Options */}
+                <Text style={[styles.fieldLabel, { color: colors.primaryText, marginTop: 12 }]}>Role Assignment</Text>
+                <View style={styles.rolePickerRow}>
+                  {["student", "staff", "parent", "admin"].map((r) => {
+                    const b = getRoleBadgeStyle(r);
+                    const isSel = editRole === r;
+                    return (
+                      <TouchableOpacity
+                        key={r}
+                        style={[
+                          styles.rolePickerOption,
+                          isSel
+                            ? { backgroundColor: colors.primaryAccent, borderColor: colors.primaryAccent }
+                            : { backgroundColor: colors.primaryBackground, borderColor: colors.divider },
+                        ]}
+                        onPress={() => setEditRole(r)}
+                      >
+                        <Icon name={b.icon} size={16} color={isSel ? "#fff" : colors.secondaryText} />
+                        <Text style={[styles.rolePickerText, { color: isSel ? "#fff" : colors.primaryText }]}>
+                          {b.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Reset Password Action */}
+                <TouchableOpacity
+                  style={[styles.resetPasswordBtn, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}
+                  onPress={handleResetPassword}
+                  disabled={isResettingPassword}
+                >
+                  <Icon name="key-change" size={18} color={colors.primaryAccent} />
+                  <Text style={[styles.resetPasswordText, { color: colors.primaryAccent }]}>
+                    {isResettingPassword ? "Resetting Password..." : "Reset User Password (edunex123)"}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+
+              {/* Modal Actions */}
+              <View style={styles.modalActionRow}>
+                <TouchableOpacity
+                  style={[styles.deleteBtn, { backgroundColor: "#EF4444" }]}
+                  onPress={handleDeleteUser}
+                >
+                  <Icon name="delete-outline" size={18} color="#fff" />
+                  <Text style={styles.actionBtnText}>Delete</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.saveBtn, { backgroundColor: colors.primaryAccent }]}
+                  onPress={handleSaveEdit}
+                  disabled={isSavingEdit}
+                >
+                  {isSavingEdit ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Icon name="content-save-outline" size={18} color="#fff" />
+                      <Text style={styles.actionBtnText}>Save Changes</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </>

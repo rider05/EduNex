@@ -12,6 +12,7 @@ import {
   Linking,
   ActivityIndicator,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -195,7 +196,8 @@ export default function FullTimetable({ visible = true, onClose }) {
 
         setStudentCohort({
           name: student?.name || identity?.name || rawUser?.name || "",
-          rollNo: student?.rollNo || student?.roll || identity?.rollNo || "",
+          rollNo: student?.rollNo || student?.roll || identity?.rollNo || "25BAD015",
+          regNo: student?.regNo || student?.universityNo || "71052408001",
           department: dept,
           deptShort,
           year: typeof year === "number" ? `${year} Year` : year,
@@ -382,7 +384,15 @@ export default function FullTimetable({ visible = true, onClose }) {
           </View>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
           {/* 2. ENROLLED COHORT HERO CARD */}
           <View style={[styles.cohortHeroCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
             <View style={styles.cohortTopRow}>
@@ -685,6 +695,7 @@ export default function FullTimetable({ visible = true, onClose }) {
 
           <View style={{ height: 40 }} />
         </ScrollView>
+        </KeyboardAvoidingView>
 
         {/* 7. CLASS DETAILS MODAL */}
         <Modal visible={showDetailsModal} transparent animationType="fade" onRequestClose={closeDetailsModal}>

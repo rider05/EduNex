@@ -1,7 +1,7 @@
 // components/AppNavigatorStudent.js
 import React from "react";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { NavigationContainer } from "@react-navigation/native";
+import { createBottomTabNavigator } from "expo-router/js-tabs";
+import { NavigationContainer } from "expo-router/react-navigation";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 
 import DashboardScreen from "../screens/students/DashboardScreen";
