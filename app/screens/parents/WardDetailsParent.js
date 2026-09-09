@@ -63,7 +63,7 @@ export default function WardDetailsParent() {
           batch: student.batch || prev.batch,
           section: student.section || prev.section,
           attendance: student.attendance?.percentage || prev.attendance,
-          cgpa: student.cgpa != null ? String(student.cgpa) : prev.cgpa,
+          cgpa: (student.cgpa != null && !isNaN(parseFloat(student.cgpa))) ? parseFloat(student.cgpa).toFixed(2) : "-",
           advisor: (typeof student.advisor === "string" ? student.advisor : student.advisor?.name) || student.mentorName || student.mentor || prev.advisor || "Ms. Z. Ananth Angel",
           advisorPhone: student.advisorPhone || student.mentorPhone || student.advisor?.phone || prev.advisorPhone || "+91 98000 10008",
           advisorEmail: student.advisorEmail || student.mentorEmail || student.advisor?.email || prev.advisorEmail || "ananthangel@edunex.edu",

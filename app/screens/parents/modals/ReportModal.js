@@ -64,7 +64,11 @@ export default function ReportModal({ visible, onClose, colors, data }) {
 
         <View style={styles.cgpaRow}>
           <Text style={[styles.cgpaLabel, { color: colors.secondaryText }]}>CGPA</Text>
-          <Text style={[styles.cgpaValue, { color: "#2ECC71" }]}>{data.cgpa}</Text>
+          <Text style={[styles.cgpaValue, { color: "#2ECC71" }]}>
+            {data.cgpa && data.cgpa !== "-" && data.cgpa !== "—" && !isNaN(parseFloat(data.cgpa))
+              ? parseFloat(data.cgpa).toFixed(2)
+              : "-"}
+          </Text>
         </View>
 
         <Pressable onPress={onClose} style={[styles.closeButton, { backgroundColor: "#2ECC71" }]}>

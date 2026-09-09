@@ -236,7 +236,7 @@ const calculateCurrentGrade = (grade, cgpa, subjects) => {
       return "RA";
     }
   }
-  return "A";
+  return "-";
 };
 
 export default function DashboardScreen() {
@@ -311,7 +311,7 @@ export default function DashboardScreen() {
           class: data.class || data.section || data.className || "III - AI & DS 'A'",
           semester: data.semester || "",
           grade: computedGrade,
-          cgpa: data.cgpa != null ? String(data.cgpa) : "8.65",
+          cgpa: (data.cgpa != null && !isNaN(parseFloat(data.cgpa))) ? parseFloat(data.cgpa).toFixed(2) : "-",
           dueFees: data.fees?.due != null ? `₹ ${Number(data.fees.due).toLocaleString("en-IN")}` : "",
           attendance:
             attSummary?.summary ||

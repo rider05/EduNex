@@ -479,7 +479,11 @@ export default function FeesScreen() {
                     </View>
                     <View style={styles.specItem}>
                       <Text style={[styles.specLabel, { color: colors.secondaryText }]}>Current CGPA</Text>
-                      <Text style={[styles.specVal, { color: "#10B981" }]}>{studentInfo?.cgpa ? `${studentInfo.cgpa} (Eligible)` : "8.65"}</Text>
+                      <Text style={[styles.specVal, { color: "#10B981" }]}>
+                        {studentInfo?.cgpa && studentInfo.cgpa !== "-" && studentInfo.cgpa !== "—" && !isNaN(parseFloat(studentInfo.cgpa))
+                          ? `${parseFloat(studentInfo.cgpa).toFixed(2)} (Eligible)`
+                          : "-"}
+                      </Text>
                     </View>
                   </View>
                 </View>

@@ -192,16 +192,17 @@ export default function AcademicsScreen() {
           semester: student.semester ? `${student.semester} (Odd '25)` : "",
         });
 
-        const activeCgpa =
-          student.cgpa != null && student.cgpa !== "" && student.cgpa !== "—"
-            ? String(student.cgpa)
-            : "8.65";
-        const activeSgpa =
-          student.sgpa != null && student.sgpa !== "" && student.sgpa !== "—"
-            ? String(student.sgpa)
-            : student.gpa
-            ? String(student.gpa)
-            : "8.80";
+        const rawCgpa = student.cgpa != null ? student.cgpa : student.gpa;
+        const parsedCgpa = parseFloat(String(rawCgpa || "").trim());
+        const activeCgpa = (!isNaN(parsedCgpa) && isFinite(parsedCgpa) && rawCgpa !== "—" && rawCgpa !== "-")
+          ? parsedCgpa.toFixed(2)
+          : "-";
+
+        const rawSgpa = student.sgpa != null ? student.sgpa : (student.gpa != null ? student.gpa : null);
+        const parsedSgpa = parseFloat(String(rawSgpa || "").trim());
+        const activeSgpa = (!isNaN(parsedSgpa) && isFinite(parsedSgpa) && rawSgpa !== "—" && rawSgpa !== "-")
+          ? parsedSgpa.toFixed(2)
+          : "-";
         const targetCredits =
           student.totalCredits ||
           getDeptTargetCredits(student.department || student.dept || student.program);

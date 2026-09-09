@@ -57,7 +57,7 @@ export default function StudentsStaff() {
         roll: s.roll || s.rollNo || "—",
         regNo: s.regNo || s.rollNo || "—",
         section: sec || "—",
-        cgpa: s.cgpa != null ? String(s.cgpa) : "—",
+        cgpa: (s.cgpa != null && !isNaN(parseFloat(s.cgpa))) ? parseFloat(s.cgpa).toFixed(2) : "-",
         attendance: s.attendance?.percentage || (s.attendance ? String(s.attendance) : "—"),
         attendanceStatus: s.attendance?.percentage && parseFloat(s.attendance.percentage) < 75 ? "Critical (<75%)" : "Safe",
         phone: s.phone || "—",

@@ -283,19 +283,20 @@ function calculateStudentAcademicMetrics(studentDoc) {
   const currentEarnedCredits = currentSemCredits > 0 ? currentSemCredits : 24;
   const calculatedCreditsEarned = Math.min(deptTarget, priorCompletedCredits + currentEarnedCredits);
 
-  // 3. CGPA Calculation
-  let calculatedCgpa = studentDoc.cgpa;
-  if (!calculatedCgpa || calculatedCgpa === "—" || calculatedCgpa === "") {
-    calculatedCgpa = (parseFloat(calculatedSgpa) * 0.98).toFixed(2);
-    if (isNaN(parseFloat(calculatedCgpa))) calculatedCgpa = "8.65";
-  } else {
-    calculatedCgpa = String(studentDoc.cgpa);
+  // 3. CGPA Calculation - Strictly from DB, if NaN / not present then "-"
+  let calculatedCgpa = "-";
+  const rawCgpa = studentDoc.cgpa != null ? studentDoc.cgpa : studentDoc.gpa;
+  if (rawCgpa !== undefined && rawCgpa !== null && rawCgpa !== "" && rawCgpa !== "—" && rawCgpa !== "-") {
+    const num = parseFloat(String(rawCgpa).trim());
+    if (!isNaN(num) && isFinite(num)) {
+      calculatedCgpa = num.toFixed(2);
+    }
   }
 
   // 4. Overall Grade
   let grade = studentDoc.grade;
   const numCgpa = parseFloat(calculatedCgpa);
-  if (!grade || grade === "—" || grade === "") {
+  if (!grade || grade === "—" || grade === "" || grade === "-") {
     if (!isNaN(numCgpa)) {
       if (numCgpa >= 9.0) grade = "O";
       else if (numCgpa >= 8.0) grade = "A+";
@@ -305,7 +306,7 @@ function calculateStudentAcademicMetrics(studentDoc) {
       else if (numCgpa >= 4.0) grade = "C";
       else grade = "RA";
     } else {
-      grade = "A";
+      grade = "-";
     }
   }
 
@@ -313,7 +314,7 @@ function calculateStudentAcademicMetrics(studentDoc) {
   const rankInfo = calculateRealStudentRank({ ...studentDoc, cgpa: calculatedCgpa });
 
   return {
-    cgpa: String(calculatedCgpa),
+    cgpa: calculatedCgpa,
     sgpa: String(calculatedSgpa),
     gpa: String(calculatedSgpa),
     creditsEarned: Number(studentDoc.creditsEarned) || calculatedCreditsEarned,
@@ -330,7 +331,10 @@ export function getOrdinalSuffix(n) {
 }
 
 export function calculateRealStudentRank(studentDoc, allStudents = []) {
-  const studentCgpa = parseFloat(studentDoc?.cgpa) || 8.65;
+  const rawStudentCgpa = studentDoc?.cgpa != null ? studentDoc.cgpa : studentDoc?.gpa;
+  const parsedStudentCgpa = parseFloat(String(rawStudentCgpa || "").trim());
+  const hasValidCgpa = !isNaN(parsedStudentCgpa) && isFinite(parsedStudentCgpa);
+  const studentCgpa = hasValidCgpa ? parsedStudentCgpa : null;
   const studentRoll = String(studentDoc?.rollNo || studentDoc?.roll || studentDoc?.id || "CURRENT_USER").trim();
   const studentName = String(studentDoc?.name || studentDoc?.username || "You").trim();
 
@@ -340,12 +344,15 @@ export function calculateRealStudentRank(studentDoc, allStudents = []) {
   (Array.isArray(allStudents) ? allStudents : []).forEach((s) => {
     if (s && (s.rollNo || s.roll || s.id)) {
       const key = String(s.rollNo || s.roll || s.id).trim();
+      const rawVal = s.cgpa != null ? s.cgpa : s.gpa;
+      const numVal = parseFloat(String(rawVal || "").trim());
+      const isValid = !isNaN(numVal) && isFinite(numVal);
       combinedMap.set(key, {
         id: s.id || key,
         name: s.name || s.username || key,
         rollNo: s.rollNo || s.roll || key,
-        cgpa: parseFloat(s.cgpa) || parseFloat(s.gpa) || 8.0,
-        grade: s.grade || "A",
+        cgpa: isValid ? numVal : null,
+        grade: s.grade || "-",
         dept: s.department || s.dept || studentDoc?.department || "AI & DS",
       });
     }
@@ -357,36 +364,44 @@ export function calculateRealStudentRank(studentDoc, allStudents = []) {
     name: studentName,
     rollNo: studentRoll,
     cgpa: studentCgpa,
-    grade: studentDoc?.grade || "A+",
+    grade: studentDoc?.grade || (hasValidCgpa ? "A+" : "-"),
     dept: studentDoc?.department || studentDoc?.dept || "AI & DS",
     isCurrentUser: true,
   });
 
-  // Sort descending by CGPA
-  const sorted = Array.from(combinedMap.values()).sort((a, b) => b.cgpa - a.cgpa);
+  // Sort descending by CGPA (students without CGPA go to bottom)
+  const sorted = Array.from(combinedMap.values()).sort((a, b) => {
+    if (a.cgpa !== null && b.cgpa !== null) return b.cgpa - a.cgpa;
+    if (a.cgpa !== null) return -1;
+    if (b.cgpa !== null) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   // Find 1-based index
   const studentIndex = sorted.findIndex(
     (s) => s.rollNo === studentRoll || s.id === studentDoc?.id || s.isCurrentUser
   );
   const realRankNumber = studentIndex !== -1 ? studentIndex + 1 : 1;
-  const rankText = `${getOrdinalSuffix(realRankNumber)} in Department`;
+  const rankText = hasValidCgpa
+    ? `${getOrdinalSuffix(realRankNumber)} in Department`
+    : "-";
 
   // Top 3 with medals
   const topThree = sorted.slice(0, 3).map((s, idx) => ({
     ...s,
     rank: idx + 1,
+    cgpa: s.cgpa !== null ? s.cgpa.toFixed(2) : "-",
     medal: idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉",
     badgeColor: idx === 0 ? "#F59E0B" : idx === 1 ? "#94A3B8" : "#D97706",
     isCurrentUser: s.rollNo === studentRoll || s.isCurrentUser || s.id === studentDoc?.id,
   }));
 
   return {
-    rankNumber: realRankNumber,
+    rankNumber: hasValidCgpa ? realRankNumber : "-",
     rankText,
     topThree,
     totalStudents: sorted.length,
-    cgpa: studentCgpa.toFixed(2),
+    cgpa: hasValidCgpa ? studentCgpa.toFixed(2) : "-",
   };
 }
 
@@ -428,7 +443,7 @@ export async function getDepartmentTopRanks(department = "AI & DS", currentStude
     return calculateRealStudentRank(student, roster);
   } catch (err) {
     console.warn("getDepartmentTopRanks error:", err);
-    return calculateRealStudentRank(currentStudent || { department, cgpa: 8.65 });
+    return calculateRealStudentRank(currentStudent || { department, cgpa: null });
   }
 }
 
@@ -528,12 +543,12 @@ export async function getStudentData(force = false) {
     hostel: false,
     residential: identity.user?.residentialStatus || "Day Scholar",
     status: "active",
-    cgpa: identity.user?.cgpa || "—",
-    gpa: identity.user?.gpa || "—",
-    rank: "—",
+    cgpa: (identity.user?.cgpa != null && !isNaN(parseFloat(identity.user.cgpa))) ? parseFloat(identity.user.cgpa).toFixed(2) : "-",
+    gpa: (identity.user?.gpa != null && !isNaN(parseFloat(identity.user.gpa))) ? parseFloat(identity.user.gpa).toFixed(2) : "-",
+    rank: "-",
     creditsEarned: 0,
     totalCredits: 160,
-    grade: "—",
+    grade: identity.user?.grade || "-",
     feeStatus: "—",
     attendance: identity.user?.attendance || {
       percentage: "—",

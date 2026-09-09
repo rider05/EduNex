@@ -80,7 +80,9 @@ export default function ProfileParent({ onLogout }) {
             hostel: data?.ward?.hostel || prev?.ward?.hostel || "—",
             bloodGroup: data?.ward?.bloodGroup || prev?.ward?.bloodGroup || "—",
             attendance: data?.ward?.attendancePct || data?.ward?.attendance?.percentage || prev?.ward?.attendance,
-            cgpa: data?.ward?.cgpa ? `${data.ward.cgpa} / 10.0` : prev?.ward?.cgpa,
+            cgpa: (data?.ward?.cgpa && data.ward.cgpa !== "-" && data.ward.cgpa !== "—" && !isNaN(parseFloat(data.ward.cgpa)))
+              ? `${parseFloat(data.ward.cgpa).toFixed(2)} / 10.0`
+              : "-",
             feeStatus:
               data?.overview?.feesDue
                 ? `Due ${data.overview.feesDue}`
