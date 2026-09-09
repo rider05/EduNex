@@ -25,7 +25,7 @@ import { showToast } from "../../utils/toastService";
 import { resolveIdentity } from "../../services/identityService";
 import { api } from "../../services/api";
 import { secureGet } from "../../services/secureStorage";
-import { subscribeToNotifications, onNavigateToNotification, getUserNotifications } from "../../utils/notificationUtils";
+import { subscribeToNotifications, onNavigateToNotification, getUserNotifications, isNotificationForUser } from "../../utils/notificationUtils";
 import { onRouteChange } from "../../services/navigationEvents";
 
 export default function HeaderStaff() {
@@ -57,11 +57,20 @@ export default function HeaderStaff() {
   const fetchNotifications = useCallback(async () => {
     try {
       const id = await resolveIdentity();
-      const userIdentifier = id?.staff?.id || id?.id || id?.username || "";
+      const staff = id?.staff || {};
+      const user = id?.user || {};
+      const userContext = {
+        role: "staff",
+        id: staff?.id || id?.id || id?.staffId || "",
+        staffId: staff?.id || id?.staffId || "",
+        username: id?.username || user?.username || "",
+        department: staff?.department || user?.profile?.department || "",
+      };
+      const userIdentifier = userContext.staffId || userContext.id || userContext.username || "";
 
       const [storedNotifs, apiRes] = await Promise.allSettled([
-        getUserNotifications("staff", userIdentifier),
-        api.get("/notices", { limit: 10, sort: "-createdAt" }),
+        getUserNotifications("staff", userIdentifier, userContext),
+        api.get("/notices", { limit: 20, sort: "-createdAt" }),
       ]);
 
       const directList = storedNotifs.status === "fulfilled" && Array.isArray(storedNotifs.value) ? storedNotifs.value : [];
@@ -70,6 +79,7 @@ export default function HeaderStaff() {
       const validNotices = noticeDocs
         .filter((n) => {
           if (!n) return false;
+          if (!isNotificationForUser(n, userContext)) return false;
           const hasTitle = Boolean((n.subject || n.title || n.sender || "").trim());
           const hasText = Boolean((n.message || n.text || n.body || "").trim());
           return hasText || (hasTitle && (n.subject || n.title || "").trim() !== "Campus Notice");
@@ -84,6 +94,7 @@ export default function HeaderStaff() {
       const validStored = directList
         .filter((n) => {
           if (!n) return false;
+          if (!isNotificationForUser(n, userContext)) return false;
           const hasTitle = Boolean((n.title || "").trim());
           const hasText = Boolean((n.message || n.text || "").trim());
           return hasTitle || hasText;

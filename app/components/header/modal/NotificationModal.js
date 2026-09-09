@@ -20,6 +20,7 @@ import {
   subscribeToNotifications,
   handleNotificationAction,
   notifySubscribers,
+  isNotificationForUser,
 } from "../../../utils/notificationUtils";
 
 const { height } = Dimensions.get("window");
@@ -81,18 +82,34 @@ export default function NotificationModal({ visible, onClose }) {
   const loadAllNotifications = async () => {
     try {
       setIsLoading(true);
-      const role = await secureGet("userRole");
+      const role = (await secureGet("userRole")) || "student";
       const identity = await resolveIdentity();
+      const student = identity?.student || {};
+      const staff = identity?.staff || {};
+      const user = identity?.user || {};
+
+      const userContext = {
+        role,
+        rollNo: student?.rollNo || user?.profile?.rollNo || user?.rollNo || identity?.rollNo || "",
+        studentId: student?.id || user?.id || identity?.id || "",
+        staffId: staff?.id || identity?.staffId || "",
+        username: identity?.username || user?.username || "",
+        id: identity?.id || user?.id || staff?.id || "",
+        department: student?.department || staff?.department || student?.class || user?.profile?.department || "",
+        year: student?.year || user?.profile?.year || "",
+        section: student?.section || user?.profile?.section || "",
+      };
+
       const userIdentifier =
-        identity?.student?.rollNo ||
-        identity?.user?.profile?.rollNo ||
-        identity?.staffId ||
-        identity?.username ||
+        userContext.rollNo ||
+        userContext.staffId ||
+        userContext.username ||
+        userContext.id ||
         "";
 
       const [storedNotifs, apiRes] = await Promise.allSettled([
-        getUserNotifications(role, userIdentifier),
-        api.get("/notices", { limit: 10, sort: "-createdAt" }),
+        getUserNotifications(role, userIdentifier, userContext),
+        api.get("/notices", { limit: 30, sort: "-createdAt" }),
       ]);
 
       const directList = storedNotifs.status === "fulfilled" && Array.isArray(storedNotifs.value) ? storedNotifs.value : [];
@@ -101,6 +118,9 @@ export default function NotificationModal({ visible, onClose }) {
       const formattedNotices = noticeDocs
         .filter((n) => {
           if (!n) return false;
+          // Strict user isolation check
+          if (!isNotificationForUser(n, userContext)) return false;
+
           const hasTitle = Boolean((n.subject || n.title || n.sender || "").trim());
           const hasText = Boolean((n.message || n.text || n.body || "").trim());
           return hasText || (hasTitle && (n.subject || n.title || "").trim() !== "Campus Notice");
@@ -113,12 +133,16 @@ export default function NotificationModal({ visible, onClose }) {
           text: (n.message || n.text || n.body || "").trim(),
           createdAt: n.createdAt || n.date || new Date().toISOString(),
           isNew: n.isNew,
+          targetRole: n.targetRole || n.audience,
+          targetRollNo: n.targetRollNo || n.targetStudentId,
         }))
         .filter((n) => n.text.length > 0 || (n.title.length > 0 && n.title !== "Campus Notice"));
 
       const formattedStored = directList
         .filter((n) => {
           if (!n) return false;
+          if (!isNotificationForUser(n, userContext)) return false;
+
           const hasTitle = Boolean((n.title || "").trim());
           const hasText = Boolean((n.message || n.text || "").trim());
           return hasTitle || hasText;

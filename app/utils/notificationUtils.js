@@ -155,6 +155,133 @@ export function notifySubscribers(notif = {}) {
   });
 }
 
+/**
+ * Check if a notice or notification is targeted to the given user context.
+ * If targetRollNo / targetStudentId is specified, ONLY that student matches.
+ * Other students will never receive or see this notification.
+ */
+export function isNotificationForUser(notif, userContext = {}) {
+  if (!notif) return false;
+
+  const {
+    role = "student",
+    rollNo = "",
+    studentId = "",
+    username = "",
+    id = "",
+    department = "",
+    year = "",
+    section = "",
+  } = userContext;
+
+  // Normalized user identifiers for the currently active user
+  const userIdentifiers = [rollNo, studentId, username, id]
+    .filter(Boolean)
+    .map((s) => String(s).trim().toLowerCase());
+
+  // 1. SPECIFIC STUDENT / USER TARGET (Strict Isolation)
+  const notifTargetUser = (
+    notif.targetRollNo ||
+    notif.targetStudentId ||
+    notif.targetRoll ||
+    notif.rollNo ||
+    notif.studentId ||
+    notif.recipientId ||
+    notif.targetUserId ||
+    notif.studentRollNo ||
+    notif.metadata?.targetRollNo ||
+    notif.metadata?.targetStudentId ||
+    notif.metadata?.recipientId ||
+    ""
+  ).toString().trim().toLowerCase();
+
+  if (notifTargetUser && notifTargetUser !== "all" && notifTargetUser !== "broadcast" && notifTargetUser !== "everyone") {
+    // If targeted to a specific student/user, ONLY that exact user matches!
+    const matchesUser = userIdentifiers.some((uId) => uId === notifTargetUser);
+    if (!matchesUser) {
+      return false; // Do NOT show or push to other students
+    }
+  }
+
+  // 2. TARGET ROLE / AUDIENCE CHECK
+  const targetRole = (
+    notif.targetRole ||
+    notif.audience ||
+    notif.role ||
+    notif.senderRole === "admin" ? notif.targetRole : "" ||
+    notif.metadata?.targetRole ||
+    ""
+  ).toString().trim().toLowerCase();
+
+  if (targetRole && targetRole !== "all" && targetRole !== "everyone" && targetRole !== "campus" && targetRole !== "broadcast") {
+    const currentRole = String(role).trim().toLowerCase();
+    const isRoleMatch =
+      currentRole === targetRole ||
+      (currentRole === "stud" && targetRole === "student") ||
+      (currentRole === "student" && targetRole === "stud") ||
+      (currentRole === "faculty" && targetRole === "staff") ||
+      (currentRole === "staff" && targetRole === "faculty") ||
+      currentRole === "admin"; // Admins can audit all
+
+    if (!isRoleMatch) {
+      return false;
+    }
+  }
+
+  // 3. TARGET DEPARTMENT CHECK (Optional filter)
+  const targetDept = (
+    notif.targetDepartment ||
+    notif.department ||
+    notif.dept ||
+    notif.metadata?.targetDepartment ||
+    ""
+  ).toString().trim().toLowerCase();
+
+  if (targetDept && targetDept !== "all" && targetDept !== "all departments" && department) {
+    const currentDept = String(department).trim().toLowerCase();
+    const matchesDept = currentDept.includes(targetDept) || targetDept.includes(currentDept);
+    if (!matchesDept) {
+      return false;
+    }
+  }
+
+  // 4. TARGET YEAR CHECK (Optional filter)
+  const targetYr = (
+    notif.targetYear ||
+    notif.year ||
+    notif.metadata?.targetYear ||
+    ""
+  ).toString().trim().toLowerCase();
+
+  if (targetYr && targetYr !== "all" && year) {
+    const currentYr = String(year).trim().toLowerCase();
+    const matchesYear = currentYr.includes(targetYr) || targetYr.includes(currentYr);
+    if (!matchesYear) {
+      return false;
+    }
+  }
+
+  // 5. TARGET SECTION / CLASS CHECK (Optional filter)
+  const targetSec = (
+    notif.targetSection ||
+    notif.section ||
+    notif.class ||
+    notif.batch ||
+    notif.metadata?.targetSection ||
+    ""
+  ).toString().trim().toLowerCase();
+
+  if (targetSec && targetSec !== "all" && section) {
+    const currentSec = String(section).trim().toLowerCase();
+    const matchesSection = currentSec.includes(targetSec) || targetSec.includes(currentSec);
+    if (!matchesSection) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function getStorageKey(role, userIdentifier) {
   if (userIdentifier) {
     return `edunex_notifs_${role || "all"}_${String(userIdentifier).toLowerCase().trim()}`;
@@ -165,7 +292,7 @@ function getStorageKey(role, userIdentifier) {
 /**
  * Retrieve stored targeted notifications for a user/role
  */
-export async function getUserNotifications(role, userIdentifier) {
+export async function getUserNotifications(role, userIdentifier, userContext = null) {
   try {
     const key = getStorageKey(role, userIdentifier);
     const list = await secureGet(key);
@@ -176,8 +303,18 @@ export async function getUserNotifications(role, userIdentifier) {
       ...(Array.isArray(globalList) ? globalList : []),
     ];
 
+    // Filter out notifications targeted to other students
+    const effectiveContext = userContext || {
+      role: role || "student",
+      rollNo: userIdentifier || "",
+      studentId: userIdentifier || "",
+      username: userIdentifier || "",
+    };
+
+    const filtered = merged.filter((n) => isNotificationForUser(n, effectiveContext));
+
     // Sort by timestamp desc
-    return merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    return filtered.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   } catch (err) {
     console.warn("getUserNotifications error:", err);
     return [];
@@ -244,23 +381,34 @@ export async function sendTargetedNotification({
       isNew: true,
     };
 
-    // 1. Persist to secure storage for target
-    await saveUserNotification(targetRole, targetRollNo, notif);
-
-    // 2. Also save to role-level store if targeted to a specific rollNo
-    if (targetRollNo && targetRole) {
-      await saveUserNotification(targetRole, null, notif);
+    // 1. Persist strictly to secure storage for the targeted recipient only
+    if (targetRollNo) {
+      await saveUserNotification(targetRole || "student", targetRollNo, notif);
+    } else {
+      // Broadcast to all users in this role
+      await saveUserNotification(targetRole || "all", null, notif);
     }
 
-    // 3. Check currently logged in user role & preference
+    // 2. Check currently logged in user role & roll number
     const activeRole = await secureGet("userRole");
     const activeUser = await secureGet("userData");
-    const activeRoll = activeUser?.profile?.rollNo || activeUser?.rollNo || activeUser?.username || "";
+    const activeRoll =
+      activeUser?.profile?.rollNo ||
+      activeUser?.rollNo ||
+      activeUser?.username ||
+      activeUser?.student?.rollNo ||
+      "";
 
-    const matchesRole = !targetRole || targetRole === "all" || targetRole === activeRole;
-    const matchesUser = !targetRollNo || String(activeRoll).toLowerCase().trim() === String(targetRollNo).toLowerCase().trim();
+    const userContext = {
+      role: activeRole,
+      rollNo: activeRoll,
+      username: activeUser?.username || "",
+      studentId: activeUser?.student?.id || activeUser?.id || "",
+    };
 
-    if (matchesRole && matchesUser) {
+    const isForCurrentUser = isNotificationForUser(notif, userContext);
+
+    if (isForCurrentUser) {
       // 1. Deliver native system heads-up notification with sound & badge
       try {
         await Notifications.scheduleNotificationAsync({
@@ -296,10 +444,11 @@ export async function sendTargetedNotification({
         position: "top",
         visibilityTime: 4000,
       });
+
+      // 4. Notify live app subscribers
+      notifySubscribers(notif);
     }
 
-    // 4. Notify live app subscribers
-    notifySubscribers(notif);
     return true;
   } catch (err) {
     console.warn("sendTargetedNotification error:", err);
@@ -327,4 +476,5 @@ export default {
   sendTargetedNotification,
   sendRoleBasedNotification,
   subscribeToNotifications,
+  isNotificationForUser,
 };

@@ -23,7 +23,7 @@ import { showToast } from "../../utils/toastService";
 import { resolveIdentity } from "../../services/identityService";
 import { api } from "../../services/api";
 import { secureGet } from "../../services/secureStorage";
-import { onNavigateToNotification, getUserNotifications, subscribeToNotifications } from "../../utils/notificationUtils";
+import { onNavigateToNotification, getUserNotifications, subscribeToNotifications, isNotificationForUser } from "../../utils/notificationUtils";
 import { onRouteChange } from "../../services/navigationEvents";
 
 export default function Header() {
@@ -40,18 +40,25 @@ export default function Header() {
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const role = "student";
+      const role = (await secureGet("userRole")) || "student";
       const id = await resolveIdentity();
-      const userIdentifier =
-        id?.student?.rollNo ||
-        id?.user?.profile?.rollNo ||
-        id?.username ||
-        id?.id ||
-        "";
+      const student = id?.student || {};
+      const user = id?.user || {};
+      const userContext = {
+        role,
+        rollNo: student?.rollNo || user?.profile?.rollNo || user?.rollNo || id?.rollNo || id?.username || "",
+        studentId: student?.id || user?.id || id?.id || "",
+        username: id?.username || user?.username || "",
+        id: id?.id || user?.id || "",
+        department: student?.department || student?.class || user?.profile?.department || "",
+        year: student?.year || user?.profile?.year || "",
+        section: student?.section || user?.profile?.section || "",
+      };
+      const userIdentifier = userContext.rollNo || userContext.username || userContext.id;
 
       const [storedNotifs, apiRes] = await Promise.allSettled([
-        getUserNotifications(role, userIdentifier),
-        api.get("/notices", { limit: 10, sort: "-createdAt" }),
+        getUserNotifications(role, userIdentifier, userContext),
+        api.get("/notices", { limit: 20, sort: "-createdAt" }),
       ]);
 
       const directList = storedNotifs.status === "fulfilled" && Array.isArray(storedNotifs.value) ? storedNotifs.value : [];
@@ -60,6 +67,9 @@ export default function Header() {
       const validNotices = noticeDocs
         .filter((n) => {
           if (!n) return false;
+          // Strict user isolation check
+          if (!isNotificationForUser(n, userContext)) return false;
+
           const hasTitle = Boolean((n.subject || n.title || n.sender || "").trim());
           const hasText = Boolean((n.message || n.text || n.body || "").trim());
           return hasText || (hasTitle && (n.subject || n.title || "").trim() !== "Campus Notice");
@@ -74,6 +84,8 @@ export default function Header() {
       const validStored = directList
         .filter((n) => {
           if (!n) return false;
+          if (!isNotificationForUser(n, userContext)) return false;
+
           const hasTitle = Boolean((n.title || "").trim());
           const hasText = Boolean((n.message || n.text || "").trim());
           return hasTitle || hasText;

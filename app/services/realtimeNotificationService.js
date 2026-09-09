@@ -5,7 +5,7 @@ import { api } from "./api";
 import { resolveIdentity } from "./identityService";
 import { secureGet, secureSet } from "./secureStorage";
 import { showToast } from "../utils/toastService";
-import { saveUserNotification, handleNotificationAction } from "../utils/notificationUtils";
+import { saveUserNotification, handleNotificationAction, isNotificationForUser } from "../utils/notificationUtils";
 import { notifyChatSubscribers, resolveHumanDisplayName } from "./chatService";
 
 // Configure expo-notifications presentation behavior in foreground
@@ -384,6 +384,20 @@ async function performRealtimeCheck() {
       }
     }
 
+    // Build current logged-in user context
+    const student = identity?.student || {};
+    const user = identity?.user || {};
+    const userContext = {
+      role: role || "student",
+      rollNo: student?.rollNo || user?.profile?.rollNo || user?.rollNo || identity?.rollNo || studentRoll || "",
+      studentId: student?.id || user?.id || identity?.id || "",
+      username: identity?.username || user?.username || "",
+      id: identity?.id || user?.id || "",
+      department: student?.department || student?.class || user?.profile?.department || "",
+      year: student?.year || user?.profile?.year || "",
+      section: student?.section || user?.profile?.section || "",
+    };
+
     // =========================================================================
     // C. BROADCAST CIRCULARS & NOTICES REALTIME CHECKS
     // =========================================================================
@@ -394,6 +408,11 @@ async function performRealtimeCheck() {
       if (!lastKnownNotices.has(id)) {
         lastKnownNotices.add(id);
 
+        // Strict Audience & Particular Student Check (Never push to other students)
+        if (!isNotificationForUser(notice, userContext)) {
+          continue;
+        }
+
         const noticeTitle = notice.title || notice.subject || "📢 Campus Notice";
         const noticeBody = notice.content || notice.message || notice.text || "New announcement published.";
 
@@ -401,7 +420,7 @@ async function performRealtimeCheck() {
           title: noticeTitle,
           body: noticeBody,
           type: "info",
-          data: { noticeId: id },
+          data: { noticeId: id, ...notice },
         });
       }
     }
