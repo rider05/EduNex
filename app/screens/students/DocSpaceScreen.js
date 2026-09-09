@@ -646,8 +646,7 @@ export default function DocSpaceScreen() {
                   : "No verification checklist documents configured in database."}
               </Text>
             </View>
-          ) : (
-            filteredDocs.map((doc) => {
+          ) : filteredDocs.map((doc) => {
               const isVerified = doc.status === "verified";
               const isPending = doc.status === "pending";
 
