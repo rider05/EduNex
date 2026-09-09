@@ -19,42 +19,21 @@ import { showToast } from "../../../utils/toastService";
 import { shareSeatingPlanPdf } from "../../../utils/pdfGenerator";
 import { getDatabase, saveDatabase } from "../../../services/dataService";
 
-const INITIAL_HALLS_CONFIG = [
+const DEFAULT_HALLS_CONFIG = [
   {
     id: "hall_1",
     name: "Hall 101",
     block: "Academic Complex - Floor 1",
     benches: 25,
-    supervisor: "Dr. S. Chandramohan (Prof / AI&DS)",
+    supervisor: "Faculty Invigilator (To be Assigned)",
   },
   {
     id: "hall_2",
     name: "Hall 102",
     block: "Academic Complex - Floor 1",
     benches: 25,
-    supervisor: "Ms. M. Malliga (Asst. Prof / AI&DS)",
+    supervisor: "Faculty Invigilator (To be Assigned)",
   },
-  {
-    id: "hall_3",
-    name: "Hall 103",
-    block: "Science & Tech Block - Floor 2",
-    benches: 25,
-    supervisor: "Ms. Arul Mozhi (Asst. Prof / CSE)",
-  },
-  {
-    id: "hall_4",
-    name: "Hall 104",
-    block: "Science & Tech Block - Floor 2",
-    benches: 25,
-    supervisor: "Dr. K. Ramesh (Assoc. Prof / IT)",
-  },
-];
-
-const SAMPLE_NAMES = [
-  "Aadhavan S", "Balaji K", "Charulatha M", "Daniel R", "Elango T",
-  "Fathima N", "Gokul P", "Harini V", "Ishwarya B", "Jeeva C",
-  "Karthik M", "Lavanya S", "Manojkumar R", "Naveen K", "Pavithra D",
-  "Raghavan V", "Sneha R", "Tharun P", "Usha M", "Varun K"
 ];
 
 export default function SeatingPlannerModal({ visible, onClose, colors: propColors }) {
@@ -67,24 +46,25 @@ export default function SeatingPlannerModal({ visible, onClose, colors: propColo
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // 1. EDITABLE EXAM PLANNING PARAMETERS
-  const [examTitle, setExamTitle] = useState("End-Semester Theory Examinations 2026");
-  const [examDate, setExamDate] = useState("15 Oct 2026");
+  const [examTitle, setExamTitle] = useState("Semester Theory Examination");
+  const [examDate, setExamDate] = useState("");
   const [sessionTime, setSessionTime] = useState("Morning: 09:30 AM - 12:30 PM");
   const [deptCode, setDeptCode] = useState("AI & DS");
 
   // 2. EDITABLE STUDENT COUNT & ROLL NUMBERS
-  const [studentCount, setStudentCount] = useState("180");
+  const [studentCount, setStudentCount] = useState("60");
   const [rollPrefix, setRollPrefix] = useState("23AD");
   const [startRollNo, setStartRollNo] = useState("1");
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [dbStudents, setDbStudents] = useState([]);
 
   // 3. EDITABLE BENCH PARAMETERS
   const [defaultBenchCount, setDefaultBenchCount] = useState("25");
   const [studentsPerBench, setStudentsPerBench] = useState(2); // 1 or 2
 
   // 4. EDITABLE HALL LISTING
-  const [hallsList, setHallsList] = useState(INITIAL_HALLS_CONFIG);
+  const [hallsList, setHallsList] = useState(DEFAULT_HALLS_CONFIG);
   const [editingHall, setEditingHall] = useState(null);
   const [activeHallTab, setActiveHallTab] = useState(0);
 
@@ -92,6 +72,33 @@ export default function SeatingPlannerModal({ visible, onClose, colors: propColo
   const [generatedHalls, setGeneratedHalls] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  // Load real students from DB when modal opens
+  useEffect(() => {
+    if (!visible) return;
+    (async () => {
+      try {
+        const db = await getDatabase();
+        if (Array.isArray(db.students) && db.students.length > 0) {
+          setDbStudents(db.students);
+          setStudentCount(String(db.students.length));
+        }
+        if (Array.isArray(db.examHalls) && db.examHalls.length > 0) {
+          setHallsList(
+            db.examHalls.map((h, i) => ({
+              id: `hall_${i + 1}`,
+              name: h.hall || `Hall ${101 + i}`,
+              block: h.block || "Academic Complex",
+              benches: parseInt(h.benches, 10) || 25,
+              supervisor: h.chief || "Faculty Invigilator (To be Assigned)",
+            }))
+          );
+        }
+      } catch (err) {
+        console.warn("Error loading students for seating planner:", err);
+      }
+    })();
+  }, [visible]);
 
   // Numeric parsing
   const parsedStudentCount = Math.max(1, parseInt(studentCount, 10) || 0);
@@ -101,22 +108,24 @@ export default function SeatingPlannerModal({ visible, onClose, colors: propColo
   const totalGrossCapacity = hallsList.reduce((sum, h) => sum + (parseInt(h.benches, 10) || 0) * studentsPerBench, 0);
   const bufferSeats = totalGrossCapacity - parsedStudentCount;
 
-  // Generate student list from count / prefix
+  // Generate student list from count / prefix or DB roster
   const generateStudentList = useCallback(() => {
     return Array.from({ length: parsedStudentCount }, (_, i) => {
       const rollNum = String(parsedStartRoll + i).padStart(3, "0");
-      const nameIndex = i % SAMPLE_NAMES.length;
-      const cycle = Math.floor(i / SAMPLE_NAMES.length);
-      const name = `${SAMPLE_NAMES[nameIndex]}${cycle > 0 ? ` (${cycle + 1})` : ""}`;
+      const computedRollNo = `${rollPrefix}${rollNum}`;
+      const matchedDbStudent = dbStudents.find(
+        (s) => s.rollNo === computedRollNo || s.rollNumber === computedRollNo
+      ) || dbStudents[i];
+
       return {
-        rollNo: `${rollPrefix}${rollNum}`,
-        regNo: `710023104${rollNum}`,
-        name,
-        dept: deptCode,
-        year: "III Year",
+        rollNo: matchedDbStudent?.rollNo || matchedDbStudent?.rollNumber || computedRollNo,
+        regNo: matchedDbStudent?.regNo || matchedDbStudent?.registerNumber || `710023104${rollNum}`,
+        name: matchedDbStudent?.name || `Student ${rollNum}`,
+        dept: matchedDbStudent?.dept || matchedDbStudent?.department || deptCode,
+        year: matchedDbStudent?.year || "III Year",
       };
     });
-  }, [parsedStudentCount, parsedStartRoll, rollPrefix, deptCode]);
+  }, [parsedStudentCount, parsedStartRoll, rollPrefix, deptCode, dbStudents]);
 
   // Seating calculation algorithm
   const computeSeatingArrangement = useCallback((showFeedback = false) => {

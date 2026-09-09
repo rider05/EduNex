@@ -83,10 +83,11 @@ export default function ReportsAdmin() {
 
       const totalStudents = Number(String(statsRes?.totalStudents || "0").replace(/[^0-9]/g, "")) || 0;
       const totalStaff = Number(String(statsRes?.totalFaculty || "0").replace(/[^0-9]/g, "")) || 0;
-      const ratio = totalStaff > 0 ? `1 : ${Math.round(totalStudents / totalStaff)}` : "1 : 18";
+      const ratio = totalStaff > 0 && totalStudents > 0 ? `1 : ${Math.round(totalStudents / totalStaff)}` : "—";
 
-      const feeCollectionPct = statsRes?.feeCollectionPct || "92.4%";
-      const attendancePct = statsRes?.attendancePct || "94.8%";
+      const feeCollectionPct = statsRes?.feeCollectionPct || "—";
+      const attendancePct = statsRes?.attendancePct || "—";
+      const academicPassRate = statsRes?.academicPassRate || "—";
 
       const reportCardsData = Array.isArray(reportsRes) ? reportsRes : [];
       const academicReport = reportCardsData.find((r) => r.category === "academic" && (r.title || "").toLowerCase().includes("academic"));
@@ -97,12 +98,12 @@ export default function ReportsAdmin() {
       setLiveReports(reportCardsData);
 
       setOverviewKPIs({
-        academicPassRate: (academicReport && academicReport.statSecondary) || "93.4%",
+        academicPassRate: (academicReport && academicReport.statSecondary) || academicPassRate,
         feeRealization: (feeReport && feeReport.statSecondary) || feeCollectionPct,
         dailyAttendance: (attendanceReport && attendanceReport.statPrimary) || attendancePct,
         facultyStudentRatio: ratio,
-        avgGPA: (academicReport && academicReport.statPrimary) || "8.42 CGPA",
-        placementRate: (placementReport && placementReport.statPrimary) || "88.6%",
+        avgGPA: (academicReport && academicReport.statPrimary) || "—",
+        placementRate: (placementReport && placementReport.statPrimary) || "—",
       });
     } catch (err) {
       console.log("ReportsAdmin load error:", err);

@@ -14,7 +14,6 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { CameraView, Camera } from "expo-camera";
-import { useVideoPlayer, VideoView } from "expo-video";
 import { resolveIdentity } from "../../services/identityService";
 import {
   subscribeToChatMessages,
@@ -34,89 +33,56 @@ function RemoteLiveVideoBackground({
   pulseAnim,
   isVideoEnabled,
 }) {
-  const remoteStreamUri =
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
-
-  const player = useVideoPlayer(remoteStreamUri, (p) => {
-    p.loop = true;
-    p.muted = true;
-    if (callStatus === "connected" && isVideoEnabled) {
-      p.play();
-    } else {
-      p.pause();
-    }
-  });
-
-  useEffect(() => {
-    if (player) {
-      if (callStatus === "connected" && isVideoEnabled) {
-        player.play();
-      } else {
-        player.pause();
-      }
-    }
-  }, [callStatus, isVideoEnabled, player]);
-
   return (
     <View style={StyleSheet.absoluteFillObject}>
-      {callStatus === "connected" && isVideoEnabled && player ? (
-        <VideoView
-          player={player}
-          style={StyleSheet.absoluteFillObject}
-          contentFit="cover"
-          nativeControls={false}
-          allowsFullscreen={false}
-        />
-      ) : (
-        <LinearGradient
-          colors={["#0B141A", "#111B21", "#0B141A"]}
+      <LinearGradient
+        colors={["#0B141A", "#111B21", "#0B141A"]}
+        style={[
+          StyleSheet.absoluteFillObject,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <Animated.View
           style={[
-            StyleSheet.absoluteFillObject,
-            { justifyContent: "center", alignItems: "center" },
+            styles.callAvatarLarge,
+            {
+              backgroundColor: isVideoEnabled ? "#2563EB" : "#059669",
+              width: 120,
+              height: 120,
+              borderRadius: 60,
+              transform: [{ scale: pulseAnim }],
+            },
           ]}
         >
-          <Animated.View
-            style={[
-              styles.callAvatarLarge,
-              {
-                backgroundColor: "#059669",
-                width: 120,
-                height: 120,
-                borderRadius: 60,
-                transform: [{ scale: pulseAnim }],
-              },
-            ]}
-          >
-            <Text style={[styles.callAvatarLargeText, { fontSize: 44 }]}>
-              {remoteParty?.initials || "U"}
-            </Text>
-          </Animated.View>
-          <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "800", marginTop: 16 }}>
-            {remoteParty?.name || "Remote User"}
+          <Text style={[styles.callAvatarLargeText, { fontSize: 44 }]}>
+            {remoteParty?.initials || "U"}
           </Text>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              marginTop: 8,
-              backgroundColor: "rgba(16,185,129,0.18)",
-              paddingHorizontal: 12,
-              paddingVertical: 5,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: "rgba(52,211,153,0.35)",
-            }}
-          >
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />
-            <Text style={{ color: "#34D399", fontSize: 12.5, fontWeight: "700" }}>
-              {callStatus === "connected"
-                ? "Live HD 2-Way Call (Socket.io + expo-video)"
-                : "Connecting Live Call..."}
-            </Text>
-          </View>
-        </LinearGradient>
-      )}
+        </Animated.View>
+        <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "800", marginTop: 16 }}>
+          {remoteParty?.name || "Remote User"}
+        </Text>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 8,
+            backgroundColor: "rgba(16,185,129,0.18)",
+            paddingHorizontal: 12,
+            paddingVertical: 5,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: "rgba(52,211,153,0.35)",
+          }}
+        >
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />
+          <Text style={{ color: "#34D399", fontSize: 12.5, fontWeight: "700" }}>
+            {callStatus === "connected"
+              ? "Live HD 2-Way Call"
+              : "Connecting Live Call..."}
+          </Text>
+        </View>
+      </LinearGradient>
     </View>
   );
 }

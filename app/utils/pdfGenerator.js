@@ -305,8 +305,8 @@ export async function shareStudentIdCardPdf({ student = {}, institution = {} }) 
   const batch = student.batch || "2023–2027";
   const semester = student.semester || "5th Semester";
   const residentialStatus = student.residentialStatus || (student.hostel ? "Hosteler" : "Day Scholar");
-  const advisor = student.advisor?.name || student.advisor || student.advisorName || student.mentor || student.mentorName || "Dr. S. K. Ramesh (HOD/AI&DS)";
-  const advisorPhone = student.advisor?.phone || student.advisorPhone || student.mentorPhone || "+91 94432 10987";
+  const advisor = student.advisor?.name || (typeof student.advisor === 'string' ? student.advisor : null) || student.advisorName || student.mentor || student.mentorName || "—";
+  const advisorPhone = student.advisor?.phone || student.advisorPhone || student.mentorPhone || "—";
   const parentPhone = student.parentPhone || student.parent?.phone || student.fatherPhone || student.emergencyContact || "—";
   const phone = student.phone || student.mobile || "—";
   const rawAvatar = student.avatar || student.photo || student.profileImage || student.dp || "";

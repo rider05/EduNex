@@ -161,14 +161,14 @@ export default function HostelFormModal({ visible, onClose }) {
             getStudentData().catch(() => null),
           ]);
 
-          const name = student?.name || identity?.name || "Karthik Raja M";
-          const roll = student?.rollNo || student?.id || identity?.rollNo || identity?.username || "STU-2024-AIDS01";
-          const rawBlock = student?.hostelBlock || student?.hostelDetails?.block || identity?.hostelBlock || "Block A";
-          const block = rawBlock.includes("B") ? "Block B" : "Block A";
-          const room = student?.roomNo || student?.roomNumber || student?.hostelDetails?.roomNo || identity?.roomNumber || "A-204";
-          const department = student?.dept || student?.department || identity?.dept || "AI & DS";
-          const yr = student?.year || identity?.year || "III Year";
-          const contact = student?.parent?.phone || student?.emergencyContact || identity?.phone || "+91 98000 10003";
+          const name = student?.name || identity?.name || "";
+          const roll = student?.rollNo || student?.id || identity?.rollNo || identity?.username || "";
+          const rawBlock = student?.hostelBlock || student?.hostelDetails?.block || identity?.hostelBlock || "";
+          const block = rawBlock ? (rawBlock.includes("B") ? "Block B" : "Block A") : "";
+          const room = student?.roomNo || student?.roomNumber || student?.hostelDetails?.roomNo || identity?.roomNumber || "";
+          const department = student?.dept || student?.department || identity?.dept || "";
+          const yr = student?.year || identity?.year || "";
+          const contact = student?.parent?.phone || student?.emergencyContact || identity?.phone || "";
           const defOut = student?.hostelDetails?.defaultOutTime || "06:00 AM";
           const defIn = student?.hostelDetails?.defaultInTime || student?.hostelDetails?.curfewTime || "08:30 PM";
 

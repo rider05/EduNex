@@ -307,25 +307,25 @@ export default function ResetPasswordModal({ visible, onClose, onReset, user }) 
   const borderColor = colors.divider || (isDarkMode ? "#27272A" : "#E4E4E7");
   const placeholderColor = colors.disabledText || (isDarkMode ? "#71717A" : "#A1A1AA");
 
-  const displayName = user?.name || user?.nickname || "Student";
+  const displayName = user?.name || user?.nickname || user?.username || "User";
   const displayId = user?.id || user?.rollNo || "";
-  const displayEmail = user?.email || "student@edunex.edu";
-  const displayPhone = user?.phone || "+91 98765 43210";
+  const displayEmail = user?.email || "";
+  const displayPhone = user?.phone || user?.mobile || "";
 
   // Mask string for privacy
   const maskEmail = (em) => {
-    if (!em || !em.includes("@")) return "st*****@edunex.edu";
+    if (!em || !em.includes("@")) return "—";
     const [name, domain] = em.split("@");
     return `${name.slice(0, 2)}****@${domain}`;
   };
 
   const maskPhone = (ph) => {
-    if (!ph) return "+91 98765 ****0";
+    if (!ph) return "—";
     const clean = String(ph).trim();
     if (clean.length > 5) {
       return `${clean.slice(0, clean.length - 4)}****`;
     }
-    return "+91 98*** ***10";
+    return clean;
   };
 
   return (

@@ -162,12 +162,19 @@ export default function AttendanceStaff() {
         setSections(mapped);
         setActiveSection((prev) => prev || mapped[0] || null);
       } else {
-        const fallbackSections = [
-          { id: "sec-a", label: "AI & DS - Section A", course: "B.Tech AI & DS", time: "Odd Semester 2026" },
-          { id: "sec-b", label: "AI & DS - Section B", course: "B.Tech AI & DS", time: "Odd Semester 2026" },
-        ];
-        setSections(fallbackSections);
-        setActiveSection((prev) => prev || fallbackSections[0]);
+        const dynamicSec = [];
+        if (Array.isArray(faculty?.coursesTaught) && faculty.coursesTaught.length > 0) {
+          faculty.coursesTaught.forEach((c, idx) => {
+            dynamicSec.push({
+              id: `sec-${idx}`,
+              label: `${c.class || faculty?.department || "Department"} - Section ${String.fromCharCode(65 + idx)}`,
+              course: c.name || "Course",
+              time: "Active Semester",
+            });
+          });
+        }
+        setSections(dynamicSec);
+        setActiveSection((prev) => prev || dynamicSec[0] || null);
       }
 
       // Sync schedule slots if available
@@ -181,7 +188,7 @@ export default function AttendanceStaff() {
                 ...p,
                 subject: matched.subject || matched.course || p.subject,
                 time: matched.time || p.time,
-                room: matched.room || matched.venue || "D205",
+                room: matched.room || matched.venue || "—",
               };
             }
             return p;

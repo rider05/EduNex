@@ -347,7 +347,7 @@ export default function DashboardScreen() {
               ? data.tutor
               : data.tutor?.name) ||
             data.tutorName ||
-            "Dr. S. K. Ramesh (HOD/AI&DS)",
+            "—",
           advisorPhone:
             data.advisor?.phone ||
             data.advisorPhone ||
@@ -355,8 +355,8 @@ export default function DashboardScreen() {
             data.mentorPhone ||
             data.tutor?.phone ||
             data.tutorPhone ||
-            "+91 94432 10987",
-          advisorCabin: data.advisorCabin || data.cabin || "Block-B 302",
+            "—",
+          advisorCabin: data.advisorCabin || data.cabin || "—",
           parentName: data.parentName || data.fatherName || data.parent?.name || "—",
           parentPhone:
             data.parentPhone ||

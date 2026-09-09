@@ -83,36 +83,13 @@ export default function StaffLeaveApprovalsModal({ visible, onClose }) {
       // 3. Live API Fetch
       const res = await api.get("/leaves", { sort: "-createdAt", limit: 100 }).catch(() => null);
       const items = res?.data || res || [];
-      if (Array.isArray(items) && items.length > 0) {
+      if (Array.isArray(items)) {
         if (!areStaffLeavesEqual(leavesRef.current, items)) {
           setLeaves(items);
           await secureSet("edunex_staff_cached_leaves", items);
         }
-      } else if (leavesRef.current.length === 0) {
-        // Sample default if empty
-        const defaultSample = [
-          {
-            id: "CL-882190",
-            leaveId: "CL-882190",
-            type: "college",
-            studentName: "Velu",
-            rollNo: "STU-2024-AIDS01",
-            classSection: "AIDS - A",
-            dept: "AI & DS",
-            year: "III Year",
-            leaveType: "Academic OD",
-            reason: "Presenting research paper on Explainable Neural Networks at IEEE International Conference.",
-            emergencyContact: "+91 98000 10001",
-            fromDate: new Date().toISOString(),
-            toDate: new Date(Date.now() + 86400000 * 2).toISOString(),
-            daysCount: 2,
-            status: "pending",
-            appliedAt: new Date().toISOString(),
-            createdAt: new Date().toISOString(),
-          },
-        ];
-        setLeaves(defaultSample);
-        await secureSet("edunex_staff_cached_leaves", defaultSample);
+      } else {
+        setLeaves([]);
       }
     } catch (err) {
       console.warn("fetchLeaves error:", err);
