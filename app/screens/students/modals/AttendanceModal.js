@@ -32,6 +32,8 @@ export default function AttendanceModal({ visible, onClose }) {
   // Cumulative numbers across all months
   const [overallTotal, setOverallTotal] = useState(0);
   const [overallAttended, setOverallAttended] = useState(0);
+  const [overallTotalDays, setOverallTotalDays] = useState(0);
+  const [overallAttendedDays, setOverallAttendedDays] = useState(0);
 
   // Calculator State
   const [targetPercentage, setTargetPercentage] = useState(75); // 75, 80, 85, 90
@@ -49,11 +51,13 @@ export default function AttendanceModal({ visible, onClose }) {
       const records = Array.isArray(rawRecords) ? rawRecords : [];
 
       const grouped = {};
+      const allDatesMap = {};
       let totalAll = 0;
       let attendedAll = 0;
 
       if (records.length > 0) {
         records.forEach((r) => {
+          if (!r || typeof r !== "object") return;
           let mName = r.month;
           if (!mName && r.date) {
             try {
@@ -63,49 +67,141 @@ export default function AttendanceModal({ visible, onClose }) {
           if (!mName) mName = "Current Term";
 
           if (!grouped[mName]) {
-            grouped[mName] = { month: mName, present: 0, absent: 0, od: 0, total: 0, pct: 0 };
+            grouped[mName] = {
+              month: mName,
+              present: 0,
+              absent: 0,
+              od: 0,
+              total: 0,
+              presentHours: 0,
+              absentHours: 0,
+              odHours: 0,
+              totalHours: 0,
+              datesMap: {},
+              totalDays: 0,
+              attendedDays: 0,
+              absentDays: 0,
+              pct: 0,
+            };
+          }
+
+          const dateStr = r.date
+            ? String(r.date).split("T")[0]
+            : r.createdAt
+            ? String(r.createdAt).split("T")[0]
+            : "unknown";
+
+          if (!grouped[mName].datesMap[dateStr]) {
+            grouped[mName].datesMap[dateStr] = { present: 0, absent: 0, od: 0, total: 0 };
+          }
+          if (!allDatesMap[dateStr]) {
+            allDatesMap[dateStr] = { present: 0, absent: 0, od: 0, total: 0 };
           }
 
           const statusNorm = String(r.status || "").toLowerCase().trim();
           if (["present", "p", "attended"].includes(statusNorm)) {
             grouped[mName].present += 1;
+            grouped[mName].presentHours += 1;
             grouped[mName].total += 1;
+            grouped[mName].totalHours += 1;
+            grouped[mName].datesMap[dateStr].present += 1;
+            grouped[mName].datesMap[dateStr].total += 1;
+            allDatesMap[dateStr].present += 1;
+            allDatesMap[dateStr].total += 1;
             totalAll += 1;
             attendedAll += 1;
           } else if (["on-duty", "od", "onduty"].includes(statusNorm)) {
             grouped[mName].od += 1;
+            grouped[mName].odHours += 1;
             grouped[mName].total += 1;
+            grouped[mName].totalHours += 1;
+            grouped[mName].datesMap[dateStr].od += 1;
+            grouped[mName].datesMap[dateStr].total += 1;
+            allDatesMap[dateStr].od += 1;
+            allDatesMap[dateStr].total += 1;
             totalAll += 1;
             attendedAll += 1;
           } else if (["absent", "a"].includes(statusNorm)) {
             grouped[mName].absent += 1;
+            grouped[mName].absentHours += 1;
             grouped[mName].total += 1;
+            grouped[mName].totalHours += 1;
+            grouped[mName].datesMap[dateStr].absent += 1;
+            grouped[mName].datesMap[dateStr].total += 1;
+            allDatesMap[dateStr].absent += 1;
+            allDatesMap[dateStr].total += 1;
             totalAll += 1;
-          } else if (r.total || r.totalClasses) {
-            const p = Number(r.present) || 0;
-            const t = Number(r.total) || Number(r.totalClasses) || 0;
-            const a = Number(r.absent) || Math.max(0, t - p);
-            const od = Number(r.od) || 0;
+          } else if (r.total || r.totalClasses || r.totalHours) {
+            const p = Number(r.present || r.attendedHours || r.attendedClasses) || 0;
+            const t = Number(r.total || r.totalHours || r.totalClasses) || 0;
+            const a = Number(r.absent || r.absentHours) || Math.max(0, t - p);
+            const od = Number(r.od || r.odHours) || 0;
             grouped[mName].present += p;
+            grouped[mName].presentHours += p;
             grouped[mName].absent += a;
+            grouped[mName].absentHours += a;
             grouped[mName].od += od;
+            grouped[mName].odHours += od;
             grouped[mName].total += t;
+            grouped[mName].totalHours += t;
+            grouped[mName].datesMap[dateStr].present += p;
+            grouped[mName].datesMap[dateStr].absent += a;
+            grouped[mName].datesMap[dateStr].od += od;
+            grouped[mName].datesMap[dateStr].total += t;
+            allDatesMap[dateStr].present += p;
+            allDatesMap[dateStr].absent += a;
+            allDatesMap[dateStr].od += od;
+            allDatesMap[dateStr].total += t;
             totalAll += t;
             attendedAll += p + od;
           }
         });
       }
 
-      // Calculate percentages for each month from live DB records
+      // Calculate percentages and day metrics for each month
       Object.keys(grouped).forEach((k) => {
         const item = grouped[k];
-        const attended = item.present + item.od;
-        item.pct = item.total > 0 ? Math.round((attended / item.total) * 1000) / 10 : 0;
+        const validDates = Object.keys(item.datesMap).filter((d) => d !== "unknown");
+        item.totalDays =
+          validDates.length > 0
+            ? validDates.length
+            : item.totalHours > 0
+            ? Math.ceil(item.totalHours / 7)
+            : 0;
+        item.attendedDays =
+          validDates.length > 0
+            ? validDates.filter(
+                (d) => (item.datesMap[d].present + item.datesMap[d].od) > 0
+              ).length
+            : item.totalHours > 0
+            ? Math.ceil((item.presentHours + item.odHours) / 7)
+            : 0;
+        item.absentDays = Math.max(0, item.totalDays - item.attendedDays);
+        const attended = item.presentHours + item.odHours;
+        item.pct = item.totalHours > 0 ? Math.round((attended / item.totalHours) * 1000) / 10 : 0;
       });
+
+      const validAllDates = Object.keys(allDatesMap).filter((d) => d !== "unknown");
+      const computedTotalDays =
+        validAllDates.length > 0
+          ? validAllDates.length
+          : totalAll > 0
+          ? Math.ceil(totalAll / 7)
+          : 0;
+      const computedAttendedDays =
+        validAllDates.length > 0
+          ? validAllDates.filter(
+              (d) => (allDatesMap[d].present + allDatesMap[d].od) > 0
+            ).length
+          : totalAll > 0
+          ? Math.ceil(attendedAll / 7)
+          : 0;
 
       setMonthlyStats(grouped);
       setOverallTotal(totalAll);
       setOverallAttended(attendedAll);
+      setOverallTotalDays(computedTotalDays);
+      setOverallAttendedDays(computedAttendedDays);
 
       const monthKeys = Object.keys(grouped);
       if (monthKeys.length > 0) {
@@ -134,6 +230,13 @@ export default function AttendanceModal({ visible, onClose }) {
     absent: 0,
     od: 0,
     total: 0,
+    presentHours: 0,
+    absentHours: 0,
+    odHours: 0,
+    totalHours: 0,
+    totalDays: 0,
+    attendedDays: 0,
+    absentDays: 0,
     pct: 0,
   };
 
@@ -391,6 +494,20 @@ export default function AttendanceModal({ visible, onClose }) {
                     </View>
                   </View>
 
+                  {/* Dual Hour & Day Metric Summary under Dial */}
+                  <View style={[styles.dualMetricPill, { backgroundColor: isDarkMode ? "#0F172A" : "#FFFFFF" }]}>
+                    <Icon name="clock-outline" size={14} color={currentMonthColor} />
+                    <Text style={[styles.dualMetricText, { color: colors.primaryText }]}>
+                      <Text style={{ fontWeight: "800", color: currentMonthColor }}>
+                        {activeMonthData.presentHours + activeMonthData.odHours}/{activeMonthData.totalHours} hrs
+                      </Text>
+                      {" · "}
+                      <Text style={{ fontWeight: "700" }}>
+                        {activeMonthData.attendedDays}/{activeMonthData.totalDays} days attended
+                      </Text>
+                    </Text>
+                  </View>
+
                   {/* Standing Badge */}
                   <View
                     style={[
@@ -427,40 +544,52 @@ export default function AttendanceModal({ visible, onClose }) {
                   <View style={[styles.gridCard, { backgroundColor: isDarkMode ? "#1E293B" : "#F1F5F9" }]}>
                     <Icon name="check-circle" size={20} color="#10B981" />
                     <Text style={[styles.gridValue, { color: colors.primaryText }]}>
-                      {activeMonthData.present}
+                      {activeMonthData.presentHours != null ? activeMonthData.presentHours : activeMonthData.present} hrs
                     </Text>
                     <Text style={[styles.gridLabel, { color: colors.secondaryText }]}>
-                      Days Present
+                      Hours Present
+                    </Text>
+                    <Text style={[styles.gridSubLabel, { color: "#10B981" }]}>
+                      {activeMonthData.attendedDays || 0} days attended
                     </Text>
                   </View>
 
                   <View style={[styles.gridCard, { backgroundColor: isDarkMode ? "#1E293B" : "#F1F5F9" }]}>
                     <Icon name="close-circle" size={20} color="#EF4444" />
                     <Text style={[styles.gridValue, { color: colors.primaryText }]}>
-                      {activeMonthData.absent}
+                      {activeMonthData.absentHours != null ? activeMonthData.absentHours : activeMonthData.absent} hrs
                     </Text>
                     <Text style={[styles.gridLabel, { color: colors.secondaryText }]}>
-                      Days Absent
+                      Hours Absent
+                    </Text>
+                    <Text style={[styles.gridSubLabel, { color: "#EF4444" }]}>
+                      {activeMonthData.absentDays || 0} days missed
                     </Text>
                   </View>
 
                   <View style={[styles.gridCard, { backgroundColor: isDarkMode ? "#1E293B" : "#F1F5F9" }]}>
                     <Icon name="certificate" size={20} color="#3B82F6" />
                     <Text style={[styles.gridValue, { color: colors.primaryText }]}>
-                      {activeMonthData.od}
+                      {activeMonthData.odHours != null ? activeMonthData.odHours : activeMonthData.od} hrs
                     </Text>
                     <Text style={[styles.gridLabel, { color: colors.secondaryText }]}>
                       On-Duty (OD)
+                    </Text>
+                    <Text style={[styles.gridSubLabel, { color: "#3B82F6" }]}>
+                      Official OD
                     </Text>
                   </View>
 
                   <View style={[styles.gridCard, { backgroundColor: isDarkMode ? "#1E293B" : "#F1F5F9" }]}>
                     <Icon name="counter" size={20} color="#8B5CF6" />
                     <Text style={[styles.gridValue, { color: colors.primaryText }]}>
-                      {activeMonthData.total}
+                      {activeMonthData.totalHours != null ? activeMonthData.totalHours : activeMonthData.total} hrs
                     </Text>
                     <Text style={[styles.gridLabel, { color: colors.secondaryText }]}>
-                      Total Classes
+                      Total Conducted
+                    </Text>
+                    <Text style={[styles.gridSubLabel, { color: "#8B5CF6" }]}>
+                      {activeMonthData.totalDays || 0} working days
                     </Text>
                   </View>
                 </View>
@@ -482,7 +611,7 @@ export default function AttendanceModal({ visible, onClose }) {
                         Semester Cumulative Attendance
                       </Text>
                       <Text style={[styles.overallBannerSub, { color: colors.secondaryText }]}>
-                        {overallAttended} attended out of {overallTotal} recorded sessions
+                        {overallAttended}/{overallTotal} hrs · {overallAttendedDays}/{overallTotalDays} days attended
                       </Text>
                     </View>
                   </View>
@@ -593,11 +722,11 @@ export default function AttendanceModal({ visible, onClose }) {
                       <Text style={[styles.recommendationBody, { color: colors.primaryText }]}>
                         {calcResults.isAboveTarget
                           ? targetPercentage === 100
-                            ? `🌟 Perfect 100% Attendance! You have attended all ${overallAttended}/${overallTotal} classes with zero absences.`
-                            : `You are currently at ${overallPercentage}%. You can afford to miss up to ${calcResults.allowedToMiss} classes without dropping below ${targetPercentage}%.`
+                            ? `🌟 Perfect 100% Attendance! You have attended all ${overallAttended}/${overallTotal} hrs (${overallAttendedDays}/${overallTotalDays} days) with zero absences.`
+                            : `You are currently at ${overallPercentage}% (${overallAttended}/${overallTotal} hrs · ${overallAttendedDays}/${overallTotalDays} days attended). You can afford to miss up to ${calcResults.allowedToMiss} hrs without dropping below ${targetPercentage}%.`
                           : calcResults.isImpossible100
-                          ? `You currently have ${overallTotal - overallAttended} absence(s) (${overallPercentage}%). 100% cannot be mathematically restored once a class is missed. Aim for the 90% Distinction goal!`
-                          : `You are currently at ${overallPercentage}%. You must attend ${calcResults.requiredConsecutive} more consecutive classes without absence to reach ${targetPercentage}%.`}
+                          ? `You currently have ${overallTotal - overallAttended} missed hr(s) (${overallPercentage}%). 100% cannot be mathematically restored once a class is missed. Aim for the 90% Distinction goal!`
+                          : `You are currently at ${overallPercentage}% (${overallAttended}/${overallTotal} hrs · ${overallAttendedDays}/${overallTotalDays} days attended). You must attend ${calcResults.requiredConsecutive} more consecutive hours (approx ${Math.ceil(calcResults.requiredConsecutive / 7)} days) without absence to reach ${targetPercentage}%.`}
                       </Text>
                     </View>
                   </View>
@@ -632,7 +761,7 @@ export default function AttendanceModal({ visible, onClose }) {
                   <View style={styles.simControlRow}>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.simControlLabel, { color: colors.secondaryText }]}>
-                        Attend Next Classes
+                        Attend Next Hours
                       </Text>
                       <View style={styles.stepperRow}>
                         <TouchableOpacity
@@ -658,7 +787,7 @@ export default function AttendanceModal({ visible, onClose }) {
 
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.simControlLabel, { color: colors.secondaryText }]}>
-                        Miss Next Classes
+                        Miss Next Hours
                       </Text>
                       <View style={styles.stepperRow}>
                         <TouchableOpacity
@@ -688,7 +817,7 @@ export default function AttendanceModal({ visible, onClose }) {
                         Projected Attendance
                       </Text>
                       <Text style={[styles.projectedSub, { color: colors.secondaryText }]}>
-                        {calcResults.simAttended} / {calcResults.simTotal} total classes
+                        {calcResults.simAttended} / {calcResults.simTotal} total hours
                       </Text>
                     </View>
                     <Text
@@ -863,6 +992,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
+  dualMetricPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginTop: 10,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+  },
+  dualMetricText: {
+    fontSize: 12,
+  },
   gridRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -886,6 +1032,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     marginTop: 1,
+  },
+  gridSubLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    marginTop: 3,
   },
   overallBanner: {
     flexDirection: "row",

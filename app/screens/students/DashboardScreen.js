@@ -490,23 +490,24 @@ export default function DashboardScreen() {
   };
 
   // Attendance string formatter
+  const attObj = typeof studentData.attendance === "object" ? studentData.attendance : {};
   const attendanceVal =
-    typeof studentData.attendance === "object"
-      ? studentData.attendance?.percentage || ""
-      : studentData.attendance || "";
+    attObj?.percentage ||
+    (typeof studentData.attendance === "string" ? studentData.attendance : "");
 
   // ── Live attendance analytics (computed, never hardcoded) ──────────────────
-  const attObj = typeof studentData.attendance === "object" ? studentData.attendance : {};
-  const attPctNum = Number(String(attObj.percentage || attObj || "").replace(/[^0-9.]/g, "")) || 0;
-  const attendedCount = Number(attObj.attendedClasses) || 0;
-  const totalCount = Number(attObj.totalClasses) || 0;
+  const attPctNum = Number(String(attObj.percentage || attObj.pct || attObj || "").replace(/[^0-9.]/g, "")) || 0;
+  const attendedHours = Number(attObj.attendedHours != null ? attObj.attendedHours : attObj.attendedClasses) || 0;
+  const totalHours = Number(attObj.totalHours != null ? attObj.totalHours : attObj.totalClasses) || 0;
+  const attendedDays = Number(attObj.attendedDays) || 0;
+  const totalDays = Number(attObj.totalDays) || 0;
   const minAttPct =
     Number(String(institution?.minAttendancePercent || "75").replace(/[^0-9.]/g, "")) || 75;
   const minAttFrac = minAttPct / 100;
 
   let bufferLeaves = 0;
-  if (attendedCount > 0 && totalCount > 0) {
-    const skippable = Math.floor((attendedCount - minAttFrac * totalCount) / minAttFrac);
+  if (attendedHours > 0 && totalHours > 0) {
+    const skippable = Math.floor((attendedHours - minAttFrac * totalHours) / minAttFrac);
     bufferLeaves = skippable > 0 ? skippable : 0;
   }
 
@@ -519,7 +520,7 @@ export default function DashboardScreen() {
       ? "At Risk"
       : attObj.status || "";
   const zoneColor = attPctNum > 0 && attPctNum < minAttPct ? "#EF4444" : "#10B981";
-  const hasBufferStats = attendedCount > 0 && totalCount > 0;
+  const hasBufferStats = attendedHours > 0 && totalHours > 0;
   const belowThreshold = attPctNum > 0 && attPctNum < minAttPct;
   const hasAttendanceData = attPctNum > 0 || hasBufferStats;
 
@@ -838,10 +839,22 @@ export default function DashboardScreen() {
                 <View style={[styles.kpiIconWrap, { backgroundColor: "#8B5CF618" }]}>
                   <Icon name="account-check-outline" size={20} color="#8B5CF6" />
                 </View>
-                <Text style={[styles.kpiValue, { color: "#8B5CF6" }]}>{hasAttendanceData ? attendanceVal : "—"}</Text>
-                <Text style={[styles.kpiLabel, { color: colors.primaryText }]}>Attendance</Text>
+                <Text style={[styles.kpiValue, { color: "#8B5CF6" }]}>
+                  {hasAttendanceData
+                    ? totalHours > 0
+                      ? `${attendedHours}/${totalHours} hrs`
+                      : attendanceVal
+                    : "—"}
+                </Text>
+                <Text style={[styles.kpiLabel, { color: colors.primaryText }]}>
+                  Attendance {hasAttendanceData && attPctNum > 0 ? `(${attPctNum}%)` : ""}
+                </Text>
                 <Text style={[styles.kpiHint, { color: hasAttendanceData ? zoneColor : colors.secondaryText, fontWeight: "700" }]}>
-                  {hasAttendanceData ? attZone : "No attendance recorded"}
+                  {hasAttendanceData
+                    ? totalDays > 0
+                      ? `${attendedDays}/${totalDays} days attended`
+                      : attZone
+                    : "No attendance recorded"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -880,15 +893,14 @@ export default function DashboardScreen() {
                   </>
                 ) : hasBufferStats && belowThreshold ? (
                   <>
-                    Attendance is below the{" "}
-                    <Text style={{ fontWeight: "800", color: "#EF4444" }}>{minAttPct}%</Text> requirement — attend every
+                    Attendance: <Text style={{ fontWeight: "800", color: "#EF4444" }}>{attendanceVal}</Text> ({attendedHours}/{totalHours} hrs · {attendedDays}/{totalDays} days) — below the{" "}
+                    <Text style={{ fontWeight: "800", color: "#EF4444" }}>{minAttPct}%</Text> requirement. Attend every
                     class to recover.
                   </>
                 ) : (
                   <>
-                    Attendance Buffer: You have{" "}
-                    <Text style={{ fontWeight: "800", color: "#10B981" }}>{bufferLeaves} buffer leaves</Text> before
-                    reaching the <Text style={{ fontWeight: "800" }}>{minAttPct}%</Text> limit.
+                    Attendance: <Text style={{ fontWeight: "800", color: "#10B981" }}>{attendanceVal}</Text> ({attendedHours}/{totalHours} hrs · {attendedDays}/{totalDays} days attended) ·{" "}
+                    <Text style={{ fontWeight: "800", color: "#10B981" }}>{bufferLeaves} buffer hrs</Text> safe above <Text style={{ fontWeight: "800" }}>{minAttPct}%</Text>.
                   </>
                 )}
               </Text>

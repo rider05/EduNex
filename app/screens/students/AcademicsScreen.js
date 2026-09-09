@@ -128,6 +128,7 @@ export default function AcademicsScreen() {
   const [sgpa, setSgpa] = useState("—");
   const [creditsEarned, setCreditsEarned] = useState("—");
   const [attendance, setAttendance] = useState("—");
+  const [attendanceStats, setAttendanceStats] = useState(null);
   const [classRank, setClassRank] = useState("—");
   const [semesterCourses, setSemesterCourses] = useState([]);
   const [assignmentsList, setAssignmentsList] = useState([]);
@@ -190,6 +191,9 @@ export default function AcademicsScreen() {
 
         const attVal = attSummary?.summary?.percentage || student.attendance?.percentage || "—";
         setAttendance(attVal);
+        if (attSummary?.summary || attSummary) {
+          setAttendanceStats(attSummary.summary || attSummary);
+        }
 
         if (Array.isArray(student.subjects)) {
           const enriched = student.subjects.map((s) => enrichSubjectFromCatalog(s, subjectCatalog));
@@ -405,10 +409,18 @@ export default function AcademicsScreen() {
                   activeOpacity={0.7}
                 >
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-                    <Text style={[styles.kpiVal, { color: "#10B981" }]}>{attendance}</Text>
+                    <Text style={[styles.kpiVal, { color: "#10B981" }]}>
+                      {attendanceStats?.totalHours
+                        ? `${attendanceStats.attendedHours}/${attendanceStats.totalHours} hrs`
+                        : attendance}
+                    </Text>
                     <Icon name="calculator-variant" size={13} color="#10B981" />
                   </View>
-                  <Text style={[styles.kpiLabel, { color: colors.secondaryText }]}>Attendance · Calc</Text>
+                  <Text style={[styles.kpiLabel, { color: colors.secondaryText }]}>
+                    {attendanceStats?.totalDays
+                      ? `${attendanceStats.attendedDays}/${attendanceStats.totalDays} days (${attendance})`
+                      : "Attendance · Calc"}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>

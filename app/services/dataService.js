@@ -890,26 +890,127 @@ export async function getAttendanceRecords(params = {}) {
   return list;
 }
 
-export async function getStudentAttendanceSummary() {
+export async function getStudentAttendanceSummary(params = {}) {
   const identity = await resolveIdentity();
   const scope = identity.rollNo || identity.username || "";
 
-  const records = (await getAttendanceRecords()) || [];
+  const records = (await getAttendanceRecords(params)) || [];
 
-  const total = records.length;
-  const attended = records.filter((r) => r && ["Present", "On-Duty", "OD"].includes(r.status)).length;
-  const pct = total > 0 ? Math.round((attended / total) * 1000) / 10 : 0;
+  let totalHours = 0;
+  let attendedHours = 0;
+  let absentHours = 0;
+  let odHours = 0;
+
+  const datesMap = {};
+
+  records.forEach((r) => {
+    if (!r || typeof r !== "object") return;
+    const dateStr = r.date
+      ? String(r.date).split("T")[0]
+      : r.createdAt
+      ? String(r.createdAt).split("T")[0]
+      : "unknown";
+    if (!datesMap[dateStr]) {
+      datesMap[dateStr] = { present: 0, od: 0, absent: 0, total: 0 };
+    }
+
+    const st = String(r.status || "").toLowerCase().trim();
+    if (["present", "p", "attended"].includes(st)) {
+      attendedHours += 1;
+      totalHours += 1;
+      datesMap[dateStr].present += 1;
+      datesMap[dateStr].total += 1;
+    } else if (["on-duty", "od", "onduty"].includes(st)) {
+      odHours += 1;
+      attendedHours += 1;
+      totalHours += 1;
+      datesMap[dateStr].od += 1;
+      datesMap[dateStr].total += 1;
+    } else if (["absent", "a"].includes(st)) {
+      absentHours += 1;
+      totalHours += 1;
+      datesMap[dateStr].absent += 1;
+      datesMap[dateStr].total += 1;
+    } else if (r.total || r.totalClasses || r.totalHours) {
+      const p = Number(r.present || r.attendedHours || r.attendedClasses) || 0;
+      const t = Number(r.total || r.totalHours || r.totalClasses) || 0;
+      const a = Number(r.absent || r.absentHours) || Math.max(0, t - p);
+      const od = Number(r.od || r.odHours) || 0;
+      attendedHours += p + od;
+      absentHours += a;
+      odHours += od;
+      totalHours += t;
+      datesMap[dateStr].present += p;
+      datesMap[dateStr].absent += a;
+      datesMap[dateStr].od += od;
+      datesMap[dateStr].total += t;
+    }
+  });
+
+  const validDateKeys = Object.keys(datesMap).filter((d) => d !== "unknown");
+  const totalDays =
+    validDateKeys.length > 0
+      ? validDateKeys.length
+      : totalHours > 0
+      ? Math.ceil(totalHours / 7)
+      : 0;
+  const attendedDays =
+    validDateKeys.length > 0
+      ? validDateKeys.filter(
+          (d) => (datesMap[d].present + datesMap[d].od) > 0
+        ).length
+      : totalHours > 0
+      ? Math.ceil(attendedHours / 7)
+      : 0;
+  const absentDays = Math.max(0, totalDays - attendedDays);
+
+  const pct =
+    totalHours > 0
+      ? Math.round((attendedHours / totalHours) * 1000) / 10
+      : 0;
 
   let summary = null;
-  if (total > 0) {
+  if (totalHours > 0) {
     summary = {
       percentage: `${pct}%`,
-      status: pct >= 90 ? "Good Standing" : pct >= 75 ? "Satisfactory" : "Needs Improvement",
-      attendedClasses: attended,
-      totalClasses: total,
+      pct,
+      status:
+        pct >= 90
+          ? "Good Standing"
+          : pct >= 75
+          ? "Satisfactory"
+          : "Needs Improvement",
+      attendedHours,
+      totalHours,
+      absentHours,
+      odHours,
+      attendedDays,
+      totalDays,
+      absentDays,
+      formattedHours: `${attendedHours}/${totalHours} hrs`,
+      formattedDays: `${attendedDays}/${totalDays} days attended`,
+      // Backward compatibility aliases
+      attendedClasses: attendedHours,
+      totalClasses: totalHours,
     };
   }
-  return { summary, records, rollNo: scope, total, attended, pct };
+  return {
+    summary,
+    records,
+    rollNo: scope,
+    total: totalHours,
+    attended: attendedHours,
+    totalHours,
+    attendedHours,
+    absentHours,
+    odHours,
+    totalDays,
+    attendedDays,
+    absentDays,
+    formattedHours: `${attendedHours}/${totalHours} hrs`,
+    formattedDays: `${attendedDays}/${totalDays} days attended`,
+    pct,
+  };
 }
 
 export async function getTimetable(params = {}) {
