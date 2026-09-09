@@ -299,10 +299,10 @@ export async function shareStudentIdCardPdf({ student = {}, institution = {} }) 
   const deptCompact = formatDeptName(deptName, "compact");
   const regNo = student.regNo || student.universityNo || formatUniversityRegNo(rollNo, deptName);
   const program = student.program || student.degree || "B.Tech";
-  const className = student.class || student.section || student.className || "II - AI & DS 'A'";
+  const className = student.class || student.section || student.className || "III - AI & DS 'A'";
   const dob = student.dob || student.dateOfBirth || "—";
   const bloodGroup = student.bloodGroup || student.blood || "—";
-  const batch = student.batch || "2024–2028";
+  const batch = student.batch || "2023–2027";
   const semester = student.semester || "5th Semester";
   const residentialStatus = student.residentialStatus || (student.hostel ? "Hosteler" : "Day Scholar");
   const advisor = student.advisor?.name || student.advisor || student.advisorName || student.mentor || student.mentorName || "Dr. S. K. Ramesh (HOD/AI&DS)";

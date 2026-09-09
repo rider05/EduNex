@@ -164,8 +164,8 @@ export default function AddUserModal({ visible, onClose }) {
   // Student Specific
   const [dept, setDept] = useState("CSE");
   const [deptShort, setDeptShort] = useState("CSE");
-  const [year, setYear] = useState("I Year");
-  const [semester, setSemester] = useState("Sem I");
+  const [year, setYear] = useState("III Year");
+  const [semester, setSemester] = useState("Sem V");
   const [section, setSection] = useState("A");
   const [dob, setDob] = useState("2006-05-15");
   const [isLateral, setIsLateral] = useState(false);
@@ -476,8 +476,8 @@ export default function AddUserModal({ visible, onClose }) {
         const rawMobile = getVal("mobile", "phone", "contact", "mobilenumber", "phonenumber") || "";
         const rawId = getVal("id", "roll", "rollno", "staffid", "adminid", "parentid", "userid");
         const rawDept = getVal("department", "dept", "branch") || "CSE";
-        const rawYear = getVal("year", "academicyear") || "I Year";
-        const rawSem = getVal("semester", "sem") || "Sem I";
+        const rawYear = getVal("year", "academicyear") || "III Year";
+        const rawSem = getVal("semester", "sem") || "Sem V";
         const rawSec = getVal("section", "sec") || "A";
         const rawPos = getVal("position", "designation") || "Assistant Professor";
         const rawWard = getVal("wardroll", "wardrollno", "ward", "studentid");

@@ -308,7 +308,7 @@ export default function DashboardScreen() {
           regNo: resolvedReg,
           department: resolvedDept,
           program: data.program || data.degree || "B.Tech",
-          class: data.class || data.section || data.className || "II - AI & DS 'A'",
+          class: data.class || data.section || data.className || "III - AI & DS 'A'",
           semester: data.semester || "",
           grade: computedGrade,
           cgpa: data.cgpa != null ? String(data.cgpa) : "8.65",

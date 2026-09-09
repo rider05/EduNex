@@ -613,7 +613,7 @@ export const DEFAULT_STUDENT_ROSTER = [
     id: "stud_1",
     rollNo: "25BAD015",
     name: "M. Balaji (25BAD015)",
-    role: "Student · I Year AI & DS",
+    role: "Student · III Year AI & DS",
     badge: "ASSIGNED WARD",
     dept: "AI & Data Science",
     subject: "Roll No: 25BAD015 · Sec A",

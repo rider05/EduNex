@@ -43,7 +43,7 @@ export function generateTimetableHtml({
   const section = cohort.section ? (cohort.section.includes("Section") ? cohort.section : `Section ${cohort.section}`) : "Section A";
   const advisor = cohort.advisor || "Ms. Z. Ananth Angel, AP/AI&DS";
   const hall = cohort.hall || "D205";
-  const batch = cohort.batch || "2024–2028";
+  const batch = cohort.batch || "2023–2027";
   const academicYear = cohort.academicYear || "2026–27 (Odd Semester)";
   const effectiveFrom = cohort.effectiveFrom || "02/07/2026";
 
