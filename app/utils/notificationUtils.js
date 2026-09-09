@@ -5,6 +5,8 @@ import { secureGet, secureSet } from "../services/secureStorage";
 import { showToast } from "./toastService";
 import Toast from "react-native-toast-message";
 
+import { emitTabNavigation } from "../services/navigationEvents";
+
 // Real-time notification event emitter
 const notifListeners = new Set();
 const navigationListeners = new Set();
@@ -22,118 +24,201 @@ export function onNavigateToNotification(callback) {
 export function handleNotificationAction(notifData) {
   if (!notifData) return;
   const title = (notifData.title || notifData.subject || "").toLowerCase();
-  const text = (notifData.message || notifData.text || "").toLowerCase();
+  const text = (notifData.message || notifData.text || notifData.body || "").toLowerCase();
   const meta = notifData.metadata || notifData.data || {};
   const notifType = (meta.type || notifData.type || "").toLowerCase();
+  const targetRole = (meta.targetRole || notifData.targetRole || "").toLowerCase();
+
+  // 1. Explicit Screen / Modal Direct Override
+  const explicitTarget = (
+    meta.targetModal ||
+    notifData.targetModal ||
+    meta.targetScreen ||
+    notifData.targetScreen ||
+    ""
+  ).toLowerCase();
 
   let targetModal = "notice_detail";
 
-  if (
-    title.includes("leave") ||
+  if (explicitTarget) {
+    if (explicitTarget.includes("leave") && targetRole === "staff") {
+      targetModal = "staff_leave";
+    } else if (explicitTarget.includes("leave") && targetRole === "parent") {
+      targetModal = "entryexit";
+    } else if (explicitTarget.includes("leave")) {
+      targetModal = "leave";
+    } else if (explicitTarget.includes("docspace") || explicitTarget.includes("document")) {
+      targetModal = "docspace";
+    } else if (explicitTarget.includes("hostel")) {
+      targetModal = targetRole === "parent" ? "entryexit" : "hostel";
+    } else if (explicitTarget.includes("fee")) {
+      targetModal = "fees";
+    } else if (explicitTarget.includes("exam")) {
+      targetModal = "exam";
+    } else if (explicitTarget.includes("assign")) {
+      targetModal = "assignment";
+    } else if (explicitTarget.includes("test")) {
+      targetModal = "test";
+    } else if (explicitTarget.includes("bus") || explicitTarget.includes("transport")) {
+      targetModal = "bus";
+    } else if (explicitTarget.includes("mess")) {
+      targetModal = "mess";
+    } else if (explicitTarget.includes("library")) {
+      targetModal = "library";
+    } else if (explicitTarget.includes("attendance")) {
+      targetModal = "attendance";
+    } else if (explicitTarget.includes("timetable") || explicitTarget.includes("schedule")) {
+      targetModal = targetRole === "staff" ? "schedule" : "timetable";
+    } else if (explicitTarget.includes("chat") || explicitTarget.includes("message")) {
+      targetModal = "chat";
+    } else {
+      targetModal = explicitTarget;
+    }
+  } else if (
+    notifType === "incoming_call" ||
+    notifType === "call" ||
+    notifType === "chat" ||
+    notifType === "message" ||
+    meta.threadKey ||
+    meta.contactId ||
+    meta.senderId ||
+    title.includes("sent a message") ||
+    title.includes("message from") ||
+    title.includes("new chat") ||
+    title.includes("dm from") ||
+    title.includes("tutor doubt")
+  ) {
+    targetModal = "chat";
+  } else if (
+    notifType === "leave" ||
+    meta.leaveId ||
+    title.includes("leave request") ||
+    title.includes("leave approved") ||
+    title.includes("leave declined") ||
+    title.includes("leave status") ||
     title.includes("gate pass") ||
     title.includes("on-duty") ||
-    title.includes("od ") ||
-    title.includes(" od") ||
-    text.includes("leave request") ||
-    text.includes("gate pass") ||
-    meta.leaveId
+    title.includes(" od ") ||
+    title.startsWith("od ")
   ) {
-    if (meta.targetRole === "staff" || notifData.targetRole === "staff") {
+    if (targetRole === "staff") {
       targetModal = "staff_leave";
-    } else if (meta.targetRole === "parent" || notifData.targetRole === "parent") {
+    } else if (targetRole === "parent") {
       targetModal = "entryexit";
     } else {
       targetModal = "leave";
     }
   } else if (
-    title.includes("hostel") ||
-    title.includes("outing") ||
-    text.includes("hostel pass") ||
+    notifType === "hostel" ||
+    title.includes("hostel outing") ||
+    title.includes("hostel pass") ||
+    title.includes("hostel room") ||
     text.includes("hostel warden") ||
-    notifType === "hostel"
+    text.includes("outing pass")
   ) {
-    targetModal = "hostel";
+    targetModal = targetRole === "parent" ? "entryexit" : "hostel";
   } else if (
-    title.includes("fee") ||
-    title.includes("invoice") ||
-    title.includes("dues") ||
-    title.includes("payment") ||
-    text.includes("fee due") ||
-    text.includes("tuition fee") ||
-    text.includes("receipt") ||
-    notifType === "fees"
+    notifType === "document" ||
+    notifType === "docspace" ||
+    notifType === "kyc" ||
+    title.includes("docspace") ||
+    title.includes("document verification") ||
+    title.includes("kyc document") ||
+    title.includes("aadhaar") ||
+    meta.docCode ||
+    meta.documentId
+  ) {
+    targetModal = "docspace";
+  } else if (
+    notifType === "fees" ||
+    notifType === "fee" ||
+    meta.feeId ||
+    title.includes("tuition fee") ||
+    title.includes("fee due") ||
+    title.includes("fee payment") ||
+    title.includes("fee receipt") ||
+    title.includes("fee invoice") ||
+    title.includes("dues cleared")
   ) {
     targetModal = "fees";
   } else if (
-    title.includes("assignment") ||
-    text.includes("assignment") ||
-    title.includes("homework") ||
-    notifType === "assignment"
-  ) {
-    targetModal = "assignment";
-  } else if (
-    title.includes("class test") ||
-    title.includes("quiz") ||
-    notifType === "test"
-  ) {
-    targetModal = "test";
-  } else if (
-    title.includes("exam") ||
-    title.includes("cia") ||
-    title.includes("assessment") ||
-    text.includes("exam timetable") ||
-    text.includes("cia exam") ||
-    notifType === "exam"
+    notifType === "exam" ||
+    title.includes("exam timetable") ||
+    title.includes("cia exam") ||
+    title.includes("semester exam") ||
+    title.includes("hall ticket") ||
+    title.includes("exam seat") ||
+    title.includes("assessment schedule")
   ) {
     targetModal = "exam";
   } else if (
-    title.includes("bus") ||
-    title.includes("transport") ||
-    text.includes("bus location") ||
-    text.includes("boarding point") ||
-    notifType === "bus"
+    notifType === "assignment" ||
+    meta.assignmentId ||
+    title.includes("assignment due") ||
+    title.includes("new assignment") ||
+    title.includes("homework submission") ||
+    title.includes("assignment published")
+  ) {
+    targetModal = "assignment";
+  } else if (
+    notifType === "test" ||
+    title.includes("class test") ||
+    title.includes("weekly quiz") ||
+    title.includes("quiz score")
+  ) {
+    targetModal = "test";
+  } else if (
+    notifType === "bus" ||
+    notifType === "transport" ||
+    title.includes("bus tracker") ||
+    title.includes("bus location") ||
+    title.includes("bus route") ||
+    title.includes("boarding point") ||
+    title.includes("transport alert")
   ) {
     targetModal = "bus";
   } else if (
-    title.includes("mess") ||
-    title.includes("canteen") ||
-    title.includes("menu") ||
-    notifType === "mess"
+    notifType === "mess" ||
+    title.includes("mess menu") ||
+    title.includes("canteen menu") ||
+    title.includes("food menu") ||
+    text.includes("mess menu")
   ) {
     targetModal = "mess";
   } else if (
-    title.includes("library") ||
-    title.includes("book") ||
-    text.includes("library due") ||
-    notifType === "library"
-  ) {
-    targetModal = "library";
-  } else if (
-    title.includes("attendance") ||
-    text.includes("shortage") ||
-    text.includes("present") ||
-    text.includes("absent") ||
-    notifType === "attendance"
+    notifType === "attendance" ||
+    title.includes("attendance shortage") ||
+    title.includes("attendance alert") ||
+    title.includes("marked absent") ||
+    title.includes("low attendance")
   ) {
     targetModal = "attendance";
   } else if (
-    title.includes("timetable") ||
-    title.includes("schedule") ||
-    text.includes("period") ||
-    notifType === "timetable"
+    notifType === "timetable" ||
+    title.includes("timetable update") ||
+    title.includes("class schedule") ||
+    title.includes("period postponed") ||
+    title.includes("period swap")
   ) {
-    targetModal = "timetable";
+    targetModal = targetRole === "staff" ? "schedule" : "timetable";
   } else if (
-    notifType === "chat" ||
-    title.includes("chat") ||
-    title.includes("message") ||
-    title.includes("tutor") ||
-    title.includes("faculty") ||
-    title.includes("doubt") ||
-    title.includes("dm") ||
-    title.includes("broadcast")
+    notifType === "library" ||
+    title.includes("library book") ||
+    title.includes("book due") ||
+    title.includes("book return") ||
+    title.includes("library fine")
   ) {
-    targetModal = "chat";
+    targetModal = "library";
+  } else {
+    // General campus notice / circular
+    targetModal = "notice_detail";
+  }
+
+  // Programmatic tab switching for screen-level targets
+  if (targetModal === "docspace") {
+    emitTabNavigation("DocSpace");
+  } else if (targetModal === "fees" && !meta.isModalOnly) {
+    emitTabNavigation("Fees");
   }
 
   navigationListeners.forEach((cb) => {

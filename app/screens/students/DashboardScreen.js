@@ -441,8 +441,11 @@ export default function DashboardScreen() {
         target === "timetable"
       ) {
         setVisibleModal(target);
-      } else if (target === "leave") {
-        setLeaveModalVisible(true);
+      } else if (target === "assignment" || target === "test" || target === "reports") {
+        setVisibleModal("reports");
+      } else {
+        // Target is handled by Header or is a tab navigation
+        setVisibleModal(null);
       }
     });
     return () => unsubNav();

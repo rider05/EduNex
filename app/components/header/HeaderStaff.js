@@ -148,13 +148,15 @@ export default function HeaderStaff() {
         target === "assignment" ||
         target === "test" ||
         target === "community" ||
+        target === "class_msg" ||
         target === "groupMsg" ||
-        target === "chat" ||
-        target === "notify" ||
-        target === "notification" ||
-        target === "notice_detail"
+        target === "chat"
       ) {
-        setActiveModal(target === "notice_detail" ? "notify" : target);
+        setActiveModal(target === "groupMsg" ? "class_msg" : target);
+      } else if (target === "notify" || target === "notice_detail") {
+        setActiveModal("notify");
+      } else {
+        setActiveModal(null);
       }
     });
 

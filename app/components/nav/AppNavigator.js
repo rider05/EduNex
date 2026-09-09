@@ -1,9 +1,9 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 import { createBottomTabNavigator } from "expo-router/js-tabs";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
-import { emitRouteChange } from "../../services/navigationEvents";
+import { emitRouteChange, onTabNavigation } from "../../services/navigationEvents";
 
 import DashboardScreen from "../../screens/students/DashboardScreen";
 import AcademicsScreen from "../../screens/students/AcademicsScreen";
@@ -15,17 +15,31 @@ const Tab = createBottomTabNavigator();
 
 export default function AppNavigator({ onLogout, userRole }) {
   const { colors } = useTheme();
+  const navRef = useRef(null);
+
+  useEffect(() => {
+    return onTabNavigation((tabName) => {
+      if (navRef.current && tabName) {
+        try {
+          navRef.current.navigate(tabName);
+        } catch {}
+      }
+    });
+  }, []);
 
   return (
     <Tab.Navigator
-      screenListeners={{
-        tabPress: (e) => {
-          emitRouteChange(e?.target);
-        },
-        state: (e) => {
-          const current = e?.data?.state?.routes?.[e?.data?.state?.index]?.name;
-          if (current) emitRouteChange(current);
-        },
+      screenListeners={({ navigation }) => {
+        navRef.current = navigation;
+        return {
+          tabPress: (e) => {
+            emitRouteChange(e?.target);
+          },
+          state: (e) => {
+            const current = e?.data?.state?.routes?.[e?.data?.state?.index]?.name;
+            if (current) emitRouteChange(current);
+          },
+        };
       }}
       screenOptions={({ route }) => ({
         headerShown: false,

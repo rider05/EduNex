@@ -56,23 +56,18 @@ export default function HeaderParent() {
     });
 
     const unsub = onNavigateToNotification(({ target }) => {
-      if (
-        target === "chat" ||
-        target === "assignment" ||
-        target === "feedback" ||
-        target === "entryexit" ||
-        target === "leave" ||
-        target === "hostel" ||
-        target === "exam" ||
-        target === "test"
-      ) {
-        if (target === "leave" || target === "hostel") {
-          setActiveModal("entryexit");
-        } else if (target === "exam" || target === "test") {
-          setActiveModal("assignment");
-        } else {
-          setActiveModal(target);
-        }
+      if (target === "entryexit" || target === "leave" || target === "hostel") {
+        setActiveModal("entryexit");
+      } else if (target === "fees") {
+        setActiveModal("fees");
+      } else if (target === "chat" || target === "messages") {
+        setActiveModal("messages");
+      } else if (target === "assignment" || target === "exam" || target === "test" || target === "report") {
+        setActiveModal("report");
+      } else if (target === "notify" || target === "notice_detail") {
+        setActiveModal("notify");
+      } else {
+        setActiveModal(null);
       }
     });
 

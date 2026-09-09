@@ -147,11 +147,14 @@ export default function Header() {
         target === "hostel" ||
         target === "chat" ||
         target === "bus" ||
-        target === "mess" ||
-        target === "notify" ||
-        target === "notice_detail"
+        target === "mess"
       ) {
-        setActiveModal(target === "notice_detail" ? "notify" : target);
+        setActiveModal(target);
+      } else if (target === "notify" || target === "notice_detail") {
+        setActiveModal("notify");
+      } else {
+        // Screen-level target (e.g. fees, exam, timetable, attendance, library, docspace, assignment)
+        setActiveModal(null);
       }
     });
 
