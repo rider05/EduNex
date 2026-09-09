@@ -54,8 +54,14 @@ export default function FeesParent() {
       if (force) {
         api.clearCache();
       }
-      const fees = await getStudentFees(force);
-      if (fees) {
+      const [feesRes, parentRes, instRes] = await Promise.allSettled([
+        getStudentFees(force),
+        getParentData(force),
+        getInstitutions(force),
+      ]);
+
+      if (feesRes.status === "fulfilled" && feesRes.value) {
+        const fees = feesRes.value;
         if (Array.isArray(fees.dueInvoices)) {
           setInvoices(fees.dueInvoices);
         }
@@ -63,23 +69,22 @@ export default function FeesParent() {
           setReceipts(fees.history);
         }
       }
-      try {
-        const parentData = await getParentData(force);
-        if (parentData?.ward) {
+
+      if (parentRes.status === "fulfilled" && parentRes.value) {
+        const parentData = parentRes.value;
+        if (parentData.ward) {
           setWardName(parentData.ward.name || "");
           setRollNo(parentData.ward.rollNo || "");
           setWard(parentData.ward);
         }
-        if (parentData?.institution) {
+        if (parentData.institution) {
           setInstitution(parentData.institution);
         }
-      } catch (_e) {}
-      try {
-        const instList = await getInstitutions(force);
-        const inst =
-          Array.isArray(instList) && instList.length > 0 ? instList[0] : null;
-        if (inst) setInstitution(inst);
-      } catch (_e) {}
+      }
+
+      if (instRes.status === "fulfilled" && Array.isArray(instRes.value) && instRes.value.length > 0) {
+        setInstitution(instRes.value[0]);
+      }
     } catch (err) {
       console.warn("FeesParent load error:", err?.message || err);
     } finally {

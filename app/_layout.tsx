@@ -5,6 +5,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as Notifications from "./utils/safeNotifications";
 import * as NavigationBar from "expo-navigation-bar";
 import { startRealtimeWatcher, setupPushNotificationPermissions } from "./services/realtimeNotificationService";
+import { startOfflineSyncWatcher } from "./services/offlineSyncService";
+import { BASE_URL } from "./services/api";
 import { notifyChatSubscribers } from "./services/chatService";
 import { handleNotificationAction } from "./utils/notificationUtils";
 import { checkAppUpdate } from "./services/updateService";
@@ -31,6 +33,9 @@ export default function RootLayout() {
 
     // 2. Start continuous real-time signaling & notification watcher globally (1.5s fast polling)
     const stopWatcher = startRealtimeWatcher(1500);
+
+    // 3. Start persistent Offline Mutation Cloud Synchronization Watcher
+    const stopOfflineSync = startOfflineSyncWatcher(BASE_URL, 15000);
 
     // 3. In-App Version & Update Checker
     async function performUpdateCheck() {
@@ -89,6 +94,7 @@ export default function RootLayout() {
       responseSub.remove();
       clearInterval(updateCheckTimer);
       if (stopWatcher) stopWatcher();
+      if (stopOfflineSync) stopOfflineSync();
     };
   }, []);
 

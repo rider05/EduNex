@@ -58,10 +58,19 @@ export default function MessagesParent() {
     email: "",
   });
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
     try {
-      const data = await getParentData();
-      if (data) {
+      if (force) {
+        api.clearCache();
+      }
+      const [parentRes, noticesRes, chatRes] = await Promise.allSettled([
+        getParentData(force),
+        getParentNotices(force),
+        secureGet("parent_advisor_chat_v1"),
+      ]);
+
+      if (parentRes.status === "fulfilled" && parentRes.value) {
+        const data = parentRes.value;
         if (data.parentName) setParentName(data.parentName);
         if (data.ward?.advisor) {
           setAdvisorInfo((prev) => ({
@@ -80,36 +89,31 @@ export default function MessagesParent() {
         }
       }
 
-      try {
-        const noticesData = await getParentNotices();
-        if (Array.isArray(noticesData)) {
-          const categorySet = new Set(["All Notices"]);
-          const mapped = noticesData.map((n, idx) => {
-            const category = n.category || n.type || "General";
-            categorySet.add(category);
-            return {
-              id: n.id || `notice_${idx}`,
-              title: n.title || n.subject || "Campus Notice",
-              content: n.content || n.message || n.body || "",
-              sender: n.sender || n.from || "Administration",
-              date: n.date || n.createdAt || "",
-              category,
-              color: n.color || "#4F46E5",
-              icon: n.icon || "bullhorn-outline",
-              time: n.time || n.date || "",
-              isNew: n.isNew || false,
-            };
-          });
-          setNotices(mapped);
-          setCategories(Array.from(categorySet));
-        }
-      } catch (e) {
-        console.warn("MessagesParent notices load error:", e?.message || e);
+      if (noticesRes.status === "fulfilled" && Array.isArray(noticesRes.value)) {
+        const noticesData = noticesRes.value;
+        const categorySet = new Set(["All Notices"]);
+        const mapped = noticesData.map((n, idx) => {
+          const category = n.category || n.type || "General";
+          categorySet.add(category);
+          return {
+            id: n.id || `notice_${idx}`,
+            title: n.title || n.subject || "Campus Notice",
+            content: n.content || n.message || n.body || "",
+            sender: n.sender || n.from || "Administration",
+            date: n.date || n.createdAt || "",
+            category,
+            color: n.color || "#4F46E5",
+            icon: n.icon || "bullhorn-outline",
+            time: n.time || n.date || "",
+            isNew: n.isNew || false,
+          };
+        });
+        setNotices(mapped);
+        setCategories(Array.from(categorySet));
       }
 
-      const savedChat = await secureGet("parent_advisor_chat_v1");
-      if (savedChat && Array.isArray(savedChat)) {
-        setChatMessages(savedChat);
+      if (chatRes.status === "fulfilled" && Array.isArray(chatRes.value)) {
+        setChatMessages(chatRes.value);
       }
     } catch (err) {
       console.warn("MessagesParent load error:", err?.message || err);

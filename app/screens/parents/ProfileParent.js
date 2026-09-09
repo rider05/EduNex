@@ -45,14 +45,19 @@ export default function ProfileParent({ onLogout }) {
       if (force) {
         api.clearCache();
       }
-      const savedPref = await secureGet("parentNotifications");
+      const [savedPrefRes, storedUserRes, parentDataRes] = await Promise.allSettled([
+        secureGet("parentNotifications"),
+        secureGet("userData"),
+        getParentData(force),
+      ]);
+
+      const savedPref = savedPrefRes.status === "fulfilled" ? savedPrefRes.value : null;
       if (savedPref !== null) {
         setNotifications(Boolean(savedPref));
       }
 
-      const storedUser = await secureGet("userData");
-
-      const data = await getParentData(force);
+      const storedUser = storedUserRes.status === "fulfilled" ? storedUserRes.value : null;
+      const data = parentDataRes.status === "fulfilled" ? parentDataRes.value : null;
       if (data || storedUser) {
         const wardRoll = data?.ward?.rollNo || data?.ward?.roll || "25BAD015";
         const wardDept = data?.ward?.department || data?.ward?.class || "AI & DS";

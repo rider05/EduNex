@@ -35,10 +35,11 @@ export default function AssignmentReportModal({ visible, onClose, colors: propCo
 
   const loadReports = useCallback(async () => {
     try {
-      const facData = await getFacultyData();
+      const [facData, res] = await Promise.all([
+        getFacultyData(),
+        api.get("/assignments", { sort: "-createdAt", limit: 100 }),
+      ]);
       const subjects = await getFacultyAssignedSubjects(facData);
-
-      const res = await api.get("/assignments", { sort: "-createdAt", limit: 100 });
       const rawList = Array.isArray(res?.data) ? res.data : [];
 
       // Scoping: Staff only views submissions for their assigned subjects

@@ -39,9 +39,15 @@ export default function WardDetailsParent() {
       if (force) {
         api.clearCache();
       }
-      const student = await getStudentData(force);
-      const permitDocs = await getPermits({}, force).catch(() => []);
-      const subjectCatalog = await getSubjects().catch(() => []);
+      const [studentRes, permitDocsRes, subjectCatalogRes] = await Promise.allSettled([
+        getStudentData(force),
+        getPermits({}, force),
+        getSubjects(),
+      ]);
+
+      const student = studentRes.status === "fulfilled" ? studentRes.value : null;
+      const permitDocs = permitDocsRes.status === "fulfilled" && Array.isArray(permitDocsRes.value) ? permitDocsRes.value : [];
+      const subjectCatalog = subjectCatalogRes.status === "fulfilled" && Array.isArray(subjectCatalogRes.value) ? subjectCatalogRes.value : [];
       if (student) {
         const studentRoll = student.roll || student.rollNo || "25BAD015";
         const studentDept = student.department || student.dept || "AI & DS";
