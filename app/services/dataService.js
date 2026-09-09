@@ -3,6 +3,7 @@ import { api } from "./api";
 import { resolveIdentity, invalidateIdentity, refreshSessionUserProfile } from "./identityService";
 import { getDeterministicNickname } from "../utils/nicknameGenerator";
 import { formatUniversityRegNo } from "../utils/deptFormatter";
+import { sendTargetedNotification } from "../utils/notificationUtils";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔐 SECURE DELTA SYNCHRONIZATION & EVENT EMITTER
@@ -732,6 +733,7 @@ export async function getAssignments(params = {}, force = false) {
 
 export async function submitAssignment(asgId, submissionData = {}) {
   const identity = await resolveIdentity();
+  const studentRoll = identity.rollNo || identity.username || "Student";
   const submissionTimestamp = new Date().toISOString();
   const formattedDate = new Date().toLocaleDateString("en-US", {
     day: "numeric",
@@ -745,15 +747,34 @@ export async function submitAssignment(asgId, submissionData = {}) {
     status: "Submitted",
     submissionDate: formattedDate,
     submittedAt: submissionTimestamp,
-    submittedBy: identity.rollNo || identity.username || "Student",
+    submittedBy: studentRoll,
+    studentRoll: studentRoll,
     submittedFile: submissionData.file || null,
     submissionRemarks: submissionData.remarks || "",
     repoLink: submissionData.repoLink || "",
   };
 
+  const submissionItem = {
+    roll: studentRoll,
+    studentRoll: studentRoll,
+    studentId: identity.studentId || identity.id || "",
+    studentName: identity.name || identity.student?.name || studentRoll,
+    submittedAt: submissionTimestamp,
+    submissionDate: formattedDate,
+    file: submissionData.file || null,
+    submittedFile: submissionData.file || null,
+    remarks: submissionData.remarks || "",
+    repoLink: submissionData.repoLink || "",
+    status: "Submitted",
+  };
+
   // 1. Try backend API endpoints
   try {
-    await api.post(`/assignments/${asgId}/submit`, payload).catch(() => null);
+    await api.post(`/assignments/${asgId}/submit`, { ...payload, submission: submissionItem }).catch(() => null);
+    await api.patch(`/assignments/${asgId}`, {
+      $push: { submissions: submissionItem },
+      ...payload,
+    }).catch(() => null);
     await api.put(`/assignments/${asgId}`, payload).catch(() => null);
   } catch (e) {
     console.warn("Backend assignment submit sync:", e?.message);
@@ -763,9 +784,22 @@ export async function submitAssignment(asgId, submissionData = {}) {
   try {
     const db = await getDatabase();
     if (Array.isArray(db.assignments)) {
-      db.assignments = db.assignments.map((a) =>
-        String(a.id || a._id) === String(asgId) ? { ...a, ...payload } : a
-      );
+      db.assignments = db.assignments.map((a) => {
+        if (String(a.id || a._id) === String(asgId)) {
+          const subs = Array.isArray(a.submissions)
+            ? a.submissions.filter((s) => s.roll !== studentRoll)
+            : [];
+          subs.push(submissionItem);
+          return {
+            ...a,
+            ...payload,
+            submissions: subs,
+            submitted: (a.submitted || 0) + 1,
+            pending: Math.max(0, (a.pending || 60) - 1),
+          };
+        }
+        return a;
+      });
       await saveDatabase(db);
     }
   } catch (err) {
@@ -796,11 +830,20 @@ export async function getFacultyAssignedSubjects(facultyDoc) {
     subjects.push({ name: faculty.subject, code: faculty.subjectCode || "", class: faculty.class || "" });
   }
   if (subjects.length === 0) {
-    subjects.push(
-      { name: "Machine Learning", code: "AD-506", class: "AI & DS - A (Year 3)" },
-      { name: "Fundamentals of Cloud Computing", code: "AD-505", class: "AI & DS - A (Year 3)" },
-      { name: "Explainable AI", code: "AD-509", class: "AI & DS - A (Year 3)" }
-    );
+    try {
+      const catalog = await getSubjects();
+      if (Array.isArray(catalog) && catalog.length > 0) {
+        catalog.forEach((cat) => {
+          if (cat.name && !subjects.some((x) => x.name.toLowerCase() === cat.name.toLowerCase())) {
+            subjects.push({
+              name: cat.name,
+              code: cat.code || "",
+              class: cat.department || "AI & DS",
+            });
+          }
+        });
+      }
+    } catch {}
   }
   return subjects;
 }
@@ -815,9 +858,12 @@ export async function createAssignment(assignmentData = {}) {
     subject: assignmentData.subject || "Machine Learning",
     subjectCode: assignmentData.subjectCode || "AD-506",
     course: assignmentData.subject || "Machine Learning",
+    courseCode: assignmentData.subjectCode || "AD-506",
     assignedBy: assignmentData.assignedBy || identity?.staff?.name || identity?.name || "Course Faculty",
     facultyId: assignmentData.facultyId || identity?.staffId || identity?.username || "STF001",
     assignedToClass: assignmentData.class || "III AI & DS - A",
+    class: assignmentData.class || "III AI & DS - A",
+    department: assignmentData.department || "",
     description: assignmentData.description || "",
     dueDate: assignmentData.dueDate || "15 Sep 2026",
     totalMarks: Number(assignmentData.totalMarks) || 50,
@@ -825,6 +871,7 @@ export async function createAssignment(assignmentData = {}) {
     status: "Pending",
     submitted: 0,
     pending: 60,
+    submissions: [],
     createdAt: new Date().toISOString(),
   };
 
@@ -838,6 +885,63 @@ export async function createAssignment(assignmentData = {}) {
     db.assignments.unshift(newDoc);
     await saveDatabase(db);
   } catch {}
+
+  // 🔔 Push targeted notification strictly to all students taking this subject / class
+  try {
+    const noticePayload = {
+      title: `📝 New Assignment: ${newDoc.subject}`,
+      message: `${newDoc.title} assigned by ${newDoc.assignedBy}. Due: ${newDoc.dueDate}.`,
+      body: `${newDoc.title} has been assigned for ${newDoc.subject} (${newDoc.subjectCode || ""}). Due: ${newDoc.dueDate}. Marks: ${newDoc.totalMarks}.\n${newDoc.description || ""}`,
+      type: "assignment",
+      category: "Assignment",
+      targetRole: "student",
+      targetDepartment: newDoc.department || "",
+      targetSection: newDoc.assignedToClass || newDoc.class || "",
+      subject: newDoc.subject,
+      subjectCode: newDoc.subjectCode,
+      course: newDoc.subject,
+      courseCode: newDoc.subjectCode,
+      targetModal: "assignment",
+      targetScreen: "Academics",
+      senderRole: "staff",
+      senderName: newDoc.assignedBy,
+      metadata: {
+        type: "assignment",
+        targetRole: "student",
+        assignmentId: newDoc.id,
+        title: newDoc.title,
+        subject: newDoc.subject,
+        subjectCode: newDoc.subjectCode,
+        course: newDoc.subject,
+        courseCode: newDoc.subjectCode,
+        class: newDoc.assignedToClass || newDoc.class || "",
+        targetSection: newDoc.assignedToClass || newDoc.class || "",
+        dueDate: newDoc.dueDate,
+        totalMarks: newDoc.totalMarks,
+        assignedBy: newDoc.assignedBy,
+        targetModal: "assignment",
+        targetScreen: "Academics",
+      },
+      date: new Date().toISOString().split("T")[0],
+      createdAt: new Date().toISOString(),
+      isRead: false,
+      isNew: true,
+    };
+
+    // 1. Post to live /notices endpoint for MongoDB persistence
+    await api.post("/notices", noticePayload).catch(() => null);
+
+    // 2. Trigger targeted notification
+    await sendTargetedNotification({
+      targetRole: "student",
+      title: noticePayload.title,
+      message: noticePayload.message,
+      type: "info",
+      metadata: noticePayload.metadata,
+    }).catch(() => null);
+  } catch (notifErr) {
+    console.warn("Assignment notification broadcast error:", notifErr);
+  }
 
   return newDoc;
 }

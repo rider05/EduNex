@@ -53,6 +53,7 @@ export default function Header() {
         department: student?.department || student?.class || user?.profile?.department || "",
         year: student?.year || user?.profile?.year || "",
         section: student?.section || user?.profile?.section || "",
+        subjects: student?.subjects || user?.subjects || id?.subjects || [],
       };
       const userIdentifier = userContext.rollNo || userContext.username || userContext.id;
 

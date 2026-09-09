@@ -98,6 +98,7 @@ export default function NotificationModal({ visible, onClose }) {
         department: student?.department || staff?.department || student?.class || user?.profile?.department || "",
         year: student?.year || user?.profile?.year || "",
         section: student?.section || user?.profile?.section || "",
+        subjects: student?.subjects || user?.subjects || identity?.subjects || [],
       };
 
       const userIdentifier =

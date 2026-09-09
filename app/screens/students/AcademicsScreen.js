@@ -73,26 +73,52 @@ const mapSubjectsToCourses = (subjects) =>
         : ["Syllabus details will be added by the faculty."],
   }));
 
-const mapAssignment = (a, i) => ({
-  id: a.id || a._id || `asg_${i + 1}`,
-  title: a.title || a.subject || "Assignment",
-  subject: a.subject || a.title || "Course Subject",
-  code: a.subjectCode || a.code || "",
-  dueDate: a.dueDate || "Due soon",
-  faculty: a.assignedBy || a.faculty || "Course Faculty",
-  status: a.status === "Pending" ? "Pending Submission" : a.status || "Pending Submission",
-  marks: a.totalMarks ? `${a.totalMarks} Marks` : a.marks ? `${a.marks} Marks` : "—",
-  totalMarks: Number(a.totalMarks) || Number(a.marks) || 0,
-  obtainedMarks: a.obtainedMarks != null ? Number(a.obtainedMarks) : null,
-  gradedScore: a.obtainedMarks != null ? `${a.obtainedMarks} / ${a.totalMarks || a.marks || "—"} Marks` : null,
-  color: ["#4F46E5", "#DB2777", "#0D9488", "#7C3AED"][i % 4],
-  desc: a.description || "Course assignment submission.",
-  feedback: a.feedback || null,
-  submittedFile: a.submittedFile || null,
-  submissionDate: a.submissionDate || a.submittedAt || null,
-  submissionRemarks: a.submissionRemarks || "",
-  repoLink: a.repoLink || "",
-});
+const mapAssignment = (a, i, studentRoll = "") => {
+  const normRoll = String(studentRoll || "").trim().toLowerCase();
+  const userSub = Array.isArray(a.submissions)
+    ? a.submissions.find(
+        (s) =>
+          String(s.roll || s.studentRoll || s.studentId || s.submittedBy || "").trim().toLowerCase() === normRoll
+      )
+    : null;
+
+  const isUserSubmitted = Boolean(
+    userSub ||
+    a.status === "Submitted" ||
+    a.status === "submitted" ||
+    (normRoll && String(a.submittedBy || a.studentRoll || "").trim().toLowerCase() === normRoll)
+  );
+
+  const isGraded =
+    (userSub && userSub.marks != null) ||
+    a.status === "Graded" ||
+    a.status === "graded" ||
+    a.obtainedMarks != null;
+
+  const resolvedMarks = userSub?.marks != null ? Number(userSub.marks) : a.obtainedMarks != null ? Number(a.obtainedMarks) : null;
+  const resolvedTotal = Number(a.totalMarks) || Number(a.marks) || 0;
+
+  return {
+    id: a.id || a._id || `asg_${i + 1}`,
+    title: a.title || a.subject || "Assignment",
+    subject: a.subject || a.title || "Course Subject",
+    code: a.subjectCode || a.code || "",
+    dueDate: a.dueDate || a.deadline || "Due soon",
+    faculty: a.assignedBy || a.faculty || "Course Faculty",
+    status: isGraded ? "Graded" : isUserSubmitted ? "Submitted" : "Pending Submission",
+    marks: resolvedTotal ? `${resolvedTotal} Marks` : "—",
+    totalMarks: resolvedTotal,
+    obtainedMarks: resolvedMarks,
+    gradedScore: resolvedMarks != null ? `${resolvedMarks} / ${resolvedTotal || "—"} Marks` : null,
+    color: ["#4F46E5", "#DB2777", "#0D9488", "#7C3AED"][i % 4],
+    desc: a.description || "Course assignment submission.",
+    feedback: userSub?.feedback || a.feedback || null,
+    submittedFile: userSub?.file || userSub?.submittedFile || a.submittedFile || null,
+    submissionDate: userSub?.submittedAt || userSub?.submissionDate || a.submissionDate || a.submittedAt || null,
+    submissionRemarks: userSub?.remarks || userSub?.submissionRemarks || a.submissionRemarks || "",
+    repoLink: userSub?.repoLink || a.repoLink || "",
+  };
+};
 
 export default function AcademicsScreen() {
   const { colors, isDarkMode } = useTheme();
@@ -202,7 +228,39 @@ export default function AcademicsScreen() {
       }
 
       if (Array.isArray(asgRes)) {
-        setAssignmentsList(asgRes.map(mapAssignment));
+        const studentSubNames = (student?.subjects || []).flatMap((s) => [
+          String(s?.name || "").trim().toLowerCase(),
+          String(s?.title || "").trim().toLowerCase(),
+          String(s?.code || "").trim().toLowerCase(),
+        ]).filter(Boolean);
+        const studentClass = String(student?.class || student?.section || "").trim().toLowerCase();
+        const studentDept = String(student?.department || student?.dept || "").trim().toLowerCase();
+        const studentRoll = String(student?.rollNo || student?.roll || "").trim().toLowerCase();
+
+        const scoped = asgRes.filter((a) => {
+          if (!a || typeof a !== "object") return false;
+          const aSub = String(a.subject || a.course || "").trim().toLowerCase();
+          const aCode = String(a.subjectCode || a.code || "").trim().toLowerCase();
+          const aClass = String(a.assignedToClass || a.class || "").trim().toLowerCase();
+          const aDept = String(a.department || "").trim().toLowerCase();
+
+          // Match subject name or code
+          if (aSub && studentSubNames.some((s) => s && (s === aSub || s.includes(aSub) || aSub.includes(s)))) return true;
+          if (aCode && studentSubNames.some((s) => s && (s === aCode || s.includes(aCode) || aCode.includes(s)))) return true;
+
+          // Match class / department
+          if (aClass && studentClass && (studentClass.includes(aClass) || aClass.includes(studentClass))) return true;
+          if (aDept && studentDept && (studentDept.includes(aDept) || aDept.includes(studentDept))) return true;
+
+          // If no specific subject/class is tagged on assignment or student has no subjects
+          if (!aSub && !aCode && !aClass && !aDept) return true;
+          if (studentSubNames.length === 0) return true;
+          return false;
+        });
+
+        setAssignmentsList(scoped.map((a, i) => mapAssignment(a, i, studentRoll)));
+      } else {
+        setAssignmentsList([]);
       }
     } catch (err) {
       console.log("Error loading academics data:", err);

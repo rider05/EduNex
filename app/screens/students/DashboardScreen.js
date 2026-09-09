@@ -385,22 +385,60 @@ export default function DashboardScreen() {
       }
 
       if (Array.isArray(assignRes) && assignRes.length > 0) {
+        const studentSubNames = (data?.subjects || []).flatMap((s) => [
+          String(s?.name || "").trim().toLowerCase(),
+          String(s?.title || "").trim().toLowerCase(),
+          String(s?.code || "").trim().toLowerCase(),
+        ]).filter(Boolean);
+        const studentClass = String(data?.class || data?.section || "").trim().toLowerCase();
+        const studentDept = String(data?.department || "").trim().toLowerCase();
+        const studentRoll = String(resolvedRoll || "").trim().toLowerCase();
+
+        const scopedAssignments = assignRes.filter((a) => {
+          if (!a || typeof a !== "object") return false;
+          const aSub = String(a.subject || a.course || "").trim().toLowerCase();
+          const aCode = String(a.subjectCode || a.code || "").trim().toLowerCase();
+          const aClass = String(a.assignedToClass || a.class || "").trim().toLowerCase();
+          const aDept = String(a.department || "").trim().toLowerCase();
+
+          // If no specific subject/class/dept is tagged on assignment, include it
+          if (!aSub && !aCode && !aClass && !aDept) return true;
+
+          // Match subject name or code
+          if (aSub && studentSubNames.some((s) => s && (s === aSub || s.includes(aSub) || aSub.includes(s)))) return true;
+          if (aCode && studentSubNames.some((s) => s && (s === aCode || s.includes(aCode) || aCode.includes(s)))) return true;
+
+          // Match class / department
+          if (aClass && studentClass && (studentClass.includes(aClass) || aClass.includes(studentClass))) return true;
+          if (aDept && studentDept && (studentDept.includes(aDept) || aDept.includes(studentDept))) return true;
+
+          // Fallback if student has no subjects specified
+          if (studentSubNames.length === 0) return true;
+          return false;
+        });
+
         setAssignments(
-          assignRes.slice(0, 5).map((a, i) => {
+          scopedAssignments.slice(0, 5).map((a, i) => {
             const meta = getAssignmentCategoryMeta(a);
+            const isSub =
+              a.status === "Submitted" ||
+              a.status === "submitted" ||
+              (Array.isArray(a.submissions) &&
+                a.submissions.some(
+                  (s) => String(s.roll || s.studentRoll || s.studentId || s.submittedBy || "").toLowerCase() === studentRoll
+                ));
             return {
               id: a.id || a._id || i,
               title: a.title || a.subject || "Academic Assignment",
               due: a.dueDate || a.due || "Due this week",
-              category: a.category || meta.category,
+              category: a.subject || a.category || meta.category,
               color: a.color || meta.color,
               icon: meta.icon,
-              status:
-                a.status === "Submitted" || a.status === "submitted"
-                  ? "submitted"
-                  : a.status === "in_progress" || a.status === "Working"
-                  ? "in_progress"
-                  : "pending",
+              status: isSub
+                ? "submitted"
+                : a.status === "in_progress" || a.status === "Working"
+                ? "in_progress"
+                : "pending",
             };
           })
         );

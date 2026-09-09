@@ -257,6 +257,7 @@ export function isNotificationForUser(notif, userContext = {}) {
     department = "",
     year = "",
     section = "",
+    subjects = [],
   } = userContext;
 
   // Normalized user identifiers for the currently active user
@@ -361,6 +362,43 @@ export function isNotificationForUser(notif, userContext = {}) {
     const matchesSection = currentSec.includes(targetSec) || targetSec.includes(currentSec);
     if (!matchesSection) {
       return false;
+    }
+  }
+
+  // 6. TARGET SUBJECT / COURSE CHECK (Matches students taking that specific subject/course)
+  const targetSub = (
+    notif.subject ||
+    notif.subjectCode ||
+    notif.course ||
+    notif.courseCode ||
+    notif.metadata?.subject ||
+    notif.metadata?.subjectCode ||
+    notif.metadata?.course ||
+    notif.metadata?.courseCode ||
+    ""
+  ).toString().trim().toLowerCase();
+
+  if (
+    targetSub &&
+    targetSub !== "all" &&
+    targetSub !== "broadcast" &&
+    targetSub !== "general" &&
+    Array.isArray(subjects) &&
+    subjects.length > 0
+  ) {
+    const studentSubjects = subjects.flatMap((s) => {
+      if (!s) return [];
+      if (typeof s === "string") return [s.trim().toLowerCase()];
+      return [s.name, s.title, s.code, s.subject, s.course, s.subjectCode]
+        .filter(Boolean)
+        .map((x) => String(x).trim().toLowerCase());
+    });
+
+    const matchesSub = studentSubjects.some(
+      (sub) => sub === targetSub || sub.includes(targetSub) || targetSub.includes(sub)
+    );
+    if (!matchesSub) {
+      return false; // Student does NOT take this subject
     }
   }
 
@@ -489,6 +527,18 @@ export async function sendTargetedNotification({
       rollNo: activeRoll,
       username: activeUser?.username || "",
       studentId: activeUser?.student?.id || activeUser?.id || "",
+      department:
+        activeUser?.student?.department ||
+        activeUser?.profile?.department ||
+        activeUser?.department ||
+        "",
+      year: activeUser?.student?.year || activeUser?.profile?.year || "",
+      section: activeUser?.student?.section || activeUser?.profile?.section || "",
+      subjects:
+        activeUser?.student?.subjects ||
+        activeUser?.subjects ||
+        activeUser?.profile?.subjects ||
+        [],
     };
 
     const isForCurrentUser = isNotificationForUser(notif, userContext);

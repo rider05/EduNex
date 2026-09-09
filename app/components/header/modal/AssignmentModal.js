@@ -187,6 +187,7 @@ export default function AssignmentModal({ visible, onClose, colors: propColors }
         dueDate: newDueDate.trim() || "15 Sep 2026",
         totalMarks: Number(newMarks) || 50,
         class: newClass.trim() || "III AI & DS - A",
+        department: faculty?.department || "",
         description: newDescription.trim(),
         assignedBy: faculty?.name || "Course Faculty",
         facultyId: faculty?.staffId || "STF001",
