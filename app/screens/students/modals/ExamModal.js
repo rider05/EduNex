@@ -248,15 +248,12 @@ export default function ExamModal({ visible, onClose }) {
                     </Text>
                   </View>
                   <View style={[styles.progressBar, { backgroundColor: colors.divider }]}>
-                    <Animated.View
+                    <View
                       style={[
                         styles.progressFill,
                         {
                           backgroundColor: progressColor,
-                          width: progressAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ["0%", "100%"],
-                          }),
+                          width: `${Math.max(10, Math.min(100, Math.round(((14 - Math.max(0, daysLeft)) / 14) * 100)))}%`,
                         },
                       ]}
                     />

@@ -1,9 +1,11 @@
-import React, { useRef, useState, createContext, useContext } from "react";
+import React, { useRef, useState, useEffect, createContext, useContext } from "react";
 import {
   Animated,
   StyleSheet,
   Dimensions,
   Easing,
+  View,
+  Text,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 
@@ -14,126 +16,99 @@ export function ToastProvider({ children }) {
   const [message, setMessage] = useState("");
   const [type, setType] = useState("success");
   const [visible, setVisible] = useState(false);
-  const [animating, setAnimating] = useState(false);
   const animationRef = useRef(null);
+  const hideTimerRef = useRef(null);
 
   const toastOpacity = useRef(new Animated.Value(0)).current;
-  const toastTranslateY = useRef(new Animated.Value(60)).current;
+  const toastTranslateY = useRef(new Animated.Value(40)).current;
   const toastScale = useRef(new Animated.Value(0.85)).current;
-  const toastWidth = useRef(new Animated.Value(55)).current;
 
-  const getDynamicWidth = (text) => {
-    const baseWidth = 100;
-    const textLength = Math.max(0, text?.length || 0);
-    const scaled = baseWidth + Math.min(textLength * 6, 200);
-    return Math.min(scaled, width * 0.75);
-  };
-
-  const iconTranslateX = toastWidth.interpolate({
-    inputRange: [55, width * 0.45],
-    outputRange: [0, -6],
-    extrapolate: "clamp",
-  });
-
-  const textOpacity = toastWidth.interpolate({
-    inputRange: [55, width * 0.3, width * 0.5],
-    outputRange: [0, 0, 1],
-    extrapolate: "clamp",
-  });
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (animationRef.current) {
+        animationRef.current.stop();
+      }
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+      }
+    };
+  }, []);
 
   const showToast = (msg, t = "success") => {
-    const newWidth = getDynamicWidth(msg || "");
+    if (!msg) return;
 
     if (animationRef.current) {
       animationRef.current.stop();
       animationRef.current = null;
     }
-
-    if (animating) {
-      Animated.timing(toastOpacity, {
-        toValue: 0,
-        duration: 100,
-        useNativeDriver: true,
-      }).start(() => {
-        setMessage(msg);
-        setType((t || "success").toLowerCase());
-        resetAndStart(newWidth);
-      });
-    } else {
-      setMessage(msg);
-      setType((t || "success").toLowerCase());
-      resetAndStart(newWidth);
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
     }
-  };
 
-  const resetAndStart = (targetWidth) => {
+    setMessage(String(msg));
+    setType((t || "success").toLowerCase());
     setVisible(true);
-    setAnimating(true);
 
     toastOpacity.setValue(0);
-    toastTranslateY.setValue(60);
+    toastTranslateY.setValue(40);
     toastScale.setValue(0.85);
-    toastWidth.setValue(55);
 
-    requestAnimationFrame(() => startAnimation(targetWidth));
-  };
-
-  const startAnimation = (targetWidth) => {
-    const animation = Animated.sequence([
-      Animated.parallel([
-        Animated.timing(toastOpacity, {
-          toValue: 1,
-          duration: 250,
-          useNativeDriver: true,
-        }),
-        Animated.timing(toastScale, {
-          toValue: 1,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-
-      Animated.timing(toastWidth, {
-        toValue: targetWidth,
-        duration: 700,
-        useNativeDriver: false,
+    // Smooth native entrance
+    const entranceAnim = Animated.parallel([
+      Animated.timing(toastOpacity, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
       }),
-
-      Animated.delay(2200),
-
-      Animated.parallel([
-        Animated.timing(toastOpacity, {
-          toValue: 0,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(toastWidth, {
-          toValue: 55,
-          duration: 400,
-          useNativeDriver: false,
-        }),
-        Animated.timing(toastTranslateY, {
-          toValue: 120,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(toastScale, {
-          toValue: 0.9,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-      ]),
-
-      Animated.delay(100),
+      Animated.spring(toastTranslateY, {
+        toValue: 0,
+        friction: 7,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+      Animated.spring(toastScale, {
+        toValue: 1,
+        friction: 7,
+        tension: 80,
+        useNativeDriver: true,
+      }),
     ]);
 
-    animationRef.current = animation;
-
-    animation.start(() => {
+    animationRef.current = entranceAnim;
+    entranceAnim.start(() => {
       animationRef.current = null;
-      setAnimating(false);
-      setVisible(false);
+
+      // Auto dismiss after 2.8s
+      hideTimerRef.current = setTimeout(() => {
+        const exitAnim = Animated.parallel([
+          Animated.timing(toastOpacity, {
+            toValue: 0,
+            duration: 250,
+            easing: Easing.in(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(toastTranslateY, {
+            toValue: 30,
+            duration: 250,
+            easing: Easing.in(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(toastScale, {
+            toValue: 0.9,
+            duration: 250,
+            useNativeDriver: true,
+          }),
+        ]);
+
+        animationRef.current = exitAnim;
+        exitAnim.start(() => {
+          animationRef.current = null;
+          setVisible(false);
+        });
+      }, 2800);
     });
   };
 
@@ -153,13 +128,13 @@ export function ToastProvider({ children }) {
   const getColor = () => {
     switch (type) {
       case "success":
-        return "#4CAF50";
+        return "#10B981";
       case "error":
-        return "#E53935";
+        return "#EF4444";
       case "warning":
-        return "#FFC107";
+        return "#F59E0B";
       default:
-        return "#2196F3";
+        return "#3B82F6";
     }
   };
 
@@ -178,36 +153,29 @@ export function ToastProvider({ children }) {
           ]}
           pointerEvents="none"
         >
-          <Animated.View
+          <View
             style={[
               styles.toastContainer,
               {
-                width: toastWidth,
                 backgroundColor: getColor(),
               },
             ]}
           >
-            <Animated.View
-              style={[
-                styles.iconWrapper,
-                { transform: [{ translateX: iconTranslateX }] },
-              ]}
-            >
-              <Icon name={getIcon()} size={22} color="#fff" />
-            </Animated.View>
+            <View style={styles.iconWrapper}>
+              <Icon name={getIcon()} size={22} color="#FFFFFF" />
+            </View>
 
-            <Animated.Text
-              numberOfLines={1}
+            <Text
+              numberOfLines={2}
               ellipsizeMode="tail"
               style={[
                 styles.toastText,
-                { opacity: textOpacity },
-                message?.length > 60 ? { fontSize: 13 } : null,
+                message?.length > 45 ? { fontSize: 13 } : null,
               ]}
             >
               {message}
-            </Animated.Text>
-          </Animated.View>
+            </Text>
+          </View>
         </Animated.View>
       )}
     </ToastContext.Provider>
@@ -219,42 +187,44 @@ export const useAppToast = () => useContext(ToastContext);
 const styles = StyleSheet.create({
   outerWrapper: {
     position: "absolute",
-    bottom: 110, // raised slightly higher for better visibility
-    left: 0,
-    right: 0,
+    bottom: 95,
+    left: 16,
+    right: 16,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 9999,
     elevation: 9999,
   },
   toastContainer: {
-    height: 52,
+    minHeight: 48,
+    maxWidth: width * 0.88,
     borderRadius: 26,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center", // perfectly centered content
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    overflow: "hidden",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   iconWrapper: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 8,
   },
   toastText: {
-    color: "#fff",
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
     textAlignVertical: "center",
     flexShrink: 1,
     includeFontPadding: false,
+    lineHeight: 18,
   },
 });
