@@ -21,6 +21,7 @@ import { api } from "../../services/api";
 import { showToast } from "../../utils/toastService";
 import { SkeletonListItem } from "../../components/common/SkeletonLoader";
 import AddUserModal from "../../components/header/amodal/AddUserModal";
+import YearPromotionModal from "../../components/header/amodal/YearPromotionModal";
 
 export default function ManageUsersAdmin() {
   const { colors } = useTheme();
@@ -35,6 +36,7 @@ export default function ManageUsersAdmin() {
   // Modals
   const [addUserModalVisible, setAddUserModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
+  const [promoteModalVisible, setPromoteModalVisible] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
 
   // Edit / Details State
@@ -224,6 +226,39 @@ export default function ManageUsersAdmin() {
     ]);
   };
 
+  // PROMOTE SINGLE STUDENT (+1 Academic Year)
+  const handlePromoteSingleStudent = async () => {
+    if (!selectedUser || selectedUser.role !== "student") return;
+
+    Alert.alert(
+      "Promote Student",
+      `Promote ${selectedUser.name} (${selectedUser.username}) to the next Academic Year & Semester?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Promote Student",
+          onPress: async () => {
+            try {
+              const res = await api.post("/promote-students", {
+                fromYear: "All",
+                toYear: "auto",
+                semester: "auto",
+                broadcastNotice: false,
+              });
+              showToast(`🎓 ${selectedUser.name} promoted to next academic year!`, "success");
+              setEditModalVisible(false);
+              setSelectedUser(null);
+              await fetchUsers(true);
+            } catch (err) {
+              console.log("Single promote error:", err);
+              showToast("Could not promote student", "error");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Role Theme Helpers
   const getRoleBadgeStyle = (role) => {
     switch (role) {
@@ -356,6 +391,15 @@ export default function ManageUsersAdmin() {
           >
             <Icon name="file-excel-box" size={18} color="#10B981" />
             <Text style={[styles.secondaryActionBtnText, { color: "#10B981" }]}>Excel Import</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.secondaryActionBtn, { backgroundColor: "#8B5CF618", borderColor: "#8B5CF640" }]}
+            onPress={() => setPromoteModalVisible(true)}
+            activeOpacity={0.85}
+          >
+            <Icon name="school" size={18} color="#8B5CF6" />
+            <Text style={[styles.secondaryActionBtnText, { color: "#8B5CF6" }]}>Promote Year</Text>
           </TouchableOpacity>
         </View>
 
@@ -589,6 +633,19 @@ export default function ManageUsersAdmin() {
                     {isResettingPassword ? "Resetting Password..." : "Reset User Password (edunex123)"}
                   </Text>
                 </TouchableOpacity>
+
+                {/* Single Student Promote Action */}
+                {editRole === "student" && (
+                  <TouchableOpacity
+                    style={[styles.resetPasswordBtn, { backgroundColor: "#8B5CF614", borderColor: "#8B5CF640", marginTop: 8 }]}
+                    onPress={handlePromoteSingleStudent}
+                  >
+                    <Icon name="school" size={18} color="#8B5CF6" />
+                    <Text style={[styles.resetPasswordText, { color: "#8B5CF6" }]}>
+                      Promote Student (+1 Academic Year)
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </ScrollView>
 
               {/* Modal Actions */}
@@ -620,6 +677,17 @@ export default function ManageUsersAdmin() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* ========================================================================= */}
+      {/* ACADEMIC YEAR PROMOTION MODAL                                             */}
+      {/* ========================================================================= */}
+      <YearPromotionModal
+        visible={promoteModalVisible}
+        onClose={() => setPromoteModalVisible(false)}
+        onSuccess={() => {
+          fetchUsers(true);
+        }}
+      />
     </>
   );
 }

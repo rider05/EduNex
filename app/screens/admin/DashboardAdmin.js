@@ -22,6 +22,7 @@ import { showToast } from "../../utils/toastService";
 import { sendTargetedNotification } from "../../utils/notificationUtils";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import SeatingPlannerModal from "../../components/header/amodal/SeatingPlannerModal";
+import YearPromotionModal from "../../components/header/amodal/YearPromotionModal";
 
 export default function DashboardAdmin() {
   const { colors } = useTheme();
@@ -43,6 +44,7 @@ export default function DashboardAdmin() {
   const [leavesModalVisible, setLeavesModalVisible] = useState(false);
   const [publishModalVisible, setPublishModalVisible] = useState(false);
   const [fleetModalVisible, setFleetModalVisible] = useState(false);
+  const [promoteModalVisible, setPromoteModalVisible] = useState(false);
 
   // Leave Approvals State
   const [leaveRequests, setLeaveRequests] = useState([]);
@@ -455,6 +457,24 @@ export default function DashboardAdmin() {
                     {live.transportRoutes && live.transportRoutes.length
                       ? `${live.transportRoutes.length} Active Routes`
                       : "Transport data unavailable"}
+                  </Text>
+                </View>
+                <Icon name="chevron-right" size={20} color={colors.secondaryText} />
+              </TouchableOpacity>
+
+              {/* Card 5: Student Academic Year Promotion */}
+              <TouchableOpacity
+                style={[styles.opCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+                onPress={() => setPromoteModalVisible(true)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.opIconWrap, { backgroundColor: "#8B5CF618" }]}>
+                  <Icon name="school" size={24} color="#8B5CF6" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.opTitle, { color: colors.primaryText }]}>Student Year Promotion</Text>
+                  <Text style={[styles.opSub, { color: colors.secondaryText }]}>
+                    Batch advance students to next academic year & semester
                   </Text>
                 </View>
                 <Icon name="chevron-right" size={20} color={colors.secondaryText} />
@@ -922,6 +942,15 @@ export default function DashboardAdmin() {
           </View>
         </View>
       </Modal>
+
+      {/* Year Promotion Modal */}
+      <YearPromotionModal
+        visible={promoteModalVisible}
+        onClose={() => setPromoteModalVisible(false)}
+        onSuccess={() => {
+          loadData(true);
+        }}
+      />
     </>
   );
 }
