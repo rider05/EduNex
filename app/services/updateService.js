@@ -77,10 +77,10 @@ export async function checkAppUpdate(ignoreDismissed = false) {
       latestVersion: latest.version,
       title: latest.title || `New Update v${latest.version} Available! 🚀`,
       releaseNotes: latest.releaseNotes || "• Performance enhancements & bug fixes",
-      downloadUrl: latest.downloadUrl || latest.apkUrl || "https://github.com/rider05/EduNex/releases/latest",
+      downloadUrl: latest.downloadUrl || latest.apkUrl || "https://rider05.github.io/EduNex-app/",
       apkUrl: latest.apkUrl || latest.downloadUrl,
       releaseDate: latest.releaseDate || new Date().toISOString().slice(0, 10),
-      fileSize: latest.fileSize || "38 MB",
+      fileSize: latest.fileSize || "24.5 MB",
     };
   } catch (err) {
     console.warn("[updateService] Update check failed:", err.message);

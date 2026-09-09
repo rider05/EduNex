@@ -320,46 +320,61 @@ if (fs.existsSync(destPkgPath)) {
 // ---------------------------------------------------------
 // STEP 7: Push to GitHub Repositories
 // ---------------------------------------------------------
-console.log(`\n📤 [Step 7/7] Pushing updated APK & repositories to GitHub...`);
+console.log(`\n📤 [Step 7/7] Synchronizing and pushing release to GitHub repositories...`);
 
-// 7a. Push D:/EduNex-app
-const appGitDir = path.join(finalDestDir, ".git");
-if (fs.existsSync(appGitDir)) {
-  const commitMsg = `Release: v${targetVersion} - Build ${targetFileName} (_v8a-release) & update download portal`;
-  try {
-    execSync(`git add .`, { cwd: finalDestDir, stdio: "inherit" });
-    try {
-      execSync(`git commit -m "${commitMsg}"`, { cwd: finalDestDir, stdio: "inherit" });
-    } catch (_commitErr) {}
-    execSync(`git push origin main`, { cwd: finalDestDir, stdio: "inherit" });
-    console.log(`   [OK] Successfully pushed ${targetFileName} to EduNex-app GitHub repository!`);
-  } catch (gitErr) {
-    console.warn(`   [!] EduNex-app git push notice:`, gitErr.message);
+const pushGitRepo = (repoPath, repoName, commitMessage) => {
+  const gitDir = path.join(repoPath, ".git");
+  if (!fs.existsSync(gitDir)) {
+    console.log(`   ⏭️ Skipping ${repoName} (Not a git repository)`);
+    return;
   }
-}
+
+  try {
+    console.log(`\n   🐙 [Git: ${repoName}] Staging and committing changes...`);
+    execSync(`git add .`, { cwd: repoPath, stdio: "inherit" });
+    
+    try {
+      execSync(`git commit -m "${commitMessage}"`, { cwd: repoPath, stdio: "inherit" });
+    } catch (_commitErr) {
+      console.log(`   (i) Working tree clean or already committed.`);
+    }
+
+    // Detect active branch dynamically
+    let currentBranch = "main";
+    try {
+      currentBranch = execSync(`git rev-parse --abbrev-ref HEAD`, { cwd: repoPath, encoding: "utf-8" }).trim();
+    } catch (_bErr) {
+      try {
+        currentBranch = execSync(`git branch --show-current`, { cwd: repoPath, encoding: "utf-8" }).trim();
+      } catch (_bErr2) {}
+    }
+
+    console.log(`   🚀 Pushing to remote 'origin' on branch '${currentBranch}'...`);
+    try {
+      execSync(`git push origin ${currentBranch}`, { cwd: repoPath, stdio: "inherit" });
+      console.log(`   ✅ [OK] Successfully pushed ${repoName} to GitHub (origin/${currentBranch})!`);
+    } catch (pushErr) {
+      console.warn(`   ⚠️ Primary push failed on ${currentBranch}, trying fallback...`);
+      const fallbackBranch = currentBranch === "master" ? "main" : "master";
+      try {
+        execSync(`git push origin ${fallbackBranch}`, { cwd: repoPath, stdio: "inherit" });
+        console.log(`   ✅ [OK] Successfully pushed ${repoName} to GitHub (origin/${fallbackBranch})!`);
+      } catch (_fErr) {
+        console.error(`   ❌ Failed to push ${repoName}:`, pushErr.message);
+      }
+    }
+  } catch (err) {
+    console.warn(`   [!] Git notice on ${repoName}:`, err.message);
+  }
+};
+
+// 7a. Push D:/EduNex-app (Download Portal & APK Distribution)
+const appCommitMsg = `Release: v${targetVersion} - Build ${targetFileName} (_v8a-release) & update download portal`;
+pushGitRepo(finalDestDir, "EduNex-app (Download Portal)", appCommitMsg);
 
 // 7b. Sync main project repository (d:/edunex)
-const projectGitDir = path.join(projectRoot, ".git");
-if (fs.existsSync(projectGitDir)) {
-  const projectCommitMsg = `Release: App v${targetVersion} - Automated export ${targetFileName} & portal sync`;
-  try {
-    execSync(`git add .`, { cwd: projectRoot, stdio: "inherit" });
-    try {
-      execSync(`git commit -m "${projectCommitMsg}"`, { cwd: projectRoot, stdio: "inherit" });
-    } catch (_pCommitErr) {}
-    try {
-      execSync(`git push origin master`, { cwd: projectRoot, stdio: "inherit" });
-      console.log(`   [OK] Successfully pushed changes to main project repository!`);
-    } catch {
-      try {
-        execSync(`git push origin main`, { cwd: projectRoot, stdio: "inherit" });
-        console.log(`   [OK] Successfully pushed changes to main project repository!`);
-      } catch (_pushErr) {}
-    }
-  } catch (projGitErr) {
-    console.warn(`   [!] Project git notice:`, projGitErr.message);
-  }
-}
+const projectCommitMsg = `Release: App v${targetVersion} - Automated export ${targetFileName} & portal sync`;
+pushGitRepo(projectRoot, "EduNex Mobile App (Core Repository)", projectCommitMsg);
 
 console.log("\n===================================================================");
 console.log(`🎉 Automated Pipeline Succeeded!`);
