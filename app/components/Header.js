@@ -13,15 +13,17 @@ export default function Header() {
   useEffect(() => {
     resolveIdentity()
       .then((id) => {
-        const name =
+        let name =
           id?.student?.name ||
           id?.staff?.name ||
           id?.parent?.name ||
           id?.admin?.name ||
           id?.name ||
           id?.fullName ||
-          id?.username ||
           "";
+        if (!name || (id?.username && name.toLowerCase() === id.username.toLowerCase()) || /^[0-9]{2}[a-z]{2,5}[0-9]{2,5}$/i.test(String(name).trim())) {
+          name = id?.student?.name || id?.name || "User";
+        }
         if (name) setUserName(name);
       })
       .catch(() => {});

@@ -94,19 +94,32 @@ async function searchFirst(path, params = {}) {
 }
 
 async function resolveStudentDoc(user, username) {
-  if (user?.student && typeof user.student === "object") return user.student;
+  if (user?.student && typeof user.student === "object" && user.student.name) return user.student;
   const profile = user?.profile || {};
+
+  const cleanUsername = String(username || "").trim();
+  const upperUsername = cleanUsername.toUpperCase();
+  const cleanRoll = String(profile.rollNo || profile.roll || user?.rollNo || "").trim();
+  const upperRoll = cleanRoll.toUpperCase();
 
   const candidates = await Promise.allSettled([
     profile.studentId || profile.id ? fetchOneById("/students", profile.studentId || profile.id) : null,
-    profile.rollNo ? searchFirst("/students", { roll: profile.rollNo }) : null,
-    username ? searchFirst("/students", { rollNo: username }) : null,
-    username ? searchFirst("/students", { q: username }) : null,
+    cleanRoll ? searchFirst("/students", { rollNo: cleanRoll }) : null,
+    upperRoll ? searchFirst("/students", { rollNo: upperRoll }) : null,
+    cleanRoll ? searchFirst("/students", { roll: cleanRoll }) : null,
+    upperRoll ? searchFirst("/students", { roll: upperRoll }) : null,
+    cleanUsername ? searchFirst("/students", { rollNo: cleanUsername }) : null,
+    upperUsername ? searchFirst("/students", { rollNo: upperUsername }) : null,
+    cleanUsername ? searchFirst("/students", { roll: cleanUsername }) : null,
+    upperUsername ? searchFirst("/students", { roll: upperUsername }) : null,
+    cleanUsername ? searchFirst("/students", { username: cleanUsername }) : null,
+    user?.email ? searchFirst("/students", { email: String(user.email).trim() }) : null,
+    cleanUsername ? searchFirst("/students", { q: cleanUsername }) : null,
     profile.name ? searchFirst("/students", { q: profile.name }) : null,
   ]);
 
   for (const res of candidates) {
-    if (res.status === "fulfilled" && res.value) {
+    if (res.status === "fulfilled" && res.value && res.value.name) {
       return res.value;
     }
   }
@@ -247,6 +260,31 @@ export async function resolveIdentity(force = false) {
   } catch (err) {
     console.warn("resolveIdentity error:", err?.message || err);
   }
+
+  // Derive real human-friendly display name (avoiding login IDs / roll numbers)
+  const isRollOrId = (val) => {
+    if (!val) return true;
+    const s = String(val).trim();
+    if (s.toLowerCase() === username.toLowerCase()) return true;
+    if (identity.rollNo && s.toLowerCase() === String(identity.rollNo).toLowerCase()) return true;
+    if (/^[0-9]{2}[a-z]{2,5}[0-9]{2,5}$/i.test(s)) return true;
+    return false;
+  };
+
+  let realName =
+    identity.student?.name ||
+    identity.staff?.name ||
+    identity.parent?.name ||
+    identity.admin?.name ||
+    user?.profile?.name ||
+    user?.fullName ||
+    "";
+
+  if (!realName && user?.name && !isRollOrId(user.name)) {
+    realName = user.name;
+  }
+
+  identity.name = realName ? String(realName).trim() : (role === "student" ? "Student" : role.charAt(0).toUpperCase() + role.slice(1));
 
   memo = identity;
   memoKey = key;

@@ -100,7 +100,10 @@ export default function Header() {
     (async () => {
       try {
         const id = await resolveIdentity();
-        const name = id?.student?.name || id?.name || id?.fullName || id?.username || "";
+        let name = id?.student?.name || id?.name || id?.fullName || "";
+        if (!name || (id?.username && name.toLowerCase() === id.username.toLowerCase()) || /^[0-9]{2}[a-z]{2,5}[0-9]{2,5}$/i.test(String(name).trim())) {
+          name = id?.student?.name || "Student";
+        }
         if (name) setStudentName(name);
         if (id?.student?.name) {
           const parts = [id.student.name];

@@ -14,7 +14,8 @@ import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { ToastProvider, useAppToast } from "./utils/AnimatedToast";
 import { setToastRef } from "./utils/toastService";
 import { onUnauthorized, clearAuthSession } from "./services/api";
-import { resolveIdentity } from "./services/identityService";
+import { resolveIdentity, invalidateIdentity } from "./services/identityService";
+import { getStudentData } from "./services/dataService";
 
 // Headers
 import Header from "./components/header/Header";
@@ -128,32 +129,48 @@ function IndexCore() {
       setUserRole(mapped);
       setShowLoginModal(mapped === "guest");
 
-      // Resolve person's actual real name
-      let personName =
-        user?.name ||
-        user?.fullName ||
-        user?.student?.name ||
-        user?.staff?.name ||
-        user?.parent?.name ||
-        user?.admin?.name ||
-        user?.user?.name ||
-        user?.username;
+      // Invalidate cached identity to ensure fresh record resolution
+      invalidateIdentity();
+      const id = await resolveIdentity(true).catch(() => null);
 
-      if (!personName) {
-        try {
-          const id = await resolveIdentity();
-          personName =
-            id?.name ||
-            id?.fullName ||
-            id?.student?.name ||
-            id?.staff?.name ||
-            id?.parent?.name ||
-            id?.admin?.name ||
-            id?.username;
-        } catch {}
+      let studentDoc: any = null;
+      if (mapped === "student") {
+        studentDoc = await getStudentData(true).catch(() => null);
       }
 
-      const greetingName = personName ? String(personName).trim() : mapped;
+      const isRollOrId = (val: any) => {
+        if (!val) return true;
+        const s = String(val).trim();
+        const uname = String(user?.username || id?.username || "").trim();
+        const roll = String(id?.rollNo || studentDoc?.rollNo || "").trim();
+        if (uname && s.toLowerCase() === uname.toLowerCase()) return true;
+        if (roll && s.toLowerCase() === roll.toLowerCase()) return true;
+        if (/^[0-9]{2}[a-z]{2,5}[0-9]{2,5}$/i.test(s)) return true;
+        return false;
+      };
+
+      // Resolve person's actual real name (never raw login ID or roll number)
+      let personName =
+        studentDoc?.name ||
+        id?.student?.name ||
+        id?.staff?.name ||
+        id?.parent?.name ||
+        id?.admin?.name ||
+        id?.name ||
+        user?.student?.name ||
+        user?.profile?.name ||
+        user?.fullName ||
+        "";
+
+      if ((!personName || isRollOrId(personName)) && user?.name && !isRollOrId(user.name)) {
+        personName = user.name;
+      }
+
+      if (!personName || isRollOrId(personName)) {
+        personName = mapped === "student" ? "Student" : (mapped ? mapped.charAt(0).toUpperCase() + mapped.slice(1) : "Student");
+      }
+
+      const greetingName = String(personName).trim();
       toast.showToast(`👋 Welcome, ${greetingName}!`, "success");
     } catch (err) {
       console.log("login callback error:", err);

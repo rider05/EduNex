@@ -21,7 +21,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as NavigationBar from "expo-navigation-bar";
 import * as Device from "expo-device";
 import { api, setAuthSession } from "../services/api";
-import { syncAfterLogin } from "../services/dataService";
+import { syncAfterLogin, getStudentData } from "../services/dataService";
+import { resolveIdentity, invalidateIdentity } from "../services/identityService";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -283,18 +284,47 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
       if (loginResult && loginResult.token && loginResult.data) {
         const user = loginResult.data;
         await setAuthSession(loginResult.token, user);
+        invalidateIdentity();
         // Pull this user's live records from MongoDB into the local sync cache
         syncAfterLogin().catch((e) => console.warn("syncAfterLogin err:", e));
 
-        const personName =
-          user?.name ||
-          user?.fullName ||
+        const role = String(user?.role || "").toLowerCase();
+        let studentDoc = null;
+        if (role === "student" || role === "stud") {
+          studentDoc = await getStudentData(true).catch(() => null);
+        }
+        const id = await resolveIdentity(true).catch(() => null);
+
+        const isRollOrId = (val) => {
+          if (!val) return true;
+          const s = String(val).trim();
+          const uname = String(user?.username || identifier).trim();
+          const roll = String(id?.rollNo || studentDoc?.rollNo || "").trim();
+          if (uname && s.toLowerCase() === uname.toLowerCase()) return true;
+          if (roll && s.toLowerCase() === roll.toLowerCase()) return true;
+          if (/^[0-9]{2}[a-z]{2,5}[0-9]{2,5}$/i.test(s)) return true;
+          return false;
+        };
+
+        let personName =
+          studentDoc?.name ||
+          id?.student?.name ||
+          id?.staff?.name ||
+          id?.parent?.name ||
+          id?.admin?.name ||
+          id?.name ||
           user?.student?.name ||
-          user?.staff?.name ||
-          user?.parent?.name ||
-          user?.admin?.name ||
-          user?.username ||
+          user?.profile?.name ||
+          user?.fullName ||
           "";
+
+        if ((!personName || isRollOrId(personName)) && user?.name && !isRollOrId(user.name)) {
+          personName = user.name;
+        }
+
+        if (!personName || isRollOrId(personName)) {
+          personName = role.includes("student") || role === "stud" ? "Student" : (role ? role.charAt(0).toUpperCase() + role.slice(1) : "");
+        }
 
         setIsSuccess(true);
         setLoadingTitle("Access Granted");
