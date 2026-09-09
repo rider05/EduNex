@@ -365,9 +365,22 @@ export default function DashboardScreen() {
             data.parent?.phone ||
             data.parent?.mobile ||
             "—",
+          nickname: data.nickname || "",
           phone: data.phone || data.mobile || "—",
           email: data.email || "—",
-          avatar: data.avatar || data.photo || data.profileImage || null,
+          avatar:
+            typeof (data.avatar || data.photo || data.profileImage || data.dp) === "object" &&
+            (data.avatar || data.photo || data.profileImage || data.dp) !== null
+              ? data.avatar?.uri ||
+                data.avatar?.url ||
+                data.photo?.uri ||
+                data.photo?.url ||
+                data.profileImage?.uri ||
+                data.profileImage?.url ||
+                data.dp?.uri ||
+                data.dp?.url ||
+                null
+              : data.avatar || data.photo || data.profileImage || null,
         });
       }
 

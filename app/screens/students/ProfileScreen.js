@@ -26,10 +26,11 @@ import { SkeletonProfileScreen } from "../../components/common/SkeletonLoader";
 import { getStudentData, getInstitutions } from "../../services/dataService";
 import { api, clearAuthSession } from "../../services/api";
 import { resolveIdentity, refreshSessionUserProfile } from "../../services/identityService";
-import { getRandomInterestingNickname, getDeterministicNickname } from "../../utils/nicknameGenerator";
+import { getRandomInterestingNickname, getDeterministicNickname, NICKNAME_CATEGORIES } from "../../utils/nicknameGenerator";
 import { formatDeptName, formatUniversityRegNo } from "../../utils/deptFormatter";
 import { shareStudentIdCardPdf } from "../../utils/pdfGenerator";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
+import NicknameModal from "./modals/NicknameModal";
 
 const PROFILE_IMAGE_KEY = "student_profile_image_v3";
 const PROFILE_DATA_KEY = "student_profile_data_v3";
@@ -44,10 +45,12 @@ export default function ProfileScreen({ onLogout }) {
   const [user, setUser] = useState({});
   const [institution, setInstitution] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
+  const [profileImageObj, setProfileImageObj] = useState(null);
 
   // Modals
   const [showFullImage, setShowFullImage] = useState(false);
   const [photoOptionsVisible, setPhotoOptionsVisible] = useState(false);
+  const [nicknameModalVisible, setNicknameModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [resetModalVisible, setResetModalVisible] = useState(false);
   const [showIdCardModal, setShowIdCardModal] = useState(false);
@@ -69,8 +72,25 @@ export default function ProfileScreen({ onLogout }) {
       }
       await refreshSessionUserProfile().catch(() => null);
 
-      const img = await secureGet(PROFILE_IMAGE_KEY);
-      if (img) setProfileImage(img);
+      const imgData = await secureGet(PROFILE_IMAGE_KEY);
+      let initialImgUri = null;
+      let initialImgObj = null;
+
+      if (imgData) {
+        if (typeof imgData === "object" && imgData !== null) {
+          initialImgUri = imgData.uri || imgData.url || null;
+          initialImgObj = imgData;
+        } else if (typeof imgData === "string") {
+          initialImgUri = imgData;
+          initialImgObj = {
+            uri: imgData,
+            url: imgData,
+            updatedAt: new Date().toISOString(),
+            type: "image",
+            source: "storage",
+          };
+        }
+      }
 
       const pref = await secureGet(NOTIF_PREF_KEY);
       if (pref !== null) setIsNotificationsEnabled(Boolean(pref));
@@ -88,12 +108,38 @@ export default function ProfileScreen({ onLogout }) {
 
       const s = apiStudent || identity?.student || sessionUser?.profile || sessionUser;
 
+      // Check backend student doc avatar/photo/profileImage/dp if not in local storage
+      if (!initialImgUri && s) {
+        const serverAvatar = s.avatar || s.photo || s.profileImage || s.dp;
+        if (serverAvatar) {
+          if (typeof serverAvatar === "object" && serverAvatar !== null) {
+            initialImgUri = serverAvatar.uri || serverAvatar.url || null;
+            initialImgObj = serverAvatar;
+          } else if (typeof serverAvatar === "string") {
+            initialImgUri = serverAvatar;
+            initialImgObj = {
+              uri: serverAvatar,
+              url: serverAvatar,
+              updatedAt: new Date().toISOString(),
+              type: "image",
+              source: "server",
+            };
+          }
+        }
+      }
+
+      if (initialImgUri) {
+        setProfileImage(initialImgUri);
+        setProfileImageObj(initialImgObj);
+      }
+
       if (s) {
-        const rollSeed = s.rollNo || s.id || sessionUser?.username || "student";
         const initialNick =
-          s.nickname ||
-          sessionUser?.nickname ||
-          getDeterministicNickname(rollSeed);
+          s.nickname !== undefined && s.nickname !== null
+            ? s.nickname
+            : sessionUser?.nickname !== undefined && sessionUser?.nickname !== null
+            ? sessionUser.nickname
+            : "";
 
         const mentorVal =
           (typeof s.advisor === "string" ? s.advisor : s.advisor?.name) ||
@@ -200,6 +246,43 @@ export default function ProfileScreen({ onLogout }) {
     setRefreshing(false);
   }, [loadData]);
 
+  const saveDpObject = async (asset, source = "gallery") => {
+    const uri = asset.uri;
+    const dpObject = {
+      url: uri,
+      uri: uri,
+      updatedAt: new Date().toISOString(),
+      type: "image",
+      source,
+      fileName: asset.fileName || `student_dp_${Date.now()}.jpg`,
+      fileSize: asset.fileSize || null,
+      mimeType: asset.mimeType || "image/jpeg",
+      width: asset.width || null,
+      height: asset.height || null,
+    };
+
+    setProfileImage(uri);
+    setProfileImageObj(dpObject);
+    await secureSet(PROFILE_IMAGE_KEY, dpObject);
+
+    // Patch to Backend MongoDB Database
+    try {
+      const identity = await resolveIdentity().catch(() => null);
+      const collection = identity?.role === "student" ? "students" : "staff";
+      const docId = identity?.studentId || identity?.id || identity?.rollNo || user.id || "STU-2024-AIDS01";
+      if (docId) {
+        await api.patch(`/${collection}/${encodeURIComponent(docId)}`, {
+          avatar: dpObject,
+          photo: dpObject,
+          profileImage: dpObject,
+          dp: dpObject,
+        }).catch((err) => console.log("DB DP patch error:", err));
+      }
+    } catch (err) {
+      console.log("Save DP to DB error:", err);
+    }
+  };
+
   const pickFromGallery = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -215,11 +298,9 @@ export default function ProfileScreen({ onLogout }) {
       });
 
       if (!res.canceled && res.assets && res.assets[0]?.uri) {
-        const uri = res.assets[0].uri;
-        setProfileImage(uri);
-        await secureSet(PROFILE_IMAGE_KEY, uri);
+        await saveDpObject(res.assets[0], "gallery");
         setPhotoOptionsVisible(false);
-        showToast("Profile photo updated!", "success");
+        showToast("Profile photo updated & saved to DB!", "success");
       }
     } catch (_e) {
       showToast("Failed to pick image", "error");
@@ -241,11 +322,9 @@ export default function ProfileScreen({ onLogout }) {
       });
 
       if (!res.canceled && res.assets && res.assets[0]?.uri) {
-        const uri = res.assets[0].uri;
-        setProfileImage(uri);
-        await secureSet(PROFILE_IMAGE_KEY, uri);
+        await saveDpObject(res.assets[0], "camera");
         setPhotoOptionsVisible(false);
-        showToast("Profile photo captured!", "success");
+        showToast("Profile photo captured & saved to DB!", "success");
       }
     } catch (_e) {
       showToast("Failed to take photo", "error");
@@ -254,8 +333,26 @@ export default function ProfileScreen({ onLogout }) {
 
   const removePhoto = async () => {
     setProfileImage(null);
+    setProfileImageObj(null);
     await secureRemove(PROFILE_IMAGE_KEY);
     setPhotoOptionsVisible(false);
+
+    try {
+      const identity = await resolveIdentity().catch(() => null);
+      const collection = identity?.role === "student" ? "students" : "staff";
+      const docId = identity?.studentId || identity?.id || identity?.rollNo || user.id || "STU-2024-AIDS01";
+      if (docId) {
+        await api.patch(`/${collection}/${encodeURIComponent(docId)}`, {
+          avatar: null,
+          photo: null,
+          profileImage: null,
+          dp: null,
+        }).catch(() => null);
+      }
+    } catch (err) {
+      console.log("Remove DP from DB error:", err);
+    }
+
     showToast("Profile photo reset", "info");
   };
 
@@ -298,19 +395,34 @@ export default function ProfileScreen({ onLogout }) {
     }
   };
 
-  const handleShuffleNickname = async () => {
-    const newNick = getRandomInterestingNickname(user.nickname);
-    setUser((prev) => ({ ...prev, nickname: newNick }));
+  const handleNicknameSave = async (newNick) => {
+    const trimmed = (newNick || "").trim();
+    setUser((prev) => ({ ...prev, nickname: trimmed }));
+
     try {
+      const storedUser = (await secureGet("userData")) || {};
+      storedUser.nickname = trimmed;
+      if (storedUser.profile) storedUser.profile.nickname = trimmed;
+      await secureSet("userData", storedUser);
+
+      const local = (await secureGet(PROFILE_DATA_KEY)) || {};
+      local.nickname = trimmed;
+      await secureSet(PROFILE_DATA_KEY, local);
+
       const identity = await resolveIdentity().catch(() => null);
       const collection = identity?.role === "student" ? "students" : "staff";
-      const docId = identity?.id || identity?.rollNo || user.id || "STU-2024-AIDS01";
+      const docId = identity?.studentId || identity?.id || identity?.rollNo || user.id || "STU-2024-AIDS01";
       if (docId) {
-        await api.patch(`/${collection}/${encodeURIComponent(docId)}`, { nickname: newNick }).catch(() => null);
+        await api.patch(`/${collection}/${encodeURIComponent(docId)}`, { nickname: trimmed }).catch(() => null);
       }
     } catch (err) {
-      console.log("Shuffle nickname patch error:", err);
+      console.log("Nickname DB patch err:", err);
     }
+  };
+
+  const handleShuffleNickname = async () => {
+    const newNick = getRandomInterestingNickname(user.nickname);
+    await handleNicknameSave(newNick);
     showToast(`✨ Sparked alias: "${newNick}"`, "info");
   };
 
@@ -426,18 +538,37 @@ export default function ProfileScreen({ onLogout }) {
                     <Text style={[styles.idHeroName, { color: colors.primaryText }]} numberOfLines={1}>
                       {user.name}
                     </Text>
-                    {!!user.nickname && (
+                    {user.nickname ? (
                       <TouchableOpacity
-                        onPress={handleShuffleNickname}
-                        activeOpacity={0.7}
-                        title="Tap to shuffle nickname"
+                        onPress={() => setNicknameModalVisible(true)}
+                        activeOpacity={0.75}
+                        title="Tap to change or remove alias"
                         style={[styles.nicknameHeroBadge, { backgroundColor: "#F59E0B18", borderColor: "#F59E0B44" }]}
                       >
-                        <Icon name="dice-5-outline" size={11} color="#D97706" />
+                        <Icon name="tag-heart-outline" size={11} color="#D97706" />
                         <Text style={[styles.nicknameHeroBadgeText, { color: "#D97706" }]}>
                           {`"${user.nickname}"`}
                         </Text>
-                        <Icon name="shuffle-variant" size={10} color="#D97706" style={{ marginLeft: 2 }} />
+                        <Icon name="pencil" size={9} color="#D97706" style={{ marginLeft: 3 }} />
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => setNicknameModalVisible(true)}
+                        activeOpacity={0.75}
+                        title="Tap to choose an alias"
+                        style={[
+                          styles.nicknameHeroBadge,
+                          {
+                            backgroundColor: colors.cardHighlight,
+                            borderColor: colors.divider,
+                            borderStyle: "dashed",
+                          },
+                        ]}
+                      >
+                        <Icon name="plus-circle-outline" size={11} color={colors.primaryAccent} />
+                        <Text style={[styles.nicknameHeroBadgeText, { color: colors.primaryAccent, fontWeight: "600" }]}>
+                          + Add Nickname
+                        </Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -534,7 +665,18 @@ export default function ProfileScreen({ onLogout }) {
               </View>
 
               <View style={styles.dataGrid}>
-                <DataRow icon="account-star-outline" label="Nickname / Preferred Name" value={user.nickname || "—"} colors={colors} />
+                <TouchableOpacity
+                  onPress={() => setNicknameModalVisible(true)}
+                  activeOpacity={0.7}
+                  style={{ width: "100%" }}
+                >
+                  <DataRow
+                    icon="account-star-outline"
+                    label="Nickname / Preferred Name"
+                    value={user.nickname ? `${user.nickname} (Tap to change)` : "None (Tap to choose)"}
+                    colors={colors}
+                  />
+                </TouchableOpacity>
                 <DataRow icon="email-outline" label="Official Email" value={user.email} colors={colors} />
                 <DataRow icon="phone-outline" label="Mobile Number" value={user.phone} colors={colors} />
                 <DataRow icon="calendar-account" label="Date of Birth" value={user.dob} colors={colors} />
@@ -791,6 +933,14 @@ export default function ProfileScreen({ onLogout }) {
           </View>
         </View>
       </Modal>
+
+      {/* NICKNAME MODAL */}
+      <NicknameModal
+        visible={nicknameModalVisible}
+        onClose={() => setNicknameModalVisible(false)}
+        currentNickname={user.nickname || ""}
+        onSave={handleNicknameSave}
+      />
 
       {/* BUG & FEEDBACK REPORTING MODAL */}
       <FeedbackBugModal visible={bugModalVisible} onClose={() => setBugModalVisible(false)} />

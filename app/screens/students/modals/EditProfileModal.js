@@ -155,17 +155,28 @@ function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
                 {/* 2. Nickname / Preferred Name */}
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
                   <Text style={[modalStyles.inputLabel, { color: colors.secondaryText }]}>Nickname / Cool Alias</Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      const newNick = getRandomInterestingNickname(nickname);
-                      setNickname(newNick);
-                      showToast(`🎲 Sparked nickname: "${newNick}"`, "info");
-                    }}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 3, paddingVertical: 2, paddingHorizontal: 6 }}
-                  >
-                    <Icon name="dice-5-outline" size={14} color="#F59E0B" />
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#F59E0B" }}>Roll Random</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    {!!nickname && (
+                      <TouchableOpacity
+                        onPress={() => setNickname("")}
+                        style={{ flexDirection: "row", alignItems: "center", gap: 2, paddingVertical: 2, paddingHorizontal: 4 }}
+                      >
+                        <Icon name="close-circle" size={13} color="#EF4444" />
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#EF4444" }}>Remove</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => {
+                        const newNick = getRandomInterestingNickname(nickname);
+                        setNickname(newNick);
+                        showToast(`🎲 Sparked nickname: "${newNick}"`, "info");
+                      }}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 3, paddingVertical: 2, paddingHorizontal: 6 }}
+                    >
+                      <Icon name="dice-5-outline" size={14} color="#F59E0B" />
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#F59E0B" }}>Roll Random</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 <View style={[modalStyles.inputWrap, { backgroundColor: colors.primaryBackground, borderColor: colors.divider }]}>
                   <Icon name="account-star-outline" size={20} color="#F59E0B" />
@@ -173,10 +184,15 @@ function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
                     style={[modalStyles.textInput, { color: colors.primaryText }]}
                     value={nickname}
                     onChangeText={setNickname}
-                    placeholder="Nickname (e.g. QuantumVelo, NeuralNinja)"
+                    placeholder="Nickname (Leave blank to remove)"
                     placeholderTextColor={colors.disabledText}
                     editable={!saving}
                   />
+                  {!!nickname && (
+                    <TouchableOpacity onPress={() => setNickname("")} style={{ padding: 4 }}>
+                      <Icon name="close-circle" size={16} color={colors.secondaryText} />
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     onPress={() => {
                       const newNick = getRandomInterestingNickname(nickname);
@@ -195,7 +211,7 @@ function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
 
                 {/* Nickname Quick Pick Chips */}
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10, marginTop: 4 }}>
-                  {["QuantumVelo", "NeuralNinja", "ByteVoyager", "MatrixRider", "AstroVelu"].map((sug) => (
+                  {["QuantumVelo", "NeuralNinja", "ByteVoyager", "AstroVelu", "CyberKnight", "BlazeRunner"].map((sug) => (
                     <TouchableOpacity
                       key={sug}
                       onPress={() => setNickname(sug)}
@@ -215,10 +231,28 @@ function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
                           color: nickname === sug ? "#F59E0B" : colors.secondaryText,
                         }}
                       >
-                        ⚡ {sug}
+                        {nickname === sug ? "✓ " : "⚡ "}
+                        {sug}
                       </Text>
                     </TouchableOpacity>
                   ))}
+                  {!!nickname && (
+                    <TouchableOpacity
+                      onPress={() => setNickname("")}
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: "#EF444466",
+                        backgroundColor: "#EF444415",
+                      }}
+                    >
+                      <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#EF4444" }}>
+                        ✕ No Nickname
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {/* 3. Mobile Phone Number */}

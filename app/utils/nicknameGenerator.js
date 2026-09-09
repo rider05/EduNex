@@ -3,6 +3,57 @@
  * Generates creative, unique, tech, cyber, and cosmic nicknames for students.
  */
 
+export const NICKNAME_CATEGORIES = {
+  "⚡ Cyber & AI": [
+    "QuantumVelo",
+    "NeuralNinja",
+    "ByteVoyager",
+    "MatrixRider",
+    "CyberKnight",
+    "TurboTensor",
+    "AlgoRhythm",
+    "SiliconSage",
+    "KernelMaster",
+    "VectorSpark",
+    "SynthWave",
+  ],
+  "🌌 Cosmic & Space": [
+    "AstroVelu",
+    "CosmicForge",
+    "StarlightCoder",
+    "SolarFlare",
+    "NovaSpark",
+    "ZenithMind",
+    "ZeroGravity",
+    "KryptonDev",
+    "CloudTitan",
+    "EchoPulse",
+  ],
+  "🔥 Speed & Energy": [
+    "HyperPulse",
+    "SonicDev",
+    "BlazeRunner",
+    "DeltaVolt",
+    "FlashByte",
+    "NeonBlaze",
+    "CircuitBreaker",
+    "AlphaByte",
+    "TitanLogic",
+  ],
+  "🛡️ Tactical & Elite": [
+    "GlitchHunter",
+    "CodeSamurai",
+    "ShadowByte",
+    "ApexHacker",
+    "CipherMind",
+    "PixelWizard",
+    "CodeMaverick",
+    "DataPhantom",
+    "PhantomCore",
+    "LogicWizard",
+  ],
+};
+
 export const CURATED_NICKNAMES = [
   "QuantumVelo",
   "NeuralNinja",

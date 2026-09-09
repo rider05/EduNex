@@ -497,7 +497,12 @@ export async function getStudentData(force = false) {
     registerNo: regNo,
     registerNumber: regNo,
     name: identity.user?.profile?.name || identity.user?.name || identity.username || "Student",
-    nickname: getDeterministicNickname(rollNo || "25BAD015"),
+    nickname:
+      identity.user?.profile?.nickname !== undefined && identity.user?.profile?.nickname !== null
+        ? identity.user.profile.nickname
+        : identity.user?.nickname !== undefined && identity.user?.nickname !== null
+        ? identity.user.nickname
+        : "",
     residentialStatus: identity.user?.residentialStatus || "Day Scholar",
     motherName: identity.user?.motherName || "—",
     email: identity.user?.email || `${identity.username || "student"}@edunex.edu`,

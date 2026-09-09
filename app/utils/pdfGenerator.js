@@ -309,7 +309,8 @@ export async function shareStudentIdCardPdf({ student = {}, institution = {} }) 
   const advisorPhone = student.advisor?.phone || student.advisorPhone || student.mentorPhone || "+91 94432 10987";
   const parentPhone = student.parentPhone || student.parent?.phone || student.fatherPhone || student.emergencyContact || "—";
   const phone = student.phone || student.mobile || "—";
-  const avatarUrl = student.avatar || student.photo || student.profileImage || "";
+  const rawAvatar = student.avatar || student.photo || student.profileImage || student.dp || "";
+  const avatarUrl = typeof rawAvatar === "object" && rawAvatar !== null ? (rawAvatar.url || rawAvatar.uri || "") : (rawAvatar || "");
   const instName = (institution?.name || institution?.shortName || "EDUNEX AUTONOMOUS CAMPUS").toUpperCase();
   const instSub = institution?.accreditation || institution?.address || "Affiliated to Anna University · Approved by AICTE · NAAC 'A++' Accredited";
   const issuedDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
