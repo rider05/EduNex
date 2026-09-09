@@ -77,7 +77,7 @@ export async function checkAppUpdate(ignoreDismissed = false) {
       latestVersion: latest.version,
       title: latest.title || `New Update v${latest.version} Available! 🚀`,
       releaseNotes: latest.releaseNotes || "• Performance enhancements & bug fixes",
-      downloadUrl: latest.downloadUrl || latest.apkUrl || "https://rider05.github.io/EduNex-app/",
+      downloadUrl: latest.downloadUrl || latest.apkUrl || "https://edu-nex-app.vercel.app/",
       apkUrl: latest.apkUrl || latest.downloadUrl,
       releaseDate: latest.releaseDate || new Date().toISOString().slice(0, 10),
       fileSize: latest.fileSize || "24.5 MB",
@@ -140,13 +140,13 @@ export async function openUpdateUrl(url) {
     // Fall back to direct URL
   }
 
-  const target = url || "https://github.com/rider05/EduNex/releases/latest";
+  const target = url || "https://edu-nex-app.vercel.app/";
   try {
     const supported = await Linking.canOpenURL(target);
     if (supported) {
       await Linking.openURL(target);
     } else {
-      await Linking.openURL("https://github.com/rider05/EduNex/releases/latest");
+      await Linking.openURL("https://edu-nex-app.vercel.app/");
     }
   } catch (err) {
     console.warn("Error opening update URL:", err);
