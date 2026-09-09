@@ -21,7 +21,7 @@ import { SkeletonAcademicsScreen } from "../../components/common/SkeletonLoader"
 import { getStudentData, getAssignments, getStudentAttendanceSummary, getSubjects, enrichSubjectFromCatalog, getDeptTargetCredits, getDepartmentTopRanks, submitAssignment } from "../../services/dataService";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
-import { formatDeptName } from "../../utils/deptFormatter";
+import { formatDeptName, matchStudentSubject } from "../../utils/deptFormatter";
 import { shareCourseSyllabusPdf } from "../../utils/pdfGenerator";
 
 const COURSE_TYPES = ["All Courses", "Theory", "Lab", "Project"];
@@ -239,22 +239,25 @@ export default function AcademicsScreen() {
 
         const scoped = asgRes.filter((a) => {
           if (!a || typeof a !== "object") return false;
-          const aSub = String(a.subject || a.course || "").trim().toLowerCase();
-          const aCode = String(a.subjectCode || a.code || "").trim().toLowerCase();
+          const aSub = String(a.subject || a.course || "").trim();
+          const aCode = String(a.subjectCode || a.code || "").trim();
           const aClass = String(a.assignedToClass || a.class || "").trim().toLowerCase();
           const aDept = String(a.department || "").trim().toLowerCase();
 
-          // Match subject name or code
-          if (aSub && studentSubNames.some((s) => s && (s === aSub || s.includes(aSub) || aSub.includes(s)))) return true;
-          if (aCode && studentSubNames.some((s) => s && (s === aCode || s.includes(aCode) || aCode.includes(s)))) return true;
+          // 1. Primary Check: Match by Subject Code or Subject Name
+          if (aCode || aSub) {
+            if (matchStudentSubject(student?.subjects, aCode, aSub)) return true;
+          }
 
-          // Match class / department
+          // 2. Secondary Check: Match by Class / Section
           if (aClass && studentClass && (studentClass.includes(aClass) || aClass.includes(studentClass))) return true;
+
+          // 3. Secondary Check: Match by Department
           if (aDept && studentDept && (studentDept.includes(aDept) || aDept.includes(studentDept))) return true;
 
           // If no specific subject/class is tagged on assignment or student has no subjects
           if (!aSub && !aCode && !aClass && !aDept) return true;
-          if (studentSubNames.length === 0) return true;
+          if (!Array.isArray(student?.subjects) || student.subjects.length === 0) return true;
           return false;
         });
 

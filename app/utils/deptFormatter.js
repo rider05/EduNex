@@ -197,3 +197,53 @@ export function formatUniversityRegNo(rollNo, department = "") {
   return `7105${year}${branchCode}${seqStr}`;
 }
 
+/**
+ * Normalizes a subject code into a lowercase alphanumeric key (e.g. "AD-506" -> "ad506", "CS 501" -> "cs501")
+ */
+export function normalizeSubjectCode(code) {
+  if (!code || typeof code !== "string") return "";
+  return code.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Checks if a candidate subject code or name matches any of the student's enrolled subjects
+ * Primary matching is done on Subject Code (e.g. AD-506 / ad506)
+ */
+export function matchStudentSubject(studentSubjects, candidateCode = "", candidateName = "") {
+  if (!Array.isArray(studentSubjects) || studentSubjects.length === 0) return true;
+  const normCandCode = normalizeSubjectCode(candidateCode);
+  const normCandName = String(candidateName || "").trim().toLowerCase();
+
+  if (!normCandCode && !normCandName) return true;
+
+  for (const s of studentSubjects) {
+    if (!s) continue;
+    if (typeof s === "string") {
+      const sNorm = normalizeSubjectCode(s);
+      const sText = s.trim().toLowerCase();
+      if (normCandCode && sNorm && (sNorm === normCandCode || sNorm.includes(normCandCode) || normCandCode.includes(sNorm))) {
+        return true;
+      }
+      if (normCandName && (sText === normCandName || sText.includes(normCandName) || normCandName.includes(sText))) {
+        return true;
+      }
+      continue;
+    }
+
+    const sCode = normalizeSubjectCode(s.code || s.subjectCode || s.courseCode || s.id || "");
+    const sName = String(s.name || s.title || s.subject || s.course || "").trim().toLowerCase();
+
+    // 1. Primary Identifier: Subject Code Match (e.g. AD-506 vs AD506 vs ad-506)
+    if (normCandCode && sCode && (sCode === normCandCode || sCode.includes(normCandCode) || normCandCode.includes(sCode))) {
+      return true;
+    }
+
+    // 2. Secondary Identifier: Subject Name Match
+    if (normCandName && sName && (sName === normCandName || sName.includes(normCandName) || normCandName.includes(sName))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+

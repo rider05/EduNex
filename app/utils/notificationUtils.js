@@ -6,6 +6,7 @@ import { showToast } from "./toastService";
 import Toast from "react-native-toast-message";
 
 import { emitTabNavigation } from "../services/navigationEvents";
+import { matchStudentSubject, normalizeSubjectCode } from "./deptFormatter";
 
 // Real-time notification event emitter
 const notifListeners = new Set();
@@ -365,40 +366,37 @@ export function isNotificationForUser(notif, userContext = {}) {
     }
   }
 
-  // 6. TARGET SUBJECT / COURSE CHECK (Matches students taking that specific subject/course)
-  const targetSub = (
-    notif.subject ||
+  // 6. TARGET SUBJECT / COURSE CODE CHECK (Primary Identification by Subject Code)
+  const targetSubCode = (
     notif.subjectCode ||
-    notif.course ||
     notif.courseCode ||
-    notif.metadata?.subject ||
+    notif.code ||
     notif.metadata?.subjectCode ||
-    notif.metadata?.course ||
     notif.metadata?.courseCode ||
+    notif.metadata?.code ||
     ""
-  ).toString().trim().toLowerCase();
+  ).toString().trim();
 
-  if (
-    targetSub &&
-    targetSub !== "all" &&
-    targetSub !== "broadcast" &&
-    targetSub !== "general" &&
-    Array.isArray(subjects) &&
-    subjects.length > 0
-  ) {
-    const studentSubjects = subjects.flatMap((s) => {
-      if (!s) return [];
-      if (typeof s === "string") return [s.trim().toLowerCase()];
-      return [s.name, s.title, s.code, s.subject, s.course, s.subjectCode]
-        .filter(Boolean)
-        .map((x) => String(x).trim().toLowerCase());
-    });
+  const targetSubName = (
+    notif.subject ||
+    notif.course ||
+    notif.courseName ||
+    notif.metadata?.subject ||
+    notif.metadata?.course ||
+    ""
+  ).toString().trim();
 
-    const matchesSub = studentSubjects.some(
-      (sub) => sub === targetSub || sub.includes(targetSub) || targetSub.includes(sub)
-    );
-    if (!matchesSub) {
-      return false; // Student does NOT take this subject
+  const hasSubCriteria = Boolean(targetSubCode || targetSubName);
+  const isBroadcast =
+    targetSubCode.toLowerCase() === "all" ||
+    targetSubName.toLowerCase() === "all" ||
+    targetSubName.toLowerCase() === "broadcast" ||
+    targetSubName.toLowerCase() === "general";
+
+  if (hasSubCriteria && !isBroadcast && Array.isArray(subjects) && subjects.length > 0) {
+    const isEnrolled = matchStudentSubject(subjects, targetSubCode, targetSubName);
+    if (!isEnrolled) {
+      return false; // Student is NOT taking this subject (identified by code/name)
     }
   }
 
