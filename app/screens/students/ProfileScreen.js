@@ -168,9 +168,9 @@ export default function ProfileScreen({ onLogout }) {
               : s.hostel) ||
             "-",
           fatherName: s.parent?.name || s.fatherName || "-",
-          fatherPhone: s.parent?.phone || s.parent?.mobile || s.fatherPhone || "-",
+          fatherPhone: s.parentPhone || s.parent?.phone || s.parent?.mobile || s.fatherPhone || "-",
           motherName: s.motherName || s.parent?.motherName || "-",
-          emergencyContact: s.emergencyContact || s.parent?.phone || "-",
+          emergencyContact: s.emergencyContact || s.parentPhone || s.parent?.phone || "-",
         });
       } else {
         const local = await secureGet(PROFILE_DATA_KEY);
