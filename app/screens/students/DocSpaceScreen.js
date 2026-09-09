@@ -19,6 +19,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import { secureGet, secureSet } from "../../services/secureStorage";
 import { useTheme } from "../../context/ThemeContext";
+import { api } from "../../services/api";
 import {
   getRequiredDocuments,
   getStudentDocuments,
@@ -31,334 +32,6 @@ import { resolveIdentity } from "../../services/identityService";
 import { showToast } from "../../utils/toastService";
 import { shareDocSpaceCertificatePdf } from "../../utils/pdfGenerator";
 import { SkeletonDocSpaceScreen } from "../../components/common/SkeletonLoader";
-
-// ---------------- Standard Indian College Required Doc Definitions (23 Official Verification Documents) ----------------
-const DEFAULT_REQUIRED_DOCS = [
-  {
-    id: "REQ-001",
-    code: "DOC_AADHAAR",
-    title: "Aadhaar Card",
-    category: "Identity",
-    isMandatory: true,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "National biometric identity credential issued by UIDAI.",
-    issuer: "Unique Identification Authority of India (UIDAI)",
-    icon: "smart-card-outline",
-    color: "#10B981",
-    instructions: "Upload clear front and back color copy or masked e-Aadhaar PDF.",
-  },
-  {
-    id: "REQ-002",
-    code: "DOC_10TH_MARKS",
-    title: "10th Standard Mark Sheet / Certificate",
-    category: "Academic",
-    isMandatory: true,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Secondary School Leaving Certificate (SSLC / Matriculation / CBSE / ICSE).",
-    issuer: "State Board of Secondary Education / CBSE / ICSE",
-    icon: "school",
-    color: "#4F46E5",
-    instructions: "Original government issued SSLC mark statement with student name and DOB legible.",
-  },
-  {
-    id: "REQ-003",
-    code: "DOC_12TH_MARKS",
-    title: "12th Standard Mark Sheet / Certificate",
-    category: "Academic",
-    isMandatory: true,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Higher Secondary Certificate (HSC / Plus Two / CBSE 12th / Diploma).",
-    issuer: "Department of Government Examinations / CBSE / State Board",
-    icon: "certificate",
-    color: "#2563EB",
-    instructions: "Ensure PCM/PCB cutoff marks, practical scores, and board register number are clear.",
-  },
-  {
-    id: "REQ-004",
-    code: "DOC_TC",
-    title: "Transfer Certificate (TC)",
-    category: "Academic",
-    isMandatory: true,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Original Transfer & Conduct Certificate issued by previous school or college.",
-    issuer: "School / Institution Principal",
-    icon: "card-account-details-outline",
-    color: "#7C3AED",
-    instructions: "Upload original scanned copy with institution seal and signature.",
-  },
-  {
-    id: "REQ-005",
-    code: "DOC_MIGRATION",
-    title: "Migration Certificate (if applicable)",
-    category: "Academic",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Migration clearance certificate issued by secondary board or previous university.",
-    issuer: "Board of Education / University Registrar",
-    icon: "swap-horizontal-bold",
-    color: "#0284C7",
-    instructions: "Required for students migrating from CBSE, ICSE, other state boards, or universities.",
-  },
-  {
-    id: "REQ-006",
-    code: "DOC_COMMUNITY",
-    title: "Community / Caste Certificate (if applicable)",
-    category: "Identity",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Permanent Community / Caste Certificate (BC / MBC / SC / ST / EWS).",
-    issuer: "Revenue Department / Tahsildar / Zonal Officer",
-    icon: "shield-account",
-    color: "#DB2777",
-    instructions: "Must include valid digital signature, revenue seal, and QR verification.",
-  },
-  {
-    id: "REQ-007",
-    code: "DOC_INCOME",
-    title: "Income Certificate (if applicable)",
-    category: "Scholarship",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Annual family income certificate for scholarship and fee concession.",
-    issuer: "Revenue Department / Tahsildar",
-    icon: "cash-multiple",
-    color: "#059669",
-    instructions: "Valid for current financial year; required for government and institutional scholarships.",
-  },
-  {
-    id: "REQ-008",
-    code: "DOC_NATIVITY",
-    title: "Nativity / Domicile Certificate (if applicable)",
-    category: "Identity",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Proof of permanent state residency / domicile issued by state administration.",
-    issuer: "Tahsildar / Revenue Divisional Officer (RDO)",
-    icon: "home-map-marker",
-    color: "#D97706",
-    instructions: "Upload certificate proving permanent state residency for state quota benefits.",
-  },
-  {
-    id: "REQ-009",
-    code: "DOC_BONAFIDE",
-    title: "Bonafide Certificate",
-    category: "Academic",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Official institutional statement verifying student's active enrollment and conduct.",
-    issuer: "College Dean / Registrar / Principal",
-    icon: "file-check-outline",
-    color: "#0D9488",
-    instructions: "Issued by current or previous institution with official seal and signature.",
-  },
-  {
-    id: "REQ-010",
-    code: "DOC_COLLEGE_ID",
-    title: "College ID Card",
-    category: "Identity",
-    isMandatory: true,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Official EduNex / Institutional Smart Identity Card issued by campus administration.",
-    issuer: "Campus Registrar & Student Affairs Office",
-    icon: "badge-account-horizontal-outline",
-    color: "#4F46E5",
-    instructions: "Upload clear front and back scan of physical or digital student identity pass.",
-  },
-  {
-    id: "REQ-011",
-    code: "DOC_SEM_GRADE",
-    title: "Latest Semester Mark Sheet",
-    category: "Academic",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Most recent semester grade card / consolidated mark statement.",
-    issuer: "Controller of Examinations / Anna University",
-    icon: "chart-box-outline",
-    color: "#6366F1",
-    instructions: "Upload latest published grade sheet showing GPA, credits earned, and result status.",
-  },
-  {
-    id: "REQ-012",
-    code: "DOC_PHOTO",
-    title: "Passport-size Photographs",
-    category: "Identity",
-    isMandatory: true,
-    maxSizeMB: 5,
-    allowedFormats: ["PNG", "JPEG"],
-    description: "Recent formal color photograph taken with plain white or light background.",
-    issuer: "Self / Studio",
-    icon: "account-box-outline",
-    color: "#0EA5E9",
-    instructions: "Upload high resolution color photo in formal attire with white background.",
-  },
-  {
-    id: "REQ-013",
-    code: "DOC_BANK_PASSBOOK",
-    title: "Bank Passbook / Bank Account Details",
-    category: "Financial",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Student's active nationalized bank savings account passbook or cancelled cheque.",
-    issuer: "Nationalized / Scheduled Commercial Bank",
-    icon: "bank-outline",
-    color: "#16A34A",
-    instructions: "Must clearly show Account Number, Account Holder Name, IFSC Code, and Branch Name.",
-  },
-  {
-    id: "REQ-014",
-    code: "DOC_PAN",
-    title: "PAN Card (if required)",
-    category: "Financial",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Permanent Account Number (PAN) card issued by Income Tax Department of India.",
-    issuer: "Income Tax Department of India (ITD / NSDL)",
-    icon: "card-text-outline",
-    color: "#E11D48",
-    instructions: "Required for stipends, student bank accounts, and paid internship verifications.",
-  },
-  {
-    id: "REQ-015",
-    code: "DOC_MEDICAL",
-    title: "Medical Certificate (if required)",
-    category: "Legal & Medical",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Physical fitness certificate and blood group report by a certified medical officer.",
-    issuer: "Campus Health Centre / Registered Medical Practitioner (MBBS)",
-    icon: "medical-bag",
-    color: "#DC2626",
-    instructions: "Must include doctor's registration number, signature, and clinic/hospital seal.",
-  },
-  {
-    id: "REQ-016",
-    code: "DOC_DISABILITY",
-    title: "Disability Certificate (if applicable)",
-    category: "Identity",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "PwD / Divyangjan disability certificate issued by District Medical Board.",
-    issuer: "District Medical Board / Chief Medical Officer",
-    icon: "wheelchair-accessibility",
-    color: "#9333EA",
-    instructions: "Must specify disability percentage and category for institutional concessions.",
-  },
-  {
-    id: "REQ-017",
-    code: "DOC_GAP",
-    title: "Gap Certificate (if applicable)",
-    category: "Academic",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Notarized affidavit declaring educational gap year reason between qualifications.",
-    issuer: "Notary Public / Advocate",
-    icon: "file-document-edit-outline",
-    color: "#CA8A04",
-    instructions: "Upload notarized stamp-paper affidavit detailing gap period reason.",
-  },
-  {
-    id: "REQ-018",
-    code: "DOC_ANTIRAGGING",
-    title: "Anti-Ragging Declaration / Undertaking",
-    category: "Legal & Medical",
-    isMandatory: true,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Mandatory annual UGC / AICTE anti-ragging undertaking signed by student & parent.",
-    issuer: "UGC / AICTE Anti-Ragging Cell",
-    icon: "gavel",
-    color: "#F59E0B",
-    instructions: "Fill online on antiragging.in, download reference copy and upload signed form.",
-  },
-  {
-    id: "REQ-019",
-    code: "DOC_ALLOTMENT",
-    title: "Admission / Allotment Letter (if applicable)",
-    category: "Admissions",
-    isMandatory: true,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Official seat allocation / provisional admission allotment order (TNEA / CSAB).",
-    issuer: "Directorate of Technical Education (DOTE) / TNEA",
-    icon: "file-document-check-outline",
-    color: "#059669",
-    instructions: "Upload signed allotment memo with round allocation and branch details.",
-  },
-  {
-    id: "REQ-020",
-    code: "DOC_FEE_RECEIPT",
-    title: "Fee Payment Receipt",
-    category: "Financial",
-    isMandatory: true,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Official institutional fee payment receipt / acknowledgement for current term.",
-    issuer: "College Accounts Section / Finance Office",
-    icon: "receipt-text-outline",
-    color: "#2563EB",
-    instructions: "Upload copy showing transaction reference ID, fee breakup, and accounts seal.",
-  },
-  {
-    id: "REQ-021",
-    code: "DOC_ENTRANCE_RANK",
-    title: "Entrance Exam Scorecard / Rank Card (if applicable)",
-    category: "Admissions",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Official scorecard of competitive entrance examination (JEE / TANCET / GATE).",
-    issuer: "National Testing Agency (NTA) / Anna University",
-    icon: "trophy-award",
-    color: "#7C3AED",
-    instructions: "Ensure application number, percentile, AIR, and category rank are legible.",
-  },
-  {
-    id: "REQ-022",
-    code: "DOC_SCHOLARSHIP",
-    title: "Scholarship Documents (if applicable)",
-    category: "Scholarship",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "National Scholarship Portal (NSP) / State Portal application & sanction order.",
-    issuer: "Ministry of Education / State Welfare Department",
-    icon: "school-outline",
-    color: "#0D9488",
-    instructions: "Upload scholarship application acknowledgement copy and sanction memo.",
-  },
-  {
-    id: "REQ-023",
-    code: "DOC_PARENT_ID",
-    title: "Parent / Guardian ID Proof (if required)",
-    category: "Identity",
-    isMandatory: false,
-    maxSizeMB: 5,
-    allowedFormats: ["PDF", "PNG", "JPEG"],
-    description: "Government ID proof of father / mother / legal guardian (Aadhaar / Voter ID / PAN).",
-    issuer: "Government of India / Election Commission",
-    icon: "account-child-outline",
-    color: "#475569",
-    instructions: "Upload clear copy of parent or guardian identity document for institutional records.",
-  },
-];
-
-const CATEGORIES = ["All", "Academic", "Identity", "Admissions", "Financial", "Legal & Medical", "Scholarship"];
 
 function getCategoryColor(cat) {
   switch (cat) {
@@ -455,7 +128,7 @@ export default function DocSpaceScreen() {
         getStudentDocuments(roll, {}, force).catch(() => []),
       ]);
 
-      const reqDocs = reqDocsRes && reqDocsRes.length > 0 ? reqDocsRes : DEFAULT_REQUIRED_DOCS;
+      const reqDocs = Array.isArray(reqDocsRes) ? reqDocsRes : [];
       const uploadedDocs = Array.isArray(studentDocsRes) ? studentDocsRes : [];
 
       // 3. Merge Required Checklist with Student Uploads
@@ -583,6 +256,15 @@ export default function DocSpaceScreen() {
     const actionRequired = rejected + notSubmitted;
     const percentage = total > 0 ? Math.round((verified / total) * 100) : 0;
     return { total, verified, pending, rejected, notSubmitted, actionRequired, percentage };
+  }, [documents]);
+
+  // Dynamic Categories derived directly from live database documents
+  const categories = useMemo(() => {
+    const catSet = new Set();
+    documents.forEach((d) => {
+      if (d.category) catSet.add(d.category);
+    });
+    return ["All", ...Array.from(catSet)];
   }, [documents]);
 
   // Filtered List
@@ -894,7 +576,7 @@ export default function DocSpaceScreen() {
 
         {/* Category Pills */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 10 }}>
-          {CATEGORIES.map((cat) => {
+          {categories.map((cat) => {
             const isSel = selectedCategory === cat;
             return (
               <TouchableOpacity
@@ -937,17 +619,45 @@ export default function DocSpaceScreen() {
         {/* 4. DOCUMENT VAULT CARDS                                                   */}
         {/* ========================================================================= */}
         <View style={{ gap: 10 }}>
-          {filteredDocs.map((doc) => {
-            const isVerified = doc.status === "verified";
-            const isPending = doc.status === "pending";
+          {filteredDocs.length === 0 ? (
+            <View
+              style={[
+                styles.docCard,
+                {
+                  backgroundColor: colors.cardBackground,
+                  borderColor: colors.divider,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingVertical: 36,
+                  paddingHorizontal: 20,
+                  borderRadius: 14,
+                },
+              ]}
+            >
+              <Icon name="file-document-outline" size={38} color={colors.secondaryText} />
+              <Text style={{ fontSize: 14, fontWeight: "600", color: colors.primaryText, marginTop: 10 }}>
+                No Documents Found
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.secondaryText, marginTop: 4, textAlign: "center" }}>
+                {searchQuery.trim()
+                  ? "No documents match your search query."
+                  : selectedCategory !== "All"
+                  ? `No documents found under the "${selectedCategory}" category.`
+                  : "No verification checklist documents configured in database."}
+              </Text>
+            </View>
+          ) : (
+            filteredDocs.map((doc) => {
+              const isVerified = doc.status === "verified";
+              const isPending = doc.status === "pending";
 
-            return (
-              <TouchableOpacity
-                key={doc.id}
-                style={[styles.docCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
-                onPress={() => setSelectedDocForDetail(doc)}
-                activeOpacity={0.85}
-              >
+              return (
+                <TouchableOpacity
+                  key={doc.id}
+                  style={[styles.docCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+                  onPress={() => setSelectedDocForDetail(doc)}
+                  activeOpacity={0.85}
+                >
                 <View style={styles.docCardTop}>
                   <View style={[styles.docIconCircle, { backgroundColor: doc.color + "18" }]}>
                     <Icon name={doc.icon || "file-certificate"} size={22} color={doc.color} />
