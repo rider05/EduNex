@@ -13,7 +13,7 @@
 | **Subtitle** | Student Management System |
 | **Bundle ID** | `com.bkmsb.EduNex` |
 | **Scheme** | `edunex://` |
-| **Platform** | React Native (Expo SDK 54) |
+| **Platform** | React Native (Expo SDK 57, RN 0.86.3) |
 | **Orientation** | Portrait-locked |
 
 ---
@@ -177,6 +177,8 @@ EduNex uses full-screen animated modals for deep interactions:
 | `AttendanceModal` | Attendance calendar view | Dashboard card tap |
 | `LibraryModal` | Library books & due dates | Dashboard card tap |
 | `FullTimeTable` | Weekly timetable grid | Dashboard card tap |
+| `AcademicCalendarModal` | Academic year event calendar | Academics screen |
+| `NicknameModal` | Set custom display nickname | Profile screen |
 | `LeaveFormModal` | Apply for leave | Header action |
 | `NotificationModal` | Notification center | Header bell |
 | `ChatModal` | In-app messaging | Header action |
@@ -185,9 +187,12 @@ EduNex uses full-screen animated modals for deep interactions:
 | `CommunityModal` | Community forum | Header action |
 | `StaffLeaveApprovals` | Leave approval queue | Staff header |
 | `AddUserModal` | Create new user | Admin screen |
+| `SeatingPlannerModal` | Classroom seating allocation | Admin screen |
+| `YearPromotionModal` | Batch year/semester promotion | Admin screen |
 | `EditProfileModal` | Edit profile info | Profile screen |
 | `FeedbackBugModal` | Bug / feedback report | Profile screen |
 | `FullSettingsModal` | App settings panel | Header settings |
+| `AppUpdateModal` | In-app update/force-update prompt | App launch |
 
 **Animation:** Fade-in overlay + slide-up panel using `Animated.timing` with `Easing.out(Easing.ease)`.
 
@@ -226,11 +231,26 @@ The login component (`app/components/LoginPage.js`) features:
 
 `app/components/common/GlobalCallOverlay.js`:
 
-- Floating incoming call UI
-- Native Socket.IO real-time signaling + `expo-video` HD video call integration
-- Accept / decline buttons with haptic feedback and draggable WhatsApp PiP camera
+- Floating incoming/ongoing call UI (accept, decline, mute, camera toggle)
+- **Native mode:** WebSocket call rooms wired via `socketVideoService.js` to the EduNex backend (`ws://edunex-backend-rmvx.onrender.com/ws/calls?roomId=...`)
+- **Legacy mode:** Jitsi Meet WebView fallback (`meet.jit.si/EduNex_<roomId>`)
+- Haptic feedback on ring / answer / hangup
 
-### 5.9 Success Animation
+### 5.9 App Update Modal
+
+`app/components/common/AppUpdateModal.js`:
+
+- Branded prompt shown when `updateService.checkAppUpdate()` detects a newer backend release
+- Optional "Update" link-out and "Later" dismiss (dismissal persisted per version)
+- **Force-update variant** with no dismiss button for breaking releases
+
+### 5.10 Address Autocomplete Input
+
+`app/components/common/AddressAutocompleteInput.js`:
+
+- Text input with dropdown address suggestions (used in leave / hostel / admission forms)
+
+### 5.11 Success Animation
 
 `app/utils/SuccessAnimation.js`:
 
@@ -342,9 +362,18 @@ The login component (`app/components/LoginPage.js`) features:
 | Screen | Description |
 |--------|-------------|
 | Dashboard | System overview, stats |
-| ManageUsers | User CRUD, add user modal |
+| ManageUsers | User CRUD, add user modal, seating planner, year promotion |
 | Reports | Analytics, data exports |
 | SystemSettings | App configuration, logs |
+
+### Shared Infrastructure
+
+| Component | Description |
+|-----------|-------------|
+| `AppUpdateModal` | Backend-driven in-app update / force-update prompts |
+| `AddressAutocompleteInput` | Address suggestion dropdown for admission/leave/hostel forms |
+| `GlobalCallOverlay` | Native WebSocket + legacy Jitsi voice/video calls |
+| `SuccessAnimation` | Lottie checkmark + scale bounce after successful actions |
 
 ---
 

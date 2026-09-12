@@ -9,7 +9,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        EduNex Mobile App                     │
-│                  (React Native / Expo SDK 54)                │
+│            (React Native 0.86.3 / Expo SDK 57)               │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌──────────┐  ┌──────────────┐  ┌────────────────────────┐│
@@ -18,17 +18,24 @@
 │  │ Screens   │  │ api.js        │  │ secureStorage.js       ││
 │  │ Components│  │ dataService   │  │  (AES-CBC/PBKDF2       ││
 │  │ Headers   │  │ chatService   │  │   encrypted AsyncStorage)│
-│  │ Modals    │  │ identitySvc   │  │                        ││
-│  │ Nav       │  │ realtimeNotif │  │ Local DB per user      ││
-│  │           │  │               │  │ edunex_db_<username>   ││
+│  │ Modals    │  │ offlineSync   │  │                        ││
+│  │ Nav       │  │ socketVideo   │  │ Local DB per user      ││
+│  │           │  │ realtimeNotif │  │ edunex_db_<username>   ││
+│  │           │  │ updateService │  │ offline mutation queue ││
+│  │           │  │ identitySvc   │  │  (encrypted)           ││
+│  │           │  │ navEvents     │  │                        ││
 │  └─────┬─────┘  └──────┬───────┘  └───────────┬────────────┘│
 │        │               │                       │             │
 │        └───────────────┼───────────────────────┘             │
 │                        │                                     │
 ├────────────────────────┼─────────────────────────────────────┤
-│                   REST API                                   │
+│                   REST API                                    │
 │         https://edunex-backend-rmvx.onrender.com/api/v1      │
-│                   (MongoDB)                                   │
+│                                                               │
+│                   Native WebSocket                            │
+│            ws://edunex-backend-rmvx.onrender.com/ws/calls     │
+│                   (call signaling)                            │
+│                   (MongoDB backend)                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -40,7 +47,7 @@
 app/_layout.tsx  (Expo Router Stack)
     │
     ├── SafeAreaProvider
-    ├── GlobalCallOverlay  (Socket.IO + expo-video call listener)
+    ├── GlobalCallOverlay  (native WebSocket call listener)
     ├── startRealtimeWatcher(1500)  (1.5s polling)
     │
     └── app/index.tsx  (Real Root)
@@ -254,6 +261,72 @@ syncAfterLogin()
     └── Emit change events → UI updates
 ```
 
+### 5.4 Offline Mutation Engine (`app/services/offlineSyncService.js`)
+
+EduNex is fully usable offline. Writes are queued locally and replayed the moment connectivity returns.
+
+```
+User Action (submit attendance, send message, pay, apply leave…)
+    │
+    ├── ONLINE? ──────────────────────────────┐
+    │  YES                                     │ NO
+    │  │                                      │
+    │  ├── Execute directly                   │
+    │  │                                      │
+    │  └── Also enqueue for state consistency │
+    │         ┌───────────────────────────────┘
+    │         ▼
+    └── enqueueMutation()
+         │
+         ├── Persist to encrypted queue
+         │    key: edunex_offline_mutation_queue_v1
+         │    { id, endpoint, method, body, ts }
+         │
+         ├── Optimistic local UI update
+         │    (app remains 100% usable offline)
+         │    Notify sync-status listeners
+         │    { isOnline, isSyncing, pendingCount }
+         │
+         └── Connectivity heartbeat probe
+              │
+              └── Connection restored?
+                   │
+                   ▼
+              processOfflineQueue()
+                   │  (FIFO, oldest first)
+                   └── POST/PUT/PATCH/DELETE replay
+                        ├── success → dequeue
+                        └── failure → retry later, keep
+```
+
+### 5.5 App Update Check (`app/services/updateService.js`)
+
+```
+App Launch
+    │
+    ▼
+checkAppUpdate()
+    │
+    ├── api.get("/appUpdates", { limit: 5, sort: "-versionCode" })
+    │
+    ├── Compare latest.version vs CURRENT_APP_VERSION (semver)
+    │
+    ├── Newer version available?
+    │     ├── NO  → silent
+    │     └── YES →
+    │           ├── Dismissed previously (persisted per version)?
+    │           │     ├── YES → skip (unless forceUpdate)
+    │           │     └── NO  → show AppUpdateModal
+    │           │
+    │           └── forceUpdate == true
+    │                 ├── Blocking modal (no dismiss)
+    │                 └── Linking to store / apk
+    │
+    └── User chooses
+          ├── Update → Linking.openURL()
+          └── Later  → secureSet("edunex_dismissed_update_version", v)
+```
+
 ---
 
 ## 6. Encryption & Security
@@ -340,7 +413,47 @@ startRealtimeWatcher(1500)  // 1.5 second interval
 - **DM:** Direct messages between two users
 - **Channel:** Class group messaging
 - **Edit window:** 15 minutes after send
-- **Calls:** Native Socket.IO real-time signaling + `expo-video` HD calling
+- **Calls:** Native WebSocket signaling via `socketVideoService.js` (legacy Jitsi WebView fallback via `GlobalCallOverlay`)
+
+### 7.3 Native WebSocket Call Signaling (`app/services/socketVideoService.js`)
+
+Zero-login, zero-WebView native video/audio calls over a WebSocket directly to the EduNex backend at `ws://…/ws/calls`.
+
+```
+User taps Call in ChatModal
+    │
+    ▼
+initSocketVideoRoom({ roomId, user, onRemoteMediaChange, onPeerHangup })
+    │
+    ├── WebSocket.connect(ws://.../ws/calls?roomId=<roomId>)
+    │
+    ├── onopen → send
+    │       { type: "join_call_room",
+    │         roomId, user: { id, name, role } }
+    │
+    └── onmessage → route events
+          ├── "remote_media_change" → onRemoteMediaChange (audio/video toggles)
+          └── "call_hangup"         → onPeerHangup
+    │
+    ├── WebSocket failure → native in-app event bus fallback
+    │     (chatService.sendCallSignal)
+    ├── WebSocket unavailable → Jitsi Meet WebView (GlobalCallOverlay)
+    └── Hangup cleanup → leaveSocketVideoRoom()
+```
+
+### 7.4 Navigation Event Bus (`app/services/navigationEvents.js`)
+
+Precision cross-tab routing so notification taps land on the exact modal/screen without opening unrelated modals.
+
+```
+emitRouteChange("Dashboard") / emitTabNavigation("Academics")
+    │
+    ├── routeListeners.forEach(cb)
+    │     └── Screen-level handlers re-route to target modal
+    │
+    └── tabListeners.forEach(cb)
+          └── Programmatic tab switch via useNavigation().navigate()
+```
 
 ---
 
@@ -573,89 +686,102 @@ Configured via `app.json`:
 
 ```
 app/
-├── _layout.tsx                    # Expo Router entry
-├── index.tsx                      # Root: role gate + conditional render
+├── _layout.tsx                     # Expo Router entry + SafeArea + GlobalCallOverlay + realtime watcher
+├── index.tsx                       # Root: role gate, per-role headers/navigators, login modal
 ├── config/
-│   ├── color.json                 # Design tokens (light/dark)
-│   ├── firebaseConfig.js          # Firebase (dormant)
-│   └── success.json               # Lottie success animation
+│   ├── color.json                  # Design tokens (light/dark)
+│   ├── firebaseConfig.js           # Firebase (backward compat)
+│   └── success.json                # Lottie success animation
 ├── context/
 │   ├── ThemeContext.js             # Light/dark theme provider
-│   └── ImmersiveBarsContext.js    # Auto-hide system bars
+│   └── ImmersiveBarsContext.js     # Auto-hide status/nav bars
 ├── services/
-│   ├── api.js                     # REST client + cache + auth
-│   ├── dataService.js             # Business logic + 70+ getters
-│   ├── chatService.js             # Chat / messaging
-│   ├── identityService.js         # User identity resolution
-│   ├── realtimeNotificationService.js  # 1.5s polling
-│   └── secureStorage.js           # AES-CBC encrypted storage
+│   ├── api.js                      # Native fetch REST client + cache + dedup + auth
+│   ├── dataService.js              # Business logic + 70+ role-scoped getters/actions
+│   ├── chatService.js              # Chat / messaging / call signals
+│   ├── offlineSyncService.js       # Offline mutation queue + cloud replay
+│   ├── socketVideoService.js       # Native WebSocket call signaling
+│   ├── realtimeNotificationService.js  # 1.5s delta-poll push watcher
+│   ├── updateService.js            # In-app app-update checker (semver)
+│   ├── identityService.js          # Logged-in identity resolution
+│   ├── navigationEvents.js         # Cross-tab navigation event bus
+│   └── secureStorage.js            # AES-CBC/PBKDF2 encrypted storage
 ├── utils/
-│   ├── toastService.js            # Global toast ref
-│   ├── AnimatedToast.js           # Toast UI + provider
-│   ├── pdfGenerator.js            # ID card / doc PDF
-│   ├── timetablePdfGenerator.js   # Timetable PDF
-│   ├── securityService.js         # Crypto utilities
-│   ├── nicknameGenerator.js       # Auto nickname
-│   ├── deptFormatter.js           # Department name format
-│   ├── notificationUtils.js       # Notification helpers
-│   └── SuccessAnimation.js        # Lottie wrapper
+│   ├── toastService.js             # Global toast ref
+│   ├── AnimatedToast.js            # Toast UI + provider
+│   ├── pdfGenerator.js             # ID card / doc PDF
+│   ├── timetablePdfGenerator.js    # Timetable PDF
+│   ├── securityService.js          # Crypto utilities
+│   ├── safeNotifications.js        # Safe local notification helpers
+│   ├── nicknameGenerator.js        # Auto nickname
+│   ├── deptFormatter.js            # Department name format
+│   ├── notificationUtils.js        # Notification helpers
+│   └── SuccessAnimation.js         # Lottie wrapper
 ├── hooks/
-│   └── useRefreshOnForeground.js  # Refresh on app focus
+│   └── useRefreshOnForeground.js   # Refresh on app focus
+├── data/
+│   └── edunexDatabase.json         # Per-user local sync template
 ├── components/
-│   ├── LoginPage.js               # Multi-role login/signup
-│   ├── FeedbackBugModal.js        # Bug report form
+│   ├── LoginPage.js                # Multi-role login/signup card modal
+│   ├── FeedbackBugModal.js         # Bug report form
 │   ├── common/
-│   │   ├── SkeletonLoader.js      # Shimmer placeholders
-│   │   └── GlobalCallOverlay.js   # Socket.IO + expo-video calls
+│   │   ├── SkeletonLoader.js       # Shimmer placeholders
+│   │   ├── GlobalCallOverlay.js    # Native WebSocket + legacy Jitsi calls
+│   │   ├── AppUpdateModal.js       # In-app update / force-update prompt
+│   │   └── AddressAutocompleteInput.js  # Address autocomplete dropdown
 │   ├── nav/
-│   │   ├── AppNavigator.js        # Student tabs
-│   │   ├── AppNavigatorStaff.js   # Staff tabs
-│   │   ├── AppNavigatorParent.js  # Parent tabs
-│   │   └── AppNavigatorAdmin.js   # Admin tabs
+│   │   ├── AppNavigator.js         # Student tabs
+│   │   ├── AppNavigatorStaff.js    # Staff tabs
+│   │   ├── AppNavigatorParent.js   # Parent tabs
+│   │   └── AppNavigatorAdmin.js    # Admin tabs
 │   ├── header/
-│   │   ├── Header.js              # Student header
-│   │   ├── HeaderStaff.js         # Staff header
-│   │   ├── HeaderParent.js        # Parent header
-│   │   ├── HeaderAdmin.js         # Admin header
+│   │   ├── Header.js               # Student header
+│   │   ├── HeaderStaff.js          # Staff header
+│   │   ├── HeaderParent.js         # Parent header
+│   │   ├── HeaderAdmin.js          # Admin header
 │   │   ├── settings/
 │   │   │   └── FullSettingsModal.js
-│   │   ├── modal/                 # Header-triggered modals
-│   │   │   ├── Notification.js
-│   │   │   ├── LeaveForm.js
-│   │   │   ├── HostelForm.js
-│   │   │   ├── Community.js
-│   │   │   ├── ClassTest.js
-│   │   │   ├── ClassGroupMsg.js
-│   │   │   ├── Chat.js
-│   │   │   ├── BusTracker.js
-│   │   │   ├── MessMenu.js
-│   │   │   ├── Assignment.js
-│   │   │   └── StaffLeaveApprovals.js
+│   │   ├── modal/                  # Header-triggered modals
+│   │   │   ├── NotificationModal.js
+│   │   │   ├── LeaveFormModal.js
+│   │   │   ├── HostelFormModal.js
+│   │   │   ├── CommunityModal.js
+│   │   │   ├── ClassTestModal.js
+│   │   │   ├── ClassGroupMsgModal.js
+│   │   │   ├── ChatModal.js
+│   │   │   ├── BusTrackerModal.js
+│   │   │   ├── MessMenuModal.js
+│   │   │   ├── AssignmentModal.js
+│   │   │   └── StaffLeaveApprovalsModal.js
 │   │   ├── pmodal/
 │   │   │   ├── FeedbackModal.js
 │   │   │   ├── EntryExitModal.js
 │   │   │   └── AssignmentModal.js
 │   │   └── amodal/
-│   │       └── AddUserModal.js
+│   │       ├── AddUserModal.js
+│   │       ├── SeatingPlannerModal.js
+│   │       └── YearPromotionModal.js
 │   └── screens/
-│       ├── SkipScreen.js          # Guest preview
+│       ├── SkipScreen.js           # Guest preview
 │       ├── students/
 │       │   ├── DashboardScreen.js
 │       │   ├── AcademicsScreen.js
 │       │   ├── FeesScreen.js
 │       │   ├── DocSpaceScreen.js
 │       │   ├── ProfileScreen.js
-│       │   ├── AdmissionForm.js
+│       │   ├── AdmissionFormScreen.js
+│       │   ├── ResetPasswordModal.js
 │       │   └── modals/
 │       │       ├── FeesModal.js
 │       │       ├── ExamModal.js
 │       │       ├── AttendanceModal.js
 │       │       ├── LibraryModal.js
 │       │       ├── FullTimeTable.js
+│       │       ├── AcademicCalendarModal.js
 │       │       ├── PaymentModal.js
 │       │       ├── EditProfileModal.js
-│       │       ├── AssessmentsReportsModal.js
-│       │       └── ResetPasswordModal.js
+│       │       ├── NicknameModal.js
+│       │       └── AssessmentsReportsModal.js
 │       ├── staff/
 │       │   ├── DashboardStaff.js
 │       │   ├── AttendanceStaff.js
@@ -663,10 +789,10 @@ app/
 │       │   ├── FeesStaff.js
 │       │   ├── ProfileStaff.js
 │       │   └── modals/
-│       │       ├── Schedule.js
-│       │       ├── Messages.js
-│       │       ├── Attendance.js
-│       │       └── AssignmentReport.js
+│       │       ├── ScheduleModal.js
+│       │       ├── MessagesModal.js
+│       │       ├── AttendanceModal.js
+│       │       └── AssignmentReportModal.js
 │       ├── parents/
 │       │   ├── DashboardParent.js
 │       │   ├── FeesParent.js
@@ -674,10 +800,10 @@ app/
 │       │   ├── WardDetailsParent.js
 │       │   ├── ProfileParent.js
 │       │   └── modals/
-│       │       ├── Ward.js
-│       │       ├── Report.js
-│       │       ├── Messages.js
-│       │       └── Fees.js
+│       │       ├── WardModal.js
+│       │       ├── ReportModal.js
+│       │       ├── MessagesModal.js
+│       │       └── FeesModal.js
 │       └── admin/
 │           ├── DashboardAdmin.js
 │           ├── ManageUsersAdmin.js
