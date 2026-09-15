@@ -447,7 +447,7 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
   const handleOpenCamera = async () => {
     if (!permission?.granted) {
       const res = await requestPermission();
-      if (!res.granted) {
+      if (!res?.granted) {
         showToast("Camera permission is required to scan UPI QR codes.", "warning");
         return;
       }
@@ -457,7 +457,16 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
 
   const handleScanned = ({ data }) => {
     setCameraVisible(false);
-    setUpiId(data);
+    let extractedUpi = data;
+    if (typeof data === "string" && data.startsWith("upi://pay")) {
+      try {
+        const paMatch = data.match(/[?&]pa=([^&]+)/i);
+        if (paMatch && paMatch[1]) {
+          extractedUpi = decodeURIComponent(paMatch[1]);
+        }
+      } catch {}
+    }
+    setUpiId(extractedUpi);
     setUpiSubMethod("vpa");
     showToast("QR code scanned & UPI ID recognized!", "success");
   };
@@ -1293,6 +1302,9 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
         <View style={styles.cameraOverlay}>
           <CameraView
             style={styles.fullCamera}
+            barcodeScannerSettings={{
+              barcodeTypes: ["qr"],
+            }}
             onBarcodeScanned={handleScanned}
             enableTorch={flashOn}
           />
