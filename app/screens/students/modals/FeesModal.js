@@ -13,7 +13,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import { getStudentFees } from "../../../services/dataService";
 
-export default function FeesModal({ visible, onClose }) {
+export default function FeesModal({ visible, onClose, onPayNow }) {
   const { colors } = useTheme();
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
 
@@ -136,10 +136,38 @@ export default function FeesModal({ visible, onClose }) {
             </Text>
           </View>
 
-          <TouchableOpacity style={[styles.closeButton, { backgroundColor: colors.primaryAccent }]} onPress={onClose} activeOpacity={0.8}>
-            <Icon name="check-circle-outline" size={18} color="#fff" />
-            <Text style={styles.closeText}>Close</Text>
-          </TouchableOpacity>
+          <View style={styles.actionRow}>
+            {feesData.due > 0 && (
+              <TouchableOpacity
+                style={[styles.payButton, { backgroundColor: "#10B981" }]}
+                onPress={() => {
+                  onClose();
+                  if (onPayNow) onPayNow();
+                }}
+                activeOpacity={0.85}
+              >
+                <Icon name="lock-check" size={18} color="#fff" />
+                <Text style={styles.payText}>Pay ₹{feesData.due.toLocaleString("en-IN")}</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[
+                styles.closeButton,
+                {
+                  backgroundColor: feesData.due > 0 ? (colors.cardBackground || "#27272A") : colors.primaryAccent,
+                  borderColor: colors.primaryAccent,
+                  borderWidth: feesData.due > 0 ? 1 : 0,
+                  flex: feesData.due > 0 ? 1 : undefined,
+                },
+              ]}
+              onPress={onClose}
+              activeOpacity={0.8}
+            >
+              <Icon name="close" size={18} color={feesData.due > 0 ? colors.primaryAccent : "#fff"} />
+              <Text style={[styles.closeText, feesData.due > 0 && { color: colors.primaryAccent }]}>Close</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Animated.View>
     </Modal>
@@ -162,6 +190,39 @@ const styles = StyleSheet.create({
   progressBar: { width: "100%", height: 8, borderRadius: 5, backgroundColor: "rgba(255,255,255,0.1)", overflow: "hidden" },
   progressFill: { height: "100%", borderRadius: 5 },
   note: { fontSize: 13, textAlign: "center", marginTop: 10, fontStyle: "italic" },
-  closeButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12 },
-  closeText: { fontSize: 15, fontWeight: "700", color: "#fff", marginLeft: 6 },
+  actionRow: {
+    flexDirection: "row",
+    gap: 10,
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.06)",
+  },
+  payButton: {
+    flex: 1.6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 12,
+    elevation: 2,
+  },
+  payText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#fff",
+    marginLeft: 6,
+  },
+  closeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  closeText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#fff",
+    marginLeft: 4,
+  },
 });

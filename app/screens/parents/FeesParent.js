@@ -485,6 +485,8 @@ export default function FeesParent() {
           visible={paymentVisible}
           onClose={() => setPaymentVisible(false)}
           invoice={selectedPayInvoice}
+          student={ward}
+          payerRole="parent"
           onSuccess={async () => {
             await loadData();
           }}

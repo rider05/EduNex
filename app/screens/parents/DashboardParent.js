@@ -18,6 +18,7 @@ import WardModal from "./modals/WardModal";
 import FeesModal from "./modals/FeesModal";
 import MessagesModal from "./modals/MessagesModal";
 import ReportModal from "./modals/ReportModal";
+import PaymentModal from "../students/modals/PaymentModal";
 import { SkeletonDashboardScreen } from "../../components/common/SkeletonLoader";
 import { getParentData } from "../../services/dataService";
 import { api } from "../../services/api";
@@ -44,6 +45,7 @@ export default function DashboardParent() {
   const [feesModalVisible, setFeesModalVisible] = useState(false);
   const [messagesModalVisible, setMessagesModalVisible] = useState(false);
   const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
 
   const heroCardScale = useRef(new Animated.Value(1)).current;
 
@@ -435,6 +437,7 @@ export default function DashboardParent() {
         onClose={() => setFeesModalVisible(false)}
         colors={colors}
         data={parentOverview}
+        onPayNow={() => setPaymentModalVisible(true)}
       />
       <MessagesModal
         visible={messagesModalVisible}
@@ -447,6 +450,26 @@ export default function DashboardParent() {
         onClose={() => setReportModalVisible(false)}
         colors={colors}
         data={parentOverview}
+      />
+
+      {/* Role-Aware Payment Modal for Parents */}
+      <PaymentModal
+        visible={paymentModalVisible}
+        onClose={() => setPaymentModalVisible(false)}
+        invoice={{
+          id: "WARD-FEES-TERM",
+          title: "Semester Academic Tuition & Campus Fee",
+          amount: Number(String(parentOverview.feesDue || "45000").replace(/[^0-9]/g, "")) || 45000,
+        }}
+        student={{
+          name: parentOverview.studentName || parentOverview.wardName || "Ward Student",
+          rollNo: parentOverview.rollNo || "22CS045",
+          department: parentOverview.department || "Engineering & Technology",
+        }}
+        payerRole="parent"
+        onSuccess={async () => {
+          await loadData(true);
+        }}
       />
     </View>
   );

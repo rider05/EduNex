@@ -32,6 +32,7 @@ import AttendanceModal from "./modals/AttendanceModal";
 import LibraryModal from "./modals/LibraryModal";
 import FullTimeTable from "./modals/FullTimeTable";
 import LeaveFormModal from "../../components/header/modal/LeaveFormModal";
+import PaymentModal from "./modals/PaymentModal";
 
 // Dynamic parser to convert standard time formats into minutes from midnight
 const parseTimeToMinutes = (timeStr, durationStr = "") => {
@@ -266,6 +267,7 @@ export default function DashboardScreen() {
   const [idCardModalVisible, setIdCardModalVisible] = useState(false);
   const [leaveModalVisible, setLeaveModalVisible] = useState(false);
   const [timetableModalVisible, setTimetableModalVisible] = useState(false);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -1376,7 +1378,7 @@ export default function DashboardScreen() {
         <View style={{ height: 100 }} />
 
         {/* Existing Built-In Modals */}
-        <FeesModal visible={visibleModal === "fees"} onClose={closeModal} />
+        <FeesModal visible={visibleModal === "fees"} onClose={closeModal} onPayNow={() => setPaymentModalVisible(true)} />
         <ExamModal visible={visibleModal === "exam"} onClose={closeModal} />
         <AttendanceModal visible={visibleModal === "attendance"} onClose={closeModal} />
         <LibraryModal visible={visibleModal === "library"} onClose={closeModal} />
@@ -1681,11 +1683,27 @@ export default function DashboardScreen() {
       {/* SUB-MODALS & SYSTEM NOTIFICATION TARGETS                                  */}
       {/* ========================================================================= */}
       <LeaveFormModal visible={leaveModalVisible || visibleModal === "leave"} onClose={() => { setLeaveModalVisible(false); closeModal(); }} />
-      <FeesModal visible={visibleModal === "fees"} onClose={closeModal} />
+      <FeesModal visible={visibleModal === "fees"} onClose={closeModal} onPayNow={() => setPaymentModalVisible(true)} />
       <AttendanceModal visible={visibleModal === "attendance"} onClose={closeModal} />
       <ExamModal visible={visibleModal === "exam"} onClose={closeModal} />
       <LibraryModal visible={visibleModal === "library"} onClose={closeModal} />
       <FullTimeTable visible={timetableModalVisible || visibleModal === "timetable"} onClose={() => { setTimetableModalVisible(false); closeModal(); }} />
+
+      {/* Role-Aware Payment Modal for Students */}
+      <PaymentModal
+        visible={paymentModalVisible}
+        onClose={() => setPaymentModalVisible(false)}
+        invoice={{
+          id: "SEM-TUITION-FEE",
+          title: "Semester Academic Tuition Fee",
+          amount: Number(String(studentData.dueFees || "45000").replace(/[^0-9]/g, "")) || 45000,
+        }}
+        student={studentData}
+        payerRole="student"
+        onSuccess={async () => {
+          await loadData(true);
+        }}
+      />
     </View>
   );
 }

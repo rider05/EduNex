@@ -24,6 +24,7 @@ import { showToast } from "../../../utils/toastService";
 import { shareFeeReceiptPdf } from "../../../utils/pdfGenerator";
 import { getInstitutions } from "../../../services/dataService";
 import { api } from "../../../services/api";
+import { secureGet } from "../../../services/secureStorage";
 import { generateTransactionChecksum, decryptPaymentPayload } from "../../../utils/securityService";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -45,12 +46,14 @@ const UPI_APPS = [
   { id: "cred", name: "CRED UPI", icon: "shield-check", color: "#1E293B", scheme: "upi://pay" },
 ];
 
-export default function PaymentModal({ visible, onClose, invoice, onSuccess, student }) {
+export default function PaymentModal({ visible, onClose, invoice, onSuccess, student, payerRole }) {
   const { colors = {}, isDarkMode } = useTheme() || {};
 
   // Step: 'gateway' | 'processing' | 'cancelled' | 'success' | 'declined'
   const [step, setStep] = useState("gateway");
   const processingTimerRef = useRef(null);
+  const [currentUserRole, setCurrentUserRole] = useState(payerRole || "student");
+  const [currentUserName, setCurrentUserName] = useState("");
   const [selectedMethod, setSelectedMethod] = useState("razorpay"); // 'razorpay' | 'upi' | 'card' | 'netbank' | 'wallet'
   const [simulateDecline, setSimulateDecline] = useState(false);
   const [failureInfo, setFailureInfo] = useState(null);
@@ -91,11 +94,15 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
   const processingPulse = useRef(new Animated.Value(1)).current;
 
   // Invoice calculations
-  const invoiceTitle = invoice?.title || "Semester Academic Tuition Fee";
+  const isParentPayer = currentUserRole === "parent" || payerRole === "parent";
+  const invoiceTitle = invoice?.title || (isParentPayer ? "Ward Semester Academic Tuition Fee" : "Semester Academic Tuition Fee");
   const invoiceNumber = invoice?.invoiceNo || `INV-EDX-${invoice?.id || 10001}`;
   const payableAmount = Number(invoice?.amount) || 45000;
-  const studentName = student?.name || "Karthi Keyan";
+  const studentName = student?.name || student?.studentName || (isParentPayer ? "Ward Student" : "Karthi Keyan");
   const studentRoll = student?.id || student?.rollNo || "22CS045";
+  const payerDisplayName = isParentPayer
+    ? (currentUserName ? `${currentUserName} (Parent/Guardian)` : "Parent / Guardian")
+    : `${studentName} (Student)`;
 
   // Fee components breakdown
   const tuitionBase = Math.round(payableAmount * 0.75);
@@ -132,6 +139,21 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
   // Modal open/close animation
   useEffect(() => {
     if (visible) {
+      if (payerRole) {
+        setCurrentUserRole(payerRole);
+      } else {
+        secureGet("userRole")
+          .then((r) => {
+            if (r) setCurrentUserRole(r);
+          })
+          .catch(() => {});
+      }
+      secureGet("userData")
+        .then((u) => {
+          if (u?.name) setCurrentUserName(u.name);
+        })
+        .catch(() => {});
+
       setStep("gateway");
       setSelectedMethod("razorpay");
       setSimulateDecline(false);
@@ -139,7 +161,7 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
       setUpiSubMethod("qr");
       setUpiId("");
       setCardNumber("");
-      setCardHolder(studentName);
+      setCardHolder(payerRole === "parent" ? (currentUserName || "Parent / Guardian") : studentName);
       setCardExpiry("");
       setCardCvv("");
       setShowBreakdown(false);
@@ -155,7 +177,7 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
         Animated.timing(scaleAnim, { toValue: 0.92, duration: 180, useNativeDriver: true }),
       ]).start();
     }
-  }, [visible, backdropAnim, scaleAnim, translateYAnim, studentName]);
+  }, [visible, backdropAnim, scaleAnim, translateYAnim, studentName, payerRole, currentUserName]);
 
   // Pulse animation for processing step
   useEffect(() => {
@@ -324,6 +346,10 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
       securityChecksum: securityChecksum,
       merchantVpa: merchantVpa,
       encryptionStatus: paymentConfig.encryptionStatus || "AES-256 Secured Ledger",
+      payerRole: isParentPayer ? "parent" : "student",
+      paidBy: payerDisplayName,
+      studentName: studentName,
+      studentRoll: studentRoll,
       method:
         selectedMethod === "razorpay"
           ? "Razorpay Secure Gateway (UPI / Cards / NetBanking)"
@@ -473,12 +499,19 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
                   {/* Header Row */}
                   <View style={styles.headerRow}>
                     <View style={[styles.headerIconCircle, { backgroundColor: accentColor + "18" }]}>
-                      <Icon name="shield-check-outline" size={24} color={accentColor} />
+                      <Icon name={isParentPayer ? "account-child" : "shield-check-outline"} size={24} color={accentColor} />
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={[styles.headerTitle, { color: textColor }]}>EduNex Pay Gateway</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Text style={[styles.headerTitle, { color: textColor }]}>EduNex Pay Gateway</Text>
+                        <View style={[styles.roleBadge, { backgroundColor: isParentPayer ? "#F59E0B20" : "#4F46E520" }]}>
+                          <Text style={[styles.roleBadgeText, { color: isParentPayer ? "#D97706" : accentColor }]}>
+                            {isParentPayer ? "Parent Portal" : "Student Pay"}
+                          </Text>
+                        </View>
+                      </View>
                       <Text style={[styles.headerSubtitle, { color: subTextColor }]}>
-                        Institutional 256-Bit SSL Encrypted Checkout
+                        {isParentPayer ? `Fee payment for ${studentName} (${studentRoll})` : "Institutional 256-Bit SSL Encrypted Checkout"}
                       </Text>
                     </View>
                     <TouchableOpacity
@@ -504,6 +537,7 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
                             </Text>
                             <Text style={[styles.invoiceBannerMeta, { color: subTextColor }]}>
                               {invoiceNumber} • {studentName} ({studentRoll})
+                              {isParentPayer ? ` • Payer: ${payerDisplayName}` : ""}
                             </Text>
                           </View>
 
@@ -1079,6 +1113,14 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
                             <Text style={[styles.receiptValue, { color: textColor }]}>{studentName} ({studentRoll})</Text>
                           </View>
                           <View style={styles.receiptRow}>
+                            <Text style={[styles.receiptLabel, { color: subTextColor }]}>Payer</Text>
+                            <Text style={[styles.receiptValue, { color: textColor }]}>{txnDetails.paidBy || payerDisplayName}</Text>
+                          </View>
+                          <View style={styles.receiptRow}>
+                            <Text style={[styles.receiptLabel, { color: subTextColor }]}>Student</Text>
+                            <Text style={[styles.receiptValue, { color: textColor }]}>{studentName} ({studentRoll})</Text>
+                          </View>
+                          <View style={styles.receiptRow}>
                             <Text style={[styles.receiptLabel, { color: subTextColor }]}>Payment Mode</Text>
                             <Text style={[styles.receiptValue, { color: textColor }]}>{txnDetails.method}</Text>
                           </View>
@@ -1324,6 +1366,17 @@ const styles = StyleSheet.create({
     fontSize: 17.5,
     fontWeight: "800",
     letterSpacing: -0.2,
+  },
+  roleBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  roleBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
   headerSubtitle: {
     fontSize: 11.5,

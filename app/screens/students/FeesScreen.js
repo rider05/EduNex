@@ -537,6 +537,8 @@ export default function FeesScreen() {
           visible={paymentVisible}
           onClose={() => setPaymentVisible(false)}
           invoice={selectedPayInvoice}
+          student={studentInfo}
+          payerRole="student"
           onSuccess={async () => {
             await loadData();
           }}

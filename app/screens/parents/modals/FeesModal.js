@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 
-export default function FeesModal({ visible, onClose, colors, data = {} }) {
+export default function FeesModal({ visible, onClose, colors, data = {}, onPayNow }) {
   const slideAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -71,7 +71,10 @@ export default function FeesModal({ visible, onClose, colors, data = {} }) {
         {/* Buttons */}
         <Pressable
           style={[styles.payButton, { backgroundColor: "#E74C3C" }]}
-          onPress={() => console.log("Navigate to payment screen")}
+          onPress={() => {
+            onClose();
+            if (onPayNow) onPayNow();
+          }}
         >
           <Text style={styles.payText}>Pay Now</Text>
         </Pressable>
