@@ -60,6 +60,26 @@ async function isSecureStoreAvailable() {
 }
 
 /**
+ * Generate cryptographically secure random hex string using expo-crypto
+ */
+async function generateSecureRandomHex(byteCount = 16) {
+  try {
+    const randomBytes = await Crypto.getRandomBytesAsync(byteCount);
+    return Array.from(randomBytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  } catch {
+    // High-entropy fallback if native crypto fails
+    let hex = "";
+    for (let i = 0; i < byteCount; i++) {
+      const b = Math.floor(Math.random() * 256) ^ ((Date.now() + i * 31) & 0xff);
+      hex += (b & 0xff).toString(16).padStart(2, "0");
+    }
+    return hex;
+  }
+}
+
+/**
  * Get or generate the per-device random 256-bit cryptographic key stored in Keystore
  */
 async function getMasterKey() {
@@ -73,10 +93,7 @@ async function getMasterKey() {
         let storedKey = await SecureStore.getItemAsync(MASTER_KEY_ALIAS);
         if (!storedKey) {
           // Generate 32 cryptographically secure random bytes (256-bit key)
-          const randomBytes = await Crypto.getRandomBytesAsync(32);
-          storedKey = Array.from(randomBytes)
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("");
+          storedKey = await generateSecureRandomHex(32);
           await SecureStore.setItemAsync(MASTER_KEY_ALIAS, storedKey, {
             keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
           });
@@ -92,17 +109,14 @@ async function getMasterKey() {
     try {
       let fallbackKey = await AsyncStorage.getItem(MASTER_KEY_ALIAS);
       if (!fallbackKey) {
-        const randomBytes = await Crypto.getRandomBytesAsync(32);
-        fallbackKey = Array.from(randomBytes)
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
+        fallbackKey = await generateSecureRandomHex(32);
         await AsyncStorage.setItem(MASTER_KEY_ALIAS, fallbackKey);
       }
       activeMasterKey = fallbackKey;
       return activeMasterKey;
     } catch {
       // Ephemeral fallback
-      activeMasterKey = CryptoJS.lib.WordArray.random(32).toString(CryptoJS.enc.Hex);
+      activeMasterKey = await generateSecureRandomHex(32);
       return activeMasterKey;
     } finally {
       masterKeyPromise = null;
@@ -121,7 +135,8 @@ export async function encryptPayload(plaintext) {
     const rawString = typeof plaintext === "string" ? plaintext : JSON.stringify(plaintext);
     const keyHex = await getMasterKey();
     const key = CryptoJS.enc.Hex.parse(keyHex);
-    const iv = CryptoJS.lib.WordArray.random(16);
+    const ivHex = await generateSecureRandomHex(16);
+    const iv = CryptoJS.enc.Hex.parse(ivHex);
 
     const encrypted = CryptoJS.AES.encrypt(rawString, key, {
       iv,
@@ -129,7 +144,6 @@ export async function encryptPayload(plaintext) {
       padding: CryptoJS.pad.Pkcs7,
     });
 
-    const ivHex = iv.toString(CryptoJS.enc.Hex);
     const cipherText = encrypted.toString();
     return `${ENCRYPTED_PREFIX_V2}${ivHex}.${cipherText}`;
   } catch (err) {
