@@ -6,7 +6,8 @@ export const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   Constants.expoConfig?.extra?.apiUrl ||
   "https://edunex-backend-rmvx.onrender.com/api/v1";
-const TIMEOUT_MS = 8000;
+const TIMEOUT_MS = 15000;
+const AUTH_TIMEOUT_MS = 35000;
 
 // High-speed In-Memory Cache & In-Flight Request Deduplication
 let inMemoryToken = null;
@@ -150,7 +151,8 @@ export async function requestDirect(endpoint, options = {}) {
   if (inMemoryApiKey) headers["x-api-key"] = inMemoryApiKey;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const effectiveTimeout = endpoint.startsWith("/auth") ? AUTH_TIMEOUT_MS : TIMEOUT_MS;
+  const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
   const fetchOptions = {
     method,
@@ -245,7 +247,8 @@ async function request(endpoint, options = {}) {
 
     // Setup abort controller for timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const effectiveTimeout = endpoint.startsWith("/auth") ? AUTH_TIMEOUT_MS : TIMEOUT_MS;
+    const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
     const fetchOptions = {
       method,

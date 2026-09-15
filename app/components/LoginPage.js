@@ -273,6 +273,10 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
     setLoadingTitle("Authenticating...");
     setLoadingSubtitle("Verifying your credentials with EduNex server...");
 
+    const wakeUpTimer = setTimeout(() => {
+      setLoadingSubtitle("Connecting to secure cloud server... waking up container.");
+    }, 3500);
+
     try {
       const identifier = username.trim();
 
@@ -280,6 +284,7 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
         identifier,
         password,
       });
+      clearTimeout(wakeUpTimer);
 
       if (loginResult && loginResult.token && loginResult.data) {
         const user = loginResult.data;
@@ -343,6 +348,7 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
         );
       }
     } catch (err) {
+      clearTimeout(wakeUpTimer);
       console.log("handleLogin err:", err);
       setIsLoading(false);
       const rawError =
@@ -466,30 +472,36 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
                     <Text style={styles.buttonText}>SIGN IN</Text>
                   </TouchableOpacity>
 
-                  <View style={styles.separatorContainer}>
-                    <View style={styles.line} />
-                    <Text style={styles.separatorText}>or continue with</Text>
-                    <View style={styles.line} />
-                  </View>
+                  {/* Quick Demo Sign-In Pills */}
+                  <View style={styles.demoSection}>
+                    <View style={styles.separatorContainer}>
+                      <View style={styles.line} />
+                      <Text style={styles.separatorText}>Quick Demo Sign-In</Text>
+                      <View style={styles.line} />
+                    </View>
 
-                  <View style={styles.socialButtonsRow}>
-                    <TouchableOpacity
-                      style={[styles.socialButton, { backgroundColor: "#EA4335" }]}
-                      onPress={handleGoogleLogin}
-                      activeOpacity={0.85}
-                    >
-                      <Icon name="google" size={18} color="#FFFFFF" />
-                      <Text style={styles.socialText}>Google</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.socialButton, { backgroundColor: "#10B981" }]}
-                      onPress={handlePhoneLogin}
-                      activeOpacity={0.85}
-                    >
-                      <Icon name="phone" size={18} color="#FFFFFF" />
-                      <Text style={styles.socialText}>Phone</Text>
-                    </TouchableOpacity>
+                    <View style={styles.demoChipsRow}>
+                      {[
+                        { role: "Student", user: "aarav", roll: "25BAD001", color: "#6366F1", icon: "school" },
+                        { role: "Parent", user: "aarav_parent", roll: "Parent", color: "#F59E0B", icon: "account-child" },
+                        { role: "Faculty", user: "ananthangel", roll: "Faculty", color: "#0EA5E9", icon: "account-tie" },
+                        { role: "Admin", user: "balaji", roll: "Admin", color: "#10B981", icon: "shield-check" },
+                      ].map((d) => (
+                        <TouchableOpacity
+                          key={d.user}
+                          style={[styles.demoChip, { borderColor: d.color + "55", backgroundColor: d.color + "12" }]}
+                          onPress={() => {
+                            setUsername(d.user);
+                            setPassword("123456");
+                            showToastMsg(`Filled ${d.role} credentials (${d.user})`, "success");
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <Icon name={d.icon} size={14} color={d.color} style={{ marginRight: 4 }} />
+                          <Text style={[styles.demoChipText, { color: d.color }]}>{d.role}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
 
                   <TouchableOpacity
@@ -506,9 +518,12 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
                         });
                       } catch {}
                       setTimeout(() => {
-                        if (onSkip) onSkip();
-                        if (onClose) onClose();
-                      }, 400);
+                        if (onSkip) {
+                          onSkip();
+                        } else if (onClose) {
+                          onClose();
+                        }
+                      }, 300);
                     }}
                   >
                     <Text style={styles.skipText}>Explore as Guest</Text>
@@ -656,9 +671,12 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
                     onPress={() => {
                       showToastMsg("Continuing as Guest", "info");
                       setTimeout(() => {
-                        if (onSkip) onSkip();
-                        if (onClose) onClose();
-                      }, 500);
+                        if (onSkip) {
+                          onSkip();
+                        } else if (onClose) {
+                          onClose();
+                        }
+                      }, 300);
                     }}
                   >
                     <Text style={styles.skipText}>Skip for now</Text>
@@ -976,6 +994,30 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "700",
     fontSize: 13,
+  },
+  demoSection: {
+    width: "100%",
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  demoChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 8,
+  },
+  demoChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  demoChipText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   skipBtn: {
     marginTop: 16,
