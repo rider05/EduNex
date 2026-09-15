@@ -4,6 +4,8 @@
   "version": "1.0.2",
   "scripts": {
     "start": "expo start",
+    "start:clean": "expo start -c",
+    "clean:cache": "powershell -NoProfile -Command \"Remove-Item -Path $env:TEMP\\metro-*, $env:TEMP\\haste-*, .expo\\cache -Force -Recurse -ErrorAction SilentlyContinue; Write-Host 'Metro & Expo caches purged.'\"",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "apk": "cd android && gradlew assembleRelease",
