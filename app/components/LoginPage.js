@@ -494,12 +494,21 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
 
                   <TouchableOpacity
                     style={styles.skipBtn}
-                    onPress={() => {
-                      showToastMsg("Continuing as Guest", "info");
+                    onPress={async () => {
+                      showToastMsg("Continuing as Guest (Read-Only Preview)", "info");
+                      try {
+                        await setAuthSession(null, {
+                          role: "guest",
+                          id: "guest",
+                          username: "guest",
+                          name: "Guest User",
+                          scope: "read-only",
+                        });
+                      } catch {}
                       setTimeout(() => {
                         if (onSkip) onSkip();
                         if (onClose) onClose();
-                      }, 500);
+                      }, 400);
                     }}
                   >
                     <Text style={styles.skipText}>Explore as Guest</Text>

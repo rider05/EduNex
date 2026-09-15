@@ -19,7 +19,7 @@ import { showToast } from "../../utils/toastService";
 import { SkeletonProfileScreen } from "../../components/common/SkeletonLoader";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { getFacultyData } from "../../services/dataService";
-import { clearAuthSession } from "../../services/api";
+import { clearAuthSession, api } from "../../services/api";
 import FeedbackBugModal from "../../components/FeedbackBugModal";
 
 const DEFAULT_STAFF_DATA = {};

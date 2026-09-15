@@ -19,6 +19,7 @@ import FullTimetable from "./modals/FullTimeTable";
 import AttendanceModal from "./modals/AttendanceModal";
 import { SkeletonAcademicsScreen } from "../../components/common/SkeletonLoader";
 import { getStudentData, getAssignments, getStudentAttendanceSummary, getSubjects, enrichSubjectFromCatalog, getDeptTargetCredits, getDepartmentTopRanks, submitAssignment } from "../../services/dataService";
+import { api } from "../../services/api";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
 import { formatDeptName, matchStudentSubject } from "../../utils/deptFormatter";

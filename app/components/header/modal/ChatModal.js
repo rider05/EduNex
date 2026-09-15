@@ -772,7 +772,6 @@ export default function ChatModal({ visible, onClose, initialContact = null, use
     const transcript = list
       .map((m) => `[${m.time || ""}] ${m.senderName || m.senderRole || "User"}: ${m.text || "[Attachment]"}`)
       .join("\n");
-    console.log("EduNex Chat Export:\n" + transcript);
     showToast(`📄 Chat exported (${list.length} messages)`, "success");
   }, [selectedStaff, threads]);
 

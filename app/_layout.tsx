@@ -12,12 +12,23 @@ import { handleNotificationAction } from "./utils/notificationUtils";
 import { checkAppUpdate } from "./services/updateService";
 import GlobalCallOverlay from "./components/common/GlobalCallOverlay";
 import AppUpdateModal from "./components/common/AppUpdateModal";
+import { installConsoleSanitizer, checkDeviceIntegrity } from "./utils/deviceSecurity";
+import { showToast } from "./utils/toastService";
+
+// Initialize global logger sanitizer on load
+installConsoleSanitizer();
 
 export default function RootLayout() {
   const [updateInfo, setUpdateInfo] = useState<any>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   useEffect(() => {
+    // Check root / jailbreak integrity on launch
+    checkDeviceIntegrity().then((result) => {
+      if (result.isCompromised) {
+        showToast("⚠️ Security Warning: Device is rooted/jailbroken.", "warning");
+      }
+    });
     // 0. System Navigation Bar Configuration (Android Immersive Mode)
     if (Platform.OS === "android") {
       try {

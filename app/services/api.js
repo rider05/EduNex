@@ -1,7 +1,11 @@
 import { secureGet, secureSet, secureRemove, secureClearEduNex } from "./secureStorage";
 import { enqueueMutation, getIsOnline, setNetworkStatus } from "./offlineSyncService";
+import Constants from "expo-constants";
 
-export const BASE_URL = "https://edunex-backend-rmvx.onrender.com/api/v1";
+export const BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  Constants.expoConfig?.extra?.apiUrl ||
+  "https://edunex-backend-rmvx.onrender.com/api/v1";
 const TIMEOUT_MS = 8000;
 
 // High-speed In-Memory Cache & In-Flight Request Deduplication
@@ -165,6 +169,9 @@ export async function requestDirect(endpoint, options = {}) {
       json = await response.json();
     } catch {
       json = { success: response.ok, status: response.status };
+    }
+    if (response.status === 401) {
+      await clearAuthSession();
     }
     return json;
   } catch (err) {

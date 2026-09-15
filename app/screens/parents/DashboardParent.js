@@ -20,6 +20,7 @@ import MessagesModal from "./modals/MessagesModal";
 import ReportModal from "./modals/ReportModal";
 import { SkeletonDashboardScreen } from "../../components/common/SkeletonLoader";
 import { getParentData } from "../../services/dataService";
+import { api } from "../../services/api";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 
 const DEFAULT_OVERVIEW = {};

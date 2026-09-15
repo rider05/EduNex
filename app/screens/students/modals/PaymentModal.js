@@ -48,10 +48,12 @@ const UPI_APPS = [
 export default function PaymentModal({ visible, onClose, invoice, onSuccess, student }) {
   const { colors = {}, isDarkMode } = useTheme() || {};
 
-  // Step: 'gateway' | 'processing' | 'cancelled' | 'success'
+  // Step: 'gateway' | 'processing' | 'cancelled' | 'success' | 'declined'
   const [step, setStep] = useState("gateway");
   const processingTimerRef = useRef(null);
-  const [selectedMethod, setSelectedMethod] = useState("upi"); // 'upi' | 'card' | 'netbank' | 'wallet'
+  const [selectedMethod, setSelectedMethod] = useState("razorpay"); // 'razorpay' | 'upi' | 'card' | 'netbank' | 'wallet'
+  const [simulateDecline, setSimulateDecline] = useState(false);
+  const [failureInfo, setFailureInfo] = useState(null);
   const [upiSubMethod, setUpiSubMethod] = useState("qr"); // 'qr' | 'app' | 'vpa'
   const [upiId, setUpiId] = useState("");
   const [selectedBank, setSelectedBank] = useState("hdfc");
@@ -90,7 +92,7 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
 
   // Invoice calculations
   const invoiceTitle = invoice?.title || "Semester Academic Tuition Fee";
-  const invoiceNumber = invoice?.invoiceNo || `INV-EDX-${Math.floor(100000 + Math.random() * 900000)}`;
+  const invoiceNumber = invoice?.invoiceNo || `INV-EDX-${invoice?.id || 10001}`;
   const payableAmount = Number(invoice?.amount) || 45000;
   const studentName = student?.name || "Karthi Keyan";
   const studentRoll = student?.id || student?.rollNo || "22CS045";
@@ -131,7 +133,9 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
   useEffect(() => {
     if (visible) {
       setStep("gateway");
-      setSelectedMethod("upi");
+      setSelectedMethod("razorpay");
+      setSimulateDecline(false);
+      setFailureInfo(null);
       setUpiSubMethod("qr");
       setUpiId("");
       setCardNumber("");
@@ -167,7 +171,7 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
     }
   }, [step, processingPulse]);
 
-  // Fetch live admin encrypted payment config
+  // Fetch live institutional payment config
   useEffect(() => {
     if (visible) {
       getInstitutions()
@@ -175,17 +179,13 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
           const inst = Array.isArray(instList) ? instList[0] : Array.isArray(instList?.data) ? instList.data[0] : instList;
           if (inst?.paymentConfig) {
             const pc = inst.paymentConfig;
-            const vpa = pc.encryptedUpiId
-              ? decryptPaymentPayload(pc.encryptedUpiId)
-              : pc.encryptedVpa
-              ? decryptPaymentPayload(pc.encryptedVpa)
-              : pc.upiId || "-";
+            const vpa = pc.upiId || pc.vpa || "edunex.fees@okhdfcbank";
             setPaymentConfig({
               ...pc,
-              upiId: vpa || "-",
-              merchantName: pc.merchantName || inst.name || "-",
-              merchantCode: pc.merchantCode || inst.code || "-",
-              bankName: pc.bankName || inst.bankName || "-",
+              upiId: vpa,
+              merchantName: pc.merchantName || inst.name || "EduNex Higher Education Institute",
+              merchantCode: pc.merchantCode || inst.code || "EDUNEX01",
+              bankName: pc.bankName || inst.bankName || "HDFC Bank",
               encryptionStatus: pc.encryptionStatus || "AES-256 Secured Ledger",
             });
           }
@@ -193,6 +193,23 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
         .catch(() => {});
     }
   }, [visible]);
+
+  // Handle Payment Decline / Failure with diagnostic state & error toast
+  const handleTriggerDecline = (reason, code = "PAYMENT_DECLINED") => {
+    if (processingTimerRef.current) {
+      clearTimeout(processingTimerRef.current);
+    }
+    const failedTxn = {
+      txnId: `TXN${Date.now().toString().slice(-8)}`,
+      errorCode: code,
+      reason: reason || "Transaction declined by issuing bank or payment gateway.",
+      time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+      date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+    };
+    setFailureInfo(failedTxn);
+    setStep("declined");
+    showToast(`❌ Payment Failed: ${reason}`, "error");
+  };
 
   // Handle Payment Trigger & Native Payment App Launch
   const handleProceedPayment = async () => {
@@ -214,6 +231,31 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
         showToast("Please enter 3-digit CVV", "warning");
         return;
       }
+    }
+
+    // Simulation & Decline triggers
+    if (selectedMethod === "razorpay" && simulateDecline) {
+      setStep("processing");
+      processingTimerRef.current = setTimeout(() => {
+        handleTriggerDecline("Declined by issuing bank: Transaction limit exceeded or insufficient funds.", "RAZORPAY_ERR_402");
+      }, 1200);
+      return;
+    }
+
+    if (selectedMethod === "card" && (cardNumber.replace(/\s/g, "").startsWith("0000") || cardCvv === "000")) {
+      setStep("processing");
+      processingTimerRef.current = setTimeout(() => {
+        handleTriggerDecline("Card declined by issuer: Invalid CVV or expired card.", "CARD_DECLINED_05");
+      }, 1000);
+      return;
+    }
+
+    if (selectedMethod === "upi" && (upiId.toLowerCase().includes("fail") || upiId.toLowerCase().includes("decline"))) {
+      setStep("processing");
+      processingTimerRef.current = setTimeout(() => {
+        handleTriggerDecline("UPI transaction failed: Payer request cancelled or timed out.", "UPI_U30_DECLINED");
+      }, 1000);
+      return;
     }
 
     const newTxnId = `TXN${Date.now().toString().slice(-8)}`;
@@ -283,7 +325,9 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
       merchantVpa: merchantVpa,
       encryptionStatus: paymentConfig.encryptionStatus || "AES-256 Secured Ledger",
       method:
-        selectedMethod === "upi"
+        selectedMethod === "razorpay"
+          ? "Razorpay Secure Gateway (UPI / Cards / NetBanking)"
+          : selectedMethod === "upi"
           ? `UPI (${selectedUpiApp.toUpperCase()} - ${merchantVpa})`
           : selectedMethod === "card"
           ? `${cardBrand.brand} Card (•••• ${cardNumber.slice(-4) || "8821"})`
@@ -335,9 +379,14 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
 
     processingTimerRef.current = setTimeout(() => {
       setStep("success");
-      showToast("✅ Encrypted Payment Cleared & Recorded!", "success");
+      showToast(
+        selectedMethod === "razorpay"
+          ? "✅ Payment Completed via Razorpay Secure Gateway!"
+          : "✅ Encrypted Payment Cleared & Recorded!",
+        "success"
+      );
       if (onSuccess) onSuccess(paymentResult);
-    }, 2200);
+    }, 2000);
   };
 
   // Share digital receipt
@@ -512,6 +561,7 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
                       <Text style={[styles.sectionTitle, { color: textColor }]}>Select Payment Mode</Text>
                       <View style={styles.methodSelectorRow}>
                         {[
+                          { id: "razorpay", name: "Razorpay", icon: "shield-check" },
                           { id: "upi", name: "UPI & QR", icon: "qrcode-scan" },
                           { id: "card", name: "Cards", icon: "credit-card-outline" },
                           { id: "netbank", name: "Net Banking", icon: "bank-outline" },
@@ -539,6 +589,70 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
                           );
                         })}
                       </View>
+
+                      {/* ----------------- METHOD 0: RAZORPAY GATEWAY ----------------- */}
+                      {selectedMethod === "razorpay" && (
+                        <View style={styles.methodContentBox}>
+                          <View style={[styles.razorpayCard, { backgroundColor: isDarkMode ? "#17255430" : "#EFF6FF", borderColor: isDarkMode ? "#1E40AF" : "#BFDBFE" }]}>
+                            <View style={styles.razorpayHeader}>
+                              <View style={styles.razorpayLogoBox}>
+                                <Icon name="shield-check" size={24} color="#0284C7" />
+                              </View>
+                              <View style={{ flex: 1, marginLeft: 10 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                  <Text style={[styles.razorpayTitle, { color: textColor }]}>Razorpay Standard</Text>
+                                  <View style={styles.verifiedPill}>
+                                    <Text style={styles.verifiedPillText}>RBI Approved</Text>
+                                  </View>
+                                </View>
+                                <Text style={[styles.razorpaySub, { color: subTextColor }]}>
+                                  All-in-one Gateway: UPI, RuPay/Visa/MC Cards, 65+ NetBanking
+                                </Text>
+                              </View>
+                            </View>
+
+                            <View style={styles.razorpayFeatureList}>
+                              <View style={styles.razorpayFeatureItem}>
+                                <Icon name="flash" size={15} color="#F59E0B" />
+                                <Text style={[styles.razorpayFeatureText, { color: textColor }]}>Instant clearing & verified digital receipts</Text>
+                              </View>
+                              <View style={styles.razorpayFeatureItem}>
+                                <Icon name="lock-check" size={15} color="#10B981" />
+                                <Text style={[styles.razorpayFeatureText, { color: textColor }]}>End-to-end 256-bit encryption & tokenization</Text>
+                              </View>
+                              <View style={styles.razorpayFeatureItem}>
+                                <Icon name="percent" size={15} color="#6366F1" />
+                                <Text style={[styles.razorpayFeatureText, { color: textColor }]}>Zero institutional surcharge fee</Text>
+                              </View>
+                            </View>
+
+                            {/* Testing / Decline Simulation Toggle */}
+                            <View style={[styles.simulationBox, { backgroundColor: isDarkMode ? "#27272A" : "#FFFFFF", borderColor }]}>
+                              <View style={{ flex: 1, paddingRight: 8 }}>
+                                <Text style={[styles.simulationTitle, { color: textColor }]}>Simulate Bank Decline</Text>
+                                <Text style={[styles.simulationDesc, { color: subTextColor }]}>
+                                  Toggle ON to test banking decline toast and failure diagnostics modal.
+                                </Text>
+                              </View>
+                              <TouchableOpacity
+                                style={[
+                                  styles.toggleBtn,
+                                  { backgroundColor: simulateDecline ? "#EF4444" : isDarkMode ? "#3F3F46" : "#CBD5E1" },
+                                ]}
+                                onPress={() => setSimulateDecline((prev) => !prev)}
+                                activeOpacity={0.8}
+                              >
+                                <View
+                                  style={[
+                                    styles.toggleCircle,
+                                    { transform: [{ translateX: simulateDecline ? 18 : 0 }] },
+                                  ]}
+                                />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        </View>
+                      )}
 
                       {/* ----------------- METHOD 1: UPI / QR ----------------- */}
                       {selectedMethod === "upi" && (
@@ -982,6 +1096,74 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
                   )}
 
                   {/* ============================================================= */}
+                  {/* STEP 4: PAYMENT DECLINED / FAILED STATE                        */}
+                  {/* ============================================================= */}
+                  {step === "declined" && failureInfo && (
+                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
+                      <View style={styles.declineHeader}>
+                        <View style={styles.declineIconCircle}>
+                          <Icon name="close" size={32} color="#FFFFFF" />
+                        </View>
+                        <Text style={[styles.declineTitle, { color: "#EF4444" }]}>Payment Declined</Text>
+                        <Text style={[styles.declineSub, { color: subTextColor }]}>
+                          Your transaction could not be processed by the bank or gateway.
+                        </Text>
+                      </View>
+
+                      {/* Diagnostic Alert Card */}
+                      <View style={[styles.declineDiagnosticCard, { backgroundColor: isDarkMode ? "#2D1517" : "#FEF2F2", borderColor: "#F87171" }]}>
+                        <View style={styles.declineRow}>
+                          <Text style={[styles.declineLabel, { color: subTextColor }]}>Reason</Text>
+                          <Text style={[styles.declineReasonText, { color: "#DC2626" }]}>{failureInfo.reason}</Text>
+                        </View>
+                        <View style={styles.declineDivider} />
+                        <View style={styles.declineRow}>
+                          <Text style={[styles.declineLabel, { color: subTextColor }]}>Error Code</Text>
+                          <Text style={[styles.declineCodeText, { color: textColor }]}>{failureInfo.errorCode}</Text>
+                        </View>
+                        <View style={styles.declineRow}>
+                          <Text style={[styles.declineLabel, { color: subTextColor }]}>Transaction Ref</Text>
+                          <Text style={[styles.declineCodeText, { color: textColor }]}>{failureInfo.txnId}</Text>
+                        </View>
+                        <View style={styles.declineRow}>
+                          <Text style={[styles.declineLabel, { color: subTextColor }]}>Timestamp</Text>
+                          <Text style={[styles.declineCodeText, { color: subTextColor }]}>{failureInfo.date} • {failureInfo.time}</Text>
+                        </View>
+                      </View>
+
+                      {/* Refund Notice */}
+                      <View style={[styles.declineNoteCard, { backgroundColor: isDarkMode ? "#27272A" : "#F8FAFC", borderColor }]}>
+                        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                          <Icon name="information-outline" size={18} color="#3B82F6" style={{ marginTop: 2 }} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.declineNoteTitle, { color: textColor }]}>Has your account been debited?</Text>
+                            <Text style={[styles.declineNoteBody, { color: subTextColor }]}>
+                              If money was debited from your account, it will automatically be refunded to your original payment source within 2-3 banking days as per RBI regulations.
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Quick Recommendations */}
+                      <Text style={[styles.sectionTitle, { color: textColor, marginTop: 12 }]}>Suggested Next Steps</Text>
+                      <View style={styles.suggestionsContainer}>
+                        <View style={styles.suggestionItem}>
+                          <Icon name="check-circle-outline" size={16} color="#10B981" />
+                          <Text style={[styles.suggestionText, { color: textColor }]}>Check your account balance and UPI daily transaction limit</Text>
+                        </View>
+                        <View style={styles.suggestionItem}>
+                          <Icon name="check-circle-outline" size={16} color="#10B981" />
+                          <Text style={[styles.suggestionText, { color: textColor }]}>Switch to Razorpay Gateway or an alternate payment mode</Text>
+                        </View>
+                        <View style={styles.suggestionItem}>
+                          <Icon name="check-circle-outline" size={16} color="#10B981" />
+                          <Text style={[styles.suggestionText, { color: textColor }]}>Contact your bank or campus finance office if issue persists</Text>
+                        </View>
+                      </View>
+                    </ScrollView>
+                  )}
+
+                  {/* ============================================================= */}
                   {/* FOOTER ACTIONS                                                */}
                   {/* ============================================================= */}
                   <View style={[styles.footerRow, { borderTopColor: borderColor }]}>
@@ -1024,6 +1206,35 @@ export default function PaymentModal({ visible, onClose, invoice, onSuccess, stu
                           activeOpacity={0.85}
                         >
                           <Text style={styles.doneBtnText}>Back to Dashboard</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
+
+                    {step === "declined" && (
+                      <>
+                        <TouchableOpacity
+                          style={[styles.retryBtn, { backgroundColor: accentColor }]}
+                          onPress={() => {
+                            setStep("gateway");
+                            setSimulateDecline(false);
+                          }}
+                          activeOpacity={0.85}
+                        >
+                          <Icon name="refresh" size={17} color="#FFFFFF" style={{ marginRight: 6 }} />
+                          <Text style={styles.retryBtnText}>Try Again</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.switchGatewayBtn, { backgroundColor: isDarkMode ? "#27272A" : "#F1F5F9", borderColor }]}
+                          onPress={() => {
+                            setSelectedMethod("razorpay");
+                            setSimulateDecline(false);
+                            setStep("gateway");
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <Icon name="shield-check" size={16} color={accentColor} style={{ marginRight: 6 }} />
+                          <Text style={[styles.switchGatewayText, { color: textColor }]}>Pay via Razorpay</Text>
                         </TouchableOpacity>
                       </>
                     )}
@@ -1713,4 +1924,199 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: "rgba(0,0,0,0.4)",
   },
-});
+  // Razorpay Gateway Styles
+  razorpayCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 8,
+  },
+  razorpayHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  razorpayLogoBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#0284C715",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  razorpayTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  razorpaySub: {
+    fontSize: 11.5,
+    marginTop: 2,
+  },
+  verifiedPill: {
+    backgroundColor: "#0284C7",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  verifiedPillText: {
+    color: "#FFFFFF",
+    fontSize: 9.5,
+    fontWeight: "800",
+  },
+  razorpayFeatureList: {
+    gap: 8,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.06)",
+  },
+  razorpayFeatureItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  razorpayFeatureText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  simulationBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 10,
+  },
+  simulationTitle: {
+    fontSize: 12.5,
+    fontWeight: "700",
+  },
+  simulationDesc: {
+    fontSize: 10.5,
+    marginTop: 2,
+    maxWidth: "82%",
+  },
+  toggleBtn: {
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+    padding: 2,
+    justifyContent: "center",
+  },
+  toggleCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#FFFFFF",
+    elevation: 2,
+  },
+  // Decline / Failure Diagnostics Styles
+  declineHeader: {
+    alignItems: "center",
+    paddingVertical: 14,
+  },
+  declineIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#EF4444",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  declineTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  declineSub: {
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: 4,
+    paddingHorizontal: 16,
+  },
+  declineDiagnosticCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    marginTop: 12,
+  },
+  declineRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  declineLabel: {
+    fontSize: 11.5,
+    fontWeight: "500",
+  },
+  declineReasonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    flex: 1,
+    textAlign: "right",
+    marginLeft: 12,
+  },
+  declineCodeText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  declineDivider: {
+    height: 1,
+    backgroundColor: "rgba(239,68,68,0.2)",
+    marginVertical: 6,
+  },
+  declineNoteCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    marginTop: 10,
+  },
+  declineNoteTitle: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  declineNoteBody: {
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  suggestionsContainer: {
+    gap: 8,
+    marginTop: 6,
+  },
+  suggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  suggestionText: {
+    fontSize: 11.5,
+  },
+  retryBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  retryBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  switchGatewayBtn: {
+    flex: 1.2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  switchGatewayText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+  },
+});

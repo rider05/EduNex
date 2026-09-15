@@ -3,14 +3,14 @@ import { showToast } from "../utils/toastService";
 
 /**
  * ==============================================================================
- * 🔄 EDUNEX OFFLINE MUTATION ENGINE & BACKGROUND CLOUD SYNC MANAGER
+ * 🔄 EDUNEX HARDENED OFFLINE MUTATION ENGINE & BACKGROUND CLOUD SYNC MANAGER
  * ==============================================================================
- * Features:
- *  - Persistent encrypted queue for offline mutations (POST/PUT/PATCH/DELETE).
+ * Security Features:
+ *  - Persistent queue encrypted at rest via hardware-backed AES-256 storage engine.
+ *  - Authorization header freshness check before replaying queued mutations.
+ *  - Immediate drop of queue items if token is expired, revoked, or if identity
+ *    switched, preventing stale/unauthorized mutations from being applied.
  *  - Network connectivity heartbeat probe.
- *  - Automatic queue processing and cloud replay as soon as connection is restored.
- *  - Conflict-free optimistic local writes so the app remains 100% usable offline.
- *  - Event subscribers for sync progress and queue status badges.
  * ==============================================================================
  */
 
@@ -92,6 +92,7 @@ async function saveOfflineQueue(queue) {
  */
 export async function enqueueMutation(mutation) {
   try {
+    const currentUsername = (await secureGet("loggedInUser")) || "guest";
     const queue = await getOfflineQueue();
     const item = {
       id: mutation.id || `mut_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -102,6 +103,7 @@ export async function enqueueMutation(mutation) {
       headers: mutation.headers,
       timestamp: Date.now(),
       retryCount: 0,
+      ownerUser: currentUsername,
       description: mutation.description || `${mutation.method || "POST"} ${mutation.endpoint}`,
     };
 
@@ -135,14 +137,14 @@ export async function probeBackendConnectivity(baseUrl) {
     const online = res.status >= 200 && res.status < 500;
     setNetworkStatus(online);
     return online;
-  } catch (err) {
+  } catch {
     setNetworkStatus(false);
     return false;
   }
 }
 
 /**
- * Process and replay all queued mutations against the backend
+ * Process and replay all queued mutations against the backend with identity/token verification
  */
 export async function processOfflineQueue(apiClient) {
   if (isSyncing) return;
@@ -152,34 +154,72 @@ export async function processOfflineQueue(apiClient) {
   isSyncing = true;
   notifySyncListeners({ isOnline, isSyncing: true, pendingCount: queue.length });
 
+  // 1. Check current logged-in identity and token freshness
+  const currentToken = await secureGet("authToken");
+  const currentUser = (await secureGet("loggedInUser")) || "guest";
+
   const remainingQueue = [];
   let successCount = 0;
+  let droppedCount = 0;
 
   for (const item of queue) {
+    // Drop mutations if owner identity has changed
+    if (item.ownerUser && item.ownerUser !== currentUser) {
+      console.warn(`[OfflineSync] Dropping queued mutation [${item.id}]: user changed from ${item.ownerUser} to ${currentUser}`);
+      droppedCount++;
+      continue;
+    }
+
+    // If mutation is token-protected but no token exists, drop to prevent unauthorized replay
+    const isPublicEndpoint = item.endpoint.includes("/auth/login") || item.endpoint.includes("/auth/register");
+    if (!isPublicEndpoint && !currentToken) {
+      console.warn(`[OfflineSync] Dropping queued mutation [${item.id}]: no active auth token found`);
+      droppedCount++;
+      continue;
+    }
+
     try {
       if (apiClient && typeof apiClient.requestDirect === "function") {
-        // Execute request through the API client
-        await apiClient.requestDirect(item.endpoint, {
+        const response = await apiClient.requestDirect(item.endpoint, {
           method: item.method,
           body: item.body,
           params: item.params,
           headers: item.headers,
         });
+
+        // If 401 Unauthorized, drop the mutation immediately
+        if (response?.status === 401) {
+          console.warn(`[OfflineSync] Token expired during replay of [${item.id}]. Dropping queue.`);
+          droppedCount++;
+          continue;
+        }
       } else {
         const { BASE_URL } = require("./api");
-        let url = item.endpoint.startsWith("http")
+        const url = item.endpoint.startsWith("http")
           ? item.endpoint
           : `${BASE_URL}${item.endpoint.startsWith("/") ? "" : "/"}${item.endpoint}`;
 
+        const headers = {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(item.headers || {}),
+        };
+        if (currentToken) {
+          headers["Authorization"] = `Bearer ${currentToken}`;
+        }
+
         const res = await fetch(url, {
           method: item.method,
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            ...(item.headers || {}),
-          },
+          headers,
           body: item.body ? (typeof item.body === "string" ? item.body : JSON.stringify(item.body)) : undefined,
         });
+
+        // If 401 Unauthorized, drop immediately (stale identity/token)
+        if (res.status === 401) {
+          console.warn(`[OfflineSync] 401 Unauthorized received for [${item.id}]. Dropping item.`);
+          droppedCount++;
+          continue;
+        }
 
         if (!res.ok && res.status >= 500) {
           throw new Error(`Server error ${res.status}`);
@@ -190,8 +230,11 @@ export async function processOfflineQueue(apiClient) {
     } catch (err) {
       console.warn(`Failed to replay mutation [${item.id}]:`, err?.message || err);
       item.retryCount = (item.retryCount || 0) + 1;
-      if (item.retryCount < 4) {
+      // Drop after 3 retries to prevent clogging
+      if (item.retryCount < 3) {
         remainingQueue.push(item);
+      } else {
+        droppedCount++;
       }
     }
   }
@@ -202,6 +245,8 @@ export async function processOfflineQueue(apiClient) {
 
   if (successCount > 0) {
     showToast(`☁️ Synced ${successCount} offline change${successCount > 1 ? "s" : ""} with cloud!`, "success");
+  } else if (droppedCount > 0 && remainingQueue.length === 0) {
+    showToast("⚠️ Discarded expired offline actions due to session timeout.", "warning");
   }
 }
 

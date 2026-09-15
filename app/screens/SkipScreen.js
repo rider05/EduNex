@@ -26,7 +26,13 @@ export default function SkipScreen({ onLogout, setShowModal }) {
   const handleGuestSignIn = async () => {
     await secureSet("loggedInUser", "guest");
     await secureSet("userRole", "guest");
-    await secureSet("userData", { role: "guest", id: "guest", name: "Guest User" });
+    await secureSet("userData", {
+      role: "guest",
+      id: "guest",
+      username: "guest",
+      name: "Guest User",
+      scope: "read-only",
+    });
 
     setShowModal?.(true);
   };

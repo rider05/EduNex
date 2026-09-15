@@ -17,7 +17,7 @@ import { secureGet, secureSet } from "../../services/secureStorage";
 import { useTheme } from "../../context/ThemeContext";
 import { showToast } from "../../utils/toastService";
 import { SkeletonProfileScreen } from "../../components/common/SkeletonLoader";
-import { clearAuthSession } from "../../services/api";
+import { clearAuthSession, api } from "../../services/api";
 import { getParentData } from "../../services/dataService";
 import { formatUniversityRegNo } from "../../utils/deptFormatter";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";

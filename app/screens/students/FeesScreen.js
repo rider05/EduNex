@@ -14,6 +14,7 @@ import { useTheme } from "../../context/ThemeContext";
 import PaymentModal from "./modals/PaymentModal";
 import { SkeletonFeesScreen } from "../../components/common/SkeletonLoader";
 import { getStudentFees, getStudentData } from "../../services/dataService";
+import { api } from "../../services/api";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
 import { shareFeeReceiptPdf } from "../../utils/pdfGenerator";

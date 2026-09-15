@@ -13,6 +13,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../../context/ThemeContext";
 import { SkeletonProfileScreen } from "../../components/common/SkeletonLoader";
 import { getStudentData, getPermits, getSubjects, enrichSubjectFromCatalog } from "../../services/dataService";
+import { api } from "../../services/api";
 import { formatUniversityRegNo } from "../../utils/deptFormatter";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";

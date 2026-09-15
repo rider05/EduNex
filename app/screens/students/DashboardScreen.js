@@ -387,7 +387,7 @@ export default function DashboardScreen() {
       if (Array.isArray(assignRes) && assignRes.length > 0) {
         const studentClass = String(data?.class || data?.section || "").trim().toLowerCase();
         const studentDept = String(data?.department || "").trim().toLowerCase();
-        const studentRoll = String(resolvedRoll || "").trim().toLowerCase();
+        const studentRoll = String(data?.rollNo || data?.roll || data?.id || "").trim().toLowerCase();
 
         const scopedAssignments = assignRes.filter((a) => {
           if (!a || typeof a !== "object") return false;

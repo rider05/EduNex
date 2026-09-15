@@ -182,9 +182,17 @@ function IndexCore() {
   // Skip
   const handleSkip = async () => {
     await secureSet("userRole", "guest");
+    await secureSet("loggedInUser", "guest");
+    await secureSet("userData", {
+      role: "guest",
+      id: "guest",
+      username: "guest",
+      name: "Guest User",
+      scope: "read-only",
+    });
     setUserRole("guest");
     setShowLoginModal(false);
-    toast.showToast("Continuing as Guest", "info");
+    toast.showToast("Continuing as Guest (Read-Only)", "info");
   };
 
   // Logout

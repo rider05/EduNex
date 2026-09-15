@@ -92,13 +92,13 @@ export default function AttendanceStaff() {
         getPeriodAttendanceRecords(todayStr, cls || "AI & DS - Section A"),
       ]);
 
-      if (facultyRes.status === "fulfilled" && facultyRes.value) {
-        const fac = facultyRes.value;
+      const faculty = facultyRes.status === "fulfilled" ? facultyRes.value : null;
+      if (faculty) {
         setStaffInfo({
-          name: fac.name || "Ms. Z. Ananth Angel",
-          staffId: fac.staffId || fac.id || "STF001",
-          designation: fac.designation || fac.role || "Assistant Professor & Class Tutor",
-          department: fac.department || "AI & DS",
+          name: faculty.name || "Ms. Z. Ananth Angel",
+          staffId: faculty.staffId || faculty.id || "STF001",
+          designation: faculty.designation || faculty.role || "Assistant Professor & Class Tutor",
+          department: faculty.department || "AI & DS",
         });
       }
 

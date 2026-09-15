@@ -13,6 +13,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { SkeletonFeesScreen } from "../../components/common/SkeletonLoader";
 import PaymentModal from "../students/modals/PaymentModal";
 import { getStudentFees, getParentData, getInstitutions } from "../../services/dataService";
+import { api } from "../../services/api";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
 import { showToast } from "../../utils/toastService";
 import { shareFeeReceiptPdf } from "../../utils/pdfGenerator";

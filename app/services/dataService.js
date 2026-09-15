@@ -63,6 +63,52 @@ function emptyDatabase() {
   };
 }
 
+export function sanitizeRosterItem(s) {
+  if (!s || typeof s !== "object") return s;
+  return {
+    id: s.id || s._id || s.rollNo || s.roll,
+    rollNo: s.rollNo || s.roll || "",
+    name: s.name || "Student",
+    username: s.username || "",
+    grade: s.grade || "",
+    cgpa: s.cgpa || "",
+    class: s.class || s.section || "",
+    section: s.section || "",
+    department: s.department || s.dept || "",
+    photo: s.photo || s.avatar || "",
+    status: s.status || "active",
+    isMentee: Boolean(s.isMentee),
+  };
+}
+
+export function sanitizeGuestData(data) {
+  if (!data || typeof data !== "object") return data;
+  try {
+    const clone = JSON.parse(JSON.stringify(data));
+    const removePrivate = (obj) => {
+      if (!obj || typeof obj !== "object") return;
+      delete obj.phone;
+      delete obj.email;
+      delete obj.address;
+      delete obj.dob;
+      delete obj.fees;
+      delete obj.dueInvoices;
+      delete obj.feeHistory;
+      delete obj.parentPhone;
+      delete obj.parentEmail;
+      delete obj.parent;
+      delete obj.parents;
+      Object.values(obj).forEach((v) => {
+        if (v && typeof v === "object") removePrivate(v);
+      });
+    };
+    removePrivate(clone);
+    return clone;
+  } catch {
+    return data;
+  }
+}
+
 function cacheKeyFor(username) {
   return `edunex_db_${username || "guest"}`;
 }
@@ -95,7 +141,9 @@ export async function saveDatabase(db) {
     memoryUser = user;
     if (memorySaveTimeout) clearTimeout(memorySaveTimeout);
     memorySaveTimeout = setTimeout(() => {
-      secureSet(cacheKeyFor(user), db).catch(() => {});
+      const isGuest = !user || user === "guest";
+      const payload = isGuest ? sanitizeGuestData(db) : db;
+      secureSet(cacheKeyFor(user), payload).catch(() => {});
     }, 150);
     return true;
   } catch (err) {
@@ -1371,7 +1419,8 @@ export async function getFacultyRoster(className, force = false) {
     try {
       const params = targetClass ? { class: targetClass } : {};
       const res = await api.get("/students", { ...params, sort: "rollNo", limit: 200 }, {}, { noCache: true });
-      const roster = Array.isArray(res?.data) ? res.data : [];
+      const rawRoster = Array.isArray(res?.data) ? res.data : [];
+      const roster = rawRoster.map(sanitizeRosterItem);
       if (roster.length > 0) {
         await mergeIntoCache({ studentsRoster: roster });
         notifyDataSubscribers("roster", roster);
@@ -1421,7 +1470,7 @@ export async function getFacultyRoster(className, force = false) {
             const key = String(s.id || s.rollNo || s.roll);
             existingMap.set(key, { ...(existingMap.get(key) || {}), ...s });
           });
-          const mergedList = Array.from(existingMap.values());
+          const mergedList = Array.from(existingMap.values()).map(sanitizeRosterItem);
           await mergeIntoCache({ studentsRoster: mergedList });
           notifyDataSubscribers("roster", mergedList);
         }
@@ -1437,7 +1486,8 @@ export async function getFacultyRoster(className, force = false) {
   try {
     const params = targetClass ? { class: targetClass } : {};
     const res = await api.get("/students", { ...params, sort: "rollNo", limit: 200 });
-    const roster = Array.isArray(res?.data) ? res.data : [];
+    const rawRoster = Array.isArray(res?.data) ? res.data : [];
+    const roster = rawRoster.map(sanitizeRosterItem);
     if (roster.length > 0) {
       await mergeIntoCache({ studentsRoster: roster });
       return roster.map((s) => {
