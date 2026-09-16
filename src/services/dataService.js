@@ -4,6 +4,7 @@ import { resolveIdentity, invalidateIdentity, refreshSessionUserProfile } from "
 import { getDeterministicNickname } from "../utils/nicknameGenerator";
 import { formatUniversityRegNo } from "../utils/deptFormatter";
 import { sendTargetedNotification } from "../utils/notificationUtils";
+import { getStudentResidenceType } from "../utils/residenceUtils";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔐 SECURE DELTA SYNCHRONIZATION & EVENT EMITTER
@@ -476,6 +477,16 @@ function enrichStudentDoc(doc) {
   clone.registerNo = clone.regNo;
   clone.registerNumber = clone.regNo;
 
+  // Resolve residence (Hosteler) vs commute (Day Scholar Transport)
+  const resInfo = getStudentResidenceType(clone);
+  clone.isHosteler = resInfo.isHosteler;
+  clone.isTransport = resInfo.isTransport;
+  clone.hostel = resInfo.isHosteler;
+  clone.residentialStatus = resInfo.residenceLabel;
+  if (!clone.busRoute && resInfo.isTransport) {
+    clone.busRoute = "Route 12 - Campus Express";
+  }
+
   return clone;
 }
 
@@ -567,7 +578,6 @@ export async function getStudentData(force = false) {
         : identity.user?.nickname !== undefined && identity.user?.nickname !== null
         ? identity.user.nickname
         : "",
-    residentialStatus: identity.user?.residentialStatus || "Day Scholar",
     motherName: identity.user?.motherName || "—",
     email: identity.user?.email || `${identity.username || "student"}@edunex.edu`,
     phone: identity.user?.phone || identity.user?.mobile || "",
@@ -588,8 +598,12 @@ export async function getStudentData(force = false) {
     class: identity.user?.class || "III - AI & DS 'A'",
     batch: identity.user?.batch || "2023-2027",
     lateral: false,
-    hostel: false,
-    residential: identity.user?.residentialStatus || "Day Scholar",
+    hostel: identity.user?.hostel !== undefined ? Boolean(identity.user.hostel) : (identity.user?.residentialStatus === "Hosteler"),
+    residentialStatus: identity.user?.residentialStatus || (identity.user?.hostel ? "Hosteler" : "Day Scholar"),
+    residential: identity.user?.residentialStatus || (identity.user?.hostel ? "Hosteler" : "Day Scholar"),
+    roomNo: identity.user?.roomNo || "",
+    busRoute: identity.user?.busRoute || "",
+    transport: identity.user?.transport !== undefined ? Boolean(identity.user.transport) : true,
     status: "active",
     cgpa: (identity.user?.cgpa != null && !isNaN(parseFloat(identity.user.cgpa))) ? parseFloat(identity.user.cgpa).toFixed(2) : "-",
     gpa: (identity.user?.gpa != null && !isNaN(parseFloat(identity.user.gpa))) ? parseFloat(identity.user.gpa).toFixed(2) : "-",
@@ -626,6 +640,20 @@ export async function getStudentData(force = false) {
   const enriched = enrichStudentDoc(sessionDoc);
   await mergeIntoCache({ primaryStudent: enriched });
   return enriched;
+}
+
+export async function updateLocalStudentProfile(partialUpdate) {
+  try {
+    const db = await getDatabase();
+    const existing = db.primaryStudent || {};
+    const updated = enrichStudentDoc({ ...existing, ...partialUpdate });
+    await mergeIntoCache({ primaryStudent: updated });
+    notifyDataSubscribers("primaryStudent", updated);
+    return updated;
+  } catch (e) {
+    console.warn("updateLocalStudentProfile error:", e);
+    return null;
+  }
 }
 
 export async function getStudentSubjects() {

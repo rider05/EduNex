@@ -23,7 +23,7 @@ import EditProfileModal from "./modals/EditProfileModal";
 import FeedbackBugModal from "../../components/FeedbackBugModal";
 import { showToast } from "../../utils/toastService";
 import { SkeletonProfileScreen } from "../../components/common/SkeletonLoader";
-import { getStudentData, getInstitutions } from "../../services/dataService";
+import { getStudentData, getInstitutions, updateLocalStudentProfile } from "../../services/dataService";
 import { api, clearAuthSession } from "../../services/api";
 import { resolveIdentity, refreshSessionUserProfile } from "../../services/identityService";
 import { getRandomInterestingNickname, getDeterministicNickname, NICKNAME_CATEGORIES } from "../../utils/nicknameGenerator";
@@ -391,6 +391,7 @@ export default function ProfileScreen({ onLogout }) {
     const updated = { ...user, ...newData };
     setUser(updated);
     await secureSet(PROFILE_DATA_KEY, updated);
+    await updateLocalStudentProfile(updated).catch(() => null);
     setEditModalVisible(false);
     showToast("Profile details saved successfully!", "success");
   };

@@ -21,6 +21,8 @@ import BusTrackerModal from "./modal/BusTrackerModal";
 import MessMenuModal from "./modal/MessMenuModal";
 import { showToast } from "../../utils/toastService";
 import { resolveIdentity } from "../../services/identityService";
+import { getStudentData, subscribeToDataChanges } from "../../services/dataService";
+import { getStudentResidenceType } from "../../utils/residenceUtils";
 import { api } from "../../services/api";
 import { secureGet } from "../../services/secureStorage";
 import { onNavigateToNotification, getUserNotifications, subscribeToNotifications, isNotificationForUser } from "../../utils/notificationUtils";
@@ -35,6 +37,7 @@ export default function Header() {
   const [userLabel, setUserLabel] = useState("");
   const [studentName, setStudentName] = useState("");
   const [unreadNotifsCount, setUnreadNotifsCount] = useState(0);
+  const [residenceInfo, setResidenceInfo] = useState({ isHosteler: false, isTransport: true });
 
   const bottomExpand = useRef(new Animated.Value(0)).current;
 
@@ -113,6 +116,10 @@ export default function Header() {
     (async () => {
       try {
         const id = await resolveIdentity();
+        const studentDoc = (await getStudentData().catch(() => null)) || id?.student || {};
+        const res = getStudentResidenceType(studentDoc, id?.user);
+        setResidenceInfo(res);
+
         let name = id?.student?.name || id?.name || id?.fullName || "";
         if (!name || (id?.username && name.toLowerCase() === id.username.toLowerCase()) || /^[0-9]{2}[a-z]{2,5}[0-9]{2,5}$/i.test(String(name).trim())) {
           name = id?.student?.name || "Student";
@@ -122,12 +129,21 @@ export default function Header() {
           const parts = [id.student.name];
           if (id.student.course || id.student.department) parts.push(id.student.course || id.student.department);
           if (id.student.year) parts.push(`Year ${id.student.year}`);
+          parts.push(res.residenceLabel);
           setUserLabel(parts.join(" · "));
         }
       } catch (_e) { /* silent */ }
     })();
 
     fetchNotifications();
+
+    const unsubData = subscribeToDataChanges((entityKey, updated) => {
+      if (entityKey === "primaryStudent" && updated) {
+        const res = getStudentResidenceType(updated);
+        setResidenceInfo(res);
+        if (updated.name) setStudentName(updated.name);
+      }
+    });
 
     const unsubNotif = subscribeToNotifications(() => {
       fetchNotifications();
@@ -163,6 +179,7 @@ export default function Header() {
       unsub();
       unsubRoute();
       unsubNotif();
+      unsubData();
     };
   }, [bottomExpand, fetchNotifications]);
 
@@ -184,6 +201,16 @@ export default function Header() {
       useNativeDriver: false,
     }).start();
     setIsExpanded(false);
+
+    if ((modalKey === "hostel" || modalKey === "mess") && !residenceInfo.isHosteler) {
+      showToast("Hostel Gate Pass & Mess features are reserved for residential hosteler students.", "info");
+      return;
+    }
+    if (modalKey === "bus" && !residenceInfo.isTransport) {
+      showToast("Campus Bus Tracker is available for day scholar transport students.", "info");
+      return;
+    }
+
     setActiveModal(modalKey);
   };
 
@@ -265,38 +292,47 @@ export default function Header() {
                 <Text style={styles.quickActionLabel}>Leave / OD</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => handleOpenModal("hostel")}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: "#F59E0B" }]}>
-                  <Icon name="home-export-outline" size={19} color="#FFFFFF" />
-                </View>
-                <Text style={styles.quickActionLabel}>Gate Pass</Text>
-              </TouchableOpacity>
+              {/* Hosteler Services: Gate Pass & Mess Menu */}
+              {residenceInfo.isHosteler && (
+                <TouchableOpacity
+                  style={styles.quickActionItem}
+                  onPress={() => handleOpenModal("hostel")}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.quickActionIcon, { backgroundColor: "#F59E0B" }]}>
+                    <Icon name="home-export-outline" size={19} color="#FFFFFF" />
+                  </View>
+                  <Text style={styles.quickActionLabel}>Gate Pass</Text>
+                </TouchableOpacity>
+              )}
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => handleOpenModal("bus")}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: "#0EA5E9" }]}>
-                  <Icon name="bus-clock" size={19} color="#FFFFFF" />
-                </View>
-                <Text style={styles.quickActionLabel}>Bus Tracker</Text>
-              </TouchableOpacity>
+              {/* Day Scholar / Transport Service: Bus Tracker */}
+              {residenceInfo.isTransport && (
+                <TouchableOpacity
+                  style={styles.quickActionItem}
+                  onPress={() => handleOpenModal("bus")}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.quickActionIcon, { backgroundColor: "#0EA5E9" }]}>
+                    <Icon name="bus-clock" size={19} color="#FFFFFF" />
+                  </View>
+                  <Text style={styles.quickActionLabel}>Bus Tracker</Text>
+                </TouchableOpacity>
+              )}
 
-              <TouchableOpacity
-                style={styles.quickActionItem}
-                onPress={() => handleOpenModal("mess")}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: "#F43F5E" }]}>
-                  <Icon name="silverware-fork-knife" size={19} color="#FFFFFF" />
-                </View>
-                <Text style={styles.quickActionLabel}>Mess Menu</Text>
-              </TouchableOpacity>
+              {/* Hosteler Services: Mess Menu */}
+              {residenceInfo.isHosteler && (
+                <TouchableOpacity
+                  style={styles.quickActionItem}
+                  onPress={() => handleOpenModal("mess")}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.quickActionIcon, { backgroundColor: "#F43F5E" }]}>
+                    <Icon name="silverware-fork-knife" size={19} color="#FFFFFF" />
+                  </View>
+                  <Text style={styles.quickActionLabel}>Mess Menu</Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={styles.quickActionItem}

@@ -21,6 +21,7 @@ import { resolveIdentity } from "../../../services/identityService";
 import { showToast } from "../../../utils/toastService";
 import { getRandomInterestingNickname } from "../../../utils/nicknameGenerator";
 import AddressAutocompleteInput from "../../../components/common/AddressAutocompleteInput";
+import { getStudentResidenceType } from "../../../utils/residenceUtils";
 
 function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
   const { colors } = useTheme();
@@ -29,6 +30,9 @@ function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
   const [nickname, setNickname] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [residentialStatus, setResidentialStatus] = useState("Day Scholar");
+  const [roomNo, setRoomNo] = useState("");
+  const [busRoute, setBusRoute] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -37,6 +41,10 @@ function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
       setNickname(user.nickname || "");
       setPhone(user.phone || "");
       setAddress(user.address || "");
+      const res = getStudentResidenceType(user);
+      setResidentialStatus(res.isHosteler ? "Hosteler" : "Day Scholar");
+      setRoomNo(user.roomNo || user.room || "");
+      setBusRoute(user.busRoute || user.route || "Route 12 - Campus Express");
     }
   }, [visible, user]);
 
@@ -71,11 +79,20 @@ function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
 
     setSaving(true);
     try {
+      const isHost = residentialStatus === "Hosteler";
       const updatePayload = {
         name: name.trim(),
         nickname: nickname.trim(),
         phone: phone.trim(),
         address: address.trim(),
+        residentialStatus,
+        hostel: isHost,
+        isHosteler: isHost,
+        transport: !isHost,
+        isTransport: !isHost,
+        roomNo: isHost ? (roomNo.trim() || "B-204") : null,
+        hostelName: isHost ? "Cauvery Residence" : null,
+        busRoute: !isHost ? (busRoute.trim() || "Route 12 - Campus Express") : null,
       };
 
       try {
@@ -278,6 +295,92 @@ function EditProfileModal({ visible, onClose, user, onUpdate, onSave }) {
                   placeholder="Type street, area, city or pincode..."
                   editable={!saving}
                 />
+
+                {/* 5. Campus Residence & Daily Commute Mode */}
+                <Text style={[modalStyles.inputLabel, { color: colors.secondaryText, marginTop: 14 }]}>
+                  Campus Residence & Commute
+                </Text>
+                <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
+                  <TouchableOpacity
+                    onPress={() => setResidentialStatus("Hosteler")}
+                    style={{
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      borderWidth: 1.5,
+                      borderColor: residentialStatus === "Hosteler" ? "#F59E0B" : colors.divider,
+                      backgroundColor: residentialStatus === "Hosteler" ? "#F59E0B18" : colors.primaryBackground,
+                    }}
+                  >
+                    <Icon name="home-city" size={18} color={residentialStatus === "Hosteler" ? "#D97706" : colors.secondaryText} />
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: residentialStatus === "Hosteler" ? "800" : "600",
+                        color: residentialStatus === "Hosteler" ? "#D97706" : colors.secondaryText,
+                      }}
+                    >
+                      Hosteler
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setResidentialStatus("Day Scholar")}
+                    style={{
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      borderWidth: 1.5,
+                      borderColor: residentialStatus === "Day Scholar" ? "#0EA5E9" : colors.divider,
+                      backgroundColor: residentialStatus === "Day Scholar" ? "#0EA5E918" : colors.primaryBackground,
+                    }}
+                  >
+                    <Icon name="bus" size={18} color={residentialStatus === "Day Scholar" ? "#0284C7" : colors.secondaryText} />
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: residentialStatus === "Day Scholar" ? "800" : "600",
+                        color: residentialStatus === "Day Scholar" ? "#0284C7" : colors.secondaryText,
+                      }}
+                    >
+                      Day Scholar (Bus)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {residentialStatus === "Hosteler" ? (
+                  <View style={[modalStyles.inputWrap, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, marginBottom: 16 }]}>
+                    <Icon name="door" size={20} color="#F59E0B" />
+                    <TextInput
+                      style={[modalStyles.textInput, { color: colors.primaryText }]}
+                      value={roomNo}
+                      onChangeText={setRoomNo}
+                      placeholder="Room No (e.g. B-204 / Cauvery Block)"
+                      placeholderTextColor={colors.disabledText}
+                      editable={!saving}
+                    />
+                  </View>
+                ) : (
+                  <View style={[modalStyles.inputWrap, { backgroundColor: colors.primaryBackground, borderColor: colors.divider, marginBottom: 16 }]}>
+                    <Icon name="bus-clock" size={20} color="#0EA5E9" />
+                    <TextInput
+                      style={[modalStyles.textInput, { color: colors.primaryText }]}
+                      value={busRoute}
+                      onChangeText={setBusRoute}
+                      placeholder="Bus Route (e.g. Route 12 - Campus Line)"
+                      placeholderTextColor={colors.disabledText}
+                      editable={!saving}
+                    />
+                  </View>
+                )}
               </ScrollView>
 
               {/* Action Buttons */}

@@ -17,7 +17,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { showToast } from "../../utils/toastService";
 
 // Data & Services
-import { getStudentData, getGradeLevels, getParentNotices, getInstitutions, getAssignments, getStudentAttendanceSummary } from "../../services/dataService";
+import { getStudentData, getGradeLevels, getParentNotices, getInstitutions, getAssignments, getStudentAttendanceSummary, subscribeToDataChanges } from "../../services/dataService";
 import { SkeletonScreenLoader } from "../../components/common/SkeletonLoader";
 import { formatDeptName, formatUniversityRegNo, matchStudentSubject } from "../../utils/deptFormatter";
 import useRefreshOnForeground from "../../hooks/useRefreshOnForeground";
@@ -32,7 +32,11 @@ import AttendanceModal from "./modals/AttendanceModal";
 import LibraryModal from "./modals/LibraryModal";
 import FullTimeTable from "./modals/FullTimeTable";
 import LeaveFormModal from "../../components/header/modal/LeaveFormModal";
+import HostelFormModal from "../../components/header/modal/HostelFormModal";
+import MessMenuModal from "../../components/header/modal/MessMenuModal";
+import BusTrackerModal from "../../components/header/modal/BusTrackerModal";
 import PaymentModal from "./modals/PaymentModal";
+import { getStudentResidenceType } from "../../utils/residenceUtils";
 
 // Dynamic parser to convert standard time formats into minutes from midnight
 const parseTimeToMinutes = (timeStr, durationStr = "") => {
@@ -268,6 +272,12 @@ export default function DashboardScreen() {
   const [leaveModalVisible, setLeaveModalVisible] = useState(false);
   const [timetableModalVisible, setTimetableModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [hostelModalVisible, setHostelModalVisible] = useState(false);
+  const [messModalVisible, setMessModalVisible] = useState(false);
+  const [busModalVisible, setBusModalVisible] = useState(false);
+
+  // Derived residence and transport type (Hosteler vs Day Scholar Transport)
+  const residenceInfo = useMemo(() => getStudentResidenceType(studentData), [studentData]);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -332,10 +342,16 @@ export default function DashboardScreen() {
             data.residentialStatus ||
             (typeof data.hostel === "boolean"
               ? data.hostel
-                ? "Hosteller"
+                ? "Hosteler"
                 : "Day Scholar"
               : data.hostel) ||
             "Day Scholar",
+          hostel: data.hostel !== undefined ? Boolean(data.hostel) : data.residentialStatus === "Hosteler",
+          isHosteler: data.isHosteler,
+          isTransport: data.isTransport,
+          transport: data.transport,
+          roomNo: data.roomNo || data.hostelDetails?.roomNo || "",
+          busRoute: data.busRoute || "",
           advisor:
             (typeof data.advisor === "string"
               ? data.advisor
@@ -465,6 +481,24 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     loadData();
+
+    const unsubData = subscribeToDataChanges((entityKey, updated) => {
+      if (entityKey === "primaryStudent" && updated) {
+        setStudentData((prev) => ({
+          ...prev,
+          ...updated,
+          residentialStatus: updated.residentialStatus || prev.residentialStatus,
+          hostel: updated.hostel !== undefined ? updated.hostel : prev.hostel,
+          isHosteler: updated.isHosteler !== undefined ? updated.isHosteler : prev.isHosteler,
+          isTransport: updated.isTransport !== undefined ? updated.isTransport : prev.isTransport,
+          transport: updated.transport !== undefined ? updated.transport : prev.transport,
+          roomNo: updated.roomNo || prev.roomNo,
+          busRoute: updated.busRoute || prev.busRoute,
+        }));
+      }
+    });
+
+    return () => unsubData();
   }, [loadData]);
 
   useEffect(() => {
@@ -814,6 +848,25 @@ export default function DashboardScreen() {
                     <View style={[styles.rollBadge, { backgroundColor: colors.primaryAccent + "18" }]}>
                       <Text style={[styles.rollBadgeText, { color: colors.primaryAccent }]}>
                         {studentData.rollNo}
+                      </Text>
+                    </View>
+                    <View style={[
+                      styles.residenceMetaBadge,
+                      {
+                        backgroundColor: residenceInfo.isHosteler ? "#F59E0B18" : "#0EA5E918",
+                        borderColor: residenceInfo.isHosteler ? "#F59E0B44" : "#0EA5E944",
+                      }
+                    ]}>
+                      <Icon
+                        name={residenceInfo.isHosteler ? "home-city-outline" : "bus"}
+                        size={11}
+                        color={residenceInfo.isHosteler ? "#D97706" : "#0284C7"}
+                      />
+                      <Text style={[
+                        styles.residenceMetaBadgeText,
+                        { color: residenceInfo.isHosteler ? "#D97706" : "#0284C7" }
+                      ]}>
+                        {residenceInfo.residenceLabel}
                       </Text>
                     </View>
                     <Text style={[styles.studentMetaText, { color: colors.secondaryText }]}>
@@ -1269,6 +1322,51 @@ export default function DashboardScreen() {
                 <Text style={[styles.actionItemTitle, { color: colors.primaryText }]}>Digital ID</Text>
                 <Text style={[styles.actionItemSub, { color: colors.secondaryText }]}>Smart Pass</Text>
               </TouchableOpacity>
+
+              {/* Hosteler Exclusive Service: Hostel Outing & Gate Pass */}
+              {residenceInfo.isHosteler && (
+                <TouchableOpacity
+                  style={[styles.actionGridItem, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+                  onPress={() => setHostelModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.actionIconWrap, { backgroundColor: "#F59E0B18" }]}>
+                    <Icon name="home-export-outline" size={22} color="#F59E0B" />
+                  </View>
+                  <Text style={[styles.actionItemTitle, { color: colors.primaryText }]}>Gate Pass</Text>
+                  <Text style={[styles.actionItemSub, { color: colors.secondaryText }]}>Outing & Leave</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Day Scholar / Transport Exclusive Service: Campus Bus Tracker */}
+              {residenceInfo.isTransport && (
+                <TouchableOpacity
+                  style={[styles.actionGridItem, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+                  onPress={() => setBusModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.actionIconWrap, { backgroundColor: "#0EA5E918" }]}>
+                    <Icon name="bus-clock" size={22} color="#0EA5E9" />
+                  </View>
+                  <Text style={[styles.actionItemTitle, { color: colors.primaryText }]}>Bus Tracker</Text>
+                  <Text style={[styles.actionItemSub, { color: colors.secondaryText }]}>Transit GPS</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Hosteler Exclusive Service: Hostel Mess Menu */}
+              {residenceInfo.isHosteler && (
+                <TouchableOpacity
+                  style={[styles.actionGridItem, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}
+                  onPress={() => setMessModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.actionIconWrap, { backgroundColor: "#F43F5E18" }]}>
+                    <Icon name="silverware-fork-knife" size={22} color="#F43F5E" />
+                  </View>
+                  <Text style={[styles.actionItemTitle, { color: colors.primaryText }]}>Mess Menu</Text>
+                  <Text style={[styles.actionItemSub, { color: colors.secondaryText }]}>Dining Schedule</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* ========================================================================= */}
@@ -1689,6 +1787,11 @@ export default function DashboardScreen() {
       <LibraryModal visible={visibleModal === "library"} onClose={closeModal} />
       <FullTimeTable visible={timetableModalVisible || visibleModal === "timetable"} onClose={() => { setTimetableModalVisible(false); closeModal(); }} />
 
+      {/* Residence & Commute Modals */}
+      <HostelFormModal visible={hostelModalVisible || visibleModal === "hostel"} onClose={() => { setHostelModalVisible(false); closeModal(); }} />
+      <MessMenuModal visible={messModalVisible || visibleModal === "mess"} onClose={() => { setMessModalVisible(false); closeModal(); }} />
+      <BusTrackerModal visible={busModalVisible || visibleModal === "bus"} onClose={() => { setBusModalVisible(false); closeModal(); }} />
+
       {/* Role-Aware Payment Modal for Students */}
       <PaymentModal
         visible={paymentModalVisible}
@@ -1768,6 +1871,19 @@ const getStyles = (colors) =>
     },
     rollBadgeText: {
       fontSize: 10.5,
+      fontWeight: "800",
+    },
+    residenceMetaBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      paddingVertical: 2,
+      paddingHorizontal: 6,
+      borderRadius: 5,
+      borderWidth: 1,
+    },
+    residenceMetaBadgeText: {
+      fontSize: 10,
       fontWeight: "800",
     },
     studentMetaText: {
