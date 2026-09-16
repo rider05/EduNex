@@ -39,7 +39,7 @@ export function compareVersions(v1 = "1.0.0", v2 = "1.0.0") {
  */
 export async function checkAppUpdate(ignoreDismissed = false) {
   try {
-    const res = await api.get("/appUpdates", { limit: 5, sort: "-versionCode" }, { bypassCache: true });
+    const res = await api.get("/appUpdates", { limit: 5, sort: "-versionCode" }, {}, { bypassCache: true });
     const updates = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : res?.docs || [];
 
     if (!updates || updates.length === 0) {
