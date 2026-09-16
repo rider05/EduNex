@@ -7,31 +7,31 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { secureGet, secureSet } from "./services/secureStorage";
+import { secureGet, secureSet } from "../src/services/secureStorage";
 import * as NavigationBar from "expo-navigation-bar";
 
-import { ThemeProvider, useTheme } from "./context/ThemeContext";
-import { ToastProvider, useAppToast } from "./utils/AnimatedToast";
-import { setToastRef } from "./utils/toastService";
-import { onUnauthorized, clearAuthSession } from "./services/api";
-import { resolveIdentity, invalidateIdentity } from "./services/identityService";
-import { getStudentData } from "./services/dataService";
+import { ThemeProvider, useTheme } from "../src/context/ThemeContext";
+import { ToastProvider, useAppToast } from "../src/utils/AnimatedToast";
+import { setToastRef } from "../src/utils/toastService";
+import { onUnauthorized, clearAuthSession } from "../src/services/api";
+import { resolveIdentity, invalidateIdentity } from "../src/services/identityService";
+import { getStudentData } from "../src/services/dataService";
 
 // Headers
-import Header from "./components/header/Header";
-import HeaderAdmin from "./components/header/HeaderAdmin";
-import HeaderStaff from "./components/header/HeaderStaff";
-import HeaderParent from "./components/header/HeaderParent";
+import Header from "../src/components/header/Header";
+import HeaderAdmin from "../src/components/header/HeaderAdmin";
+import HeaderStaff from "../src/components/header/HeaderStaff";
+import HeaderParent from "../src/components/header/HeaderParent";
 
 // Navigators
-import AppNavigator from "./components/nav/AppNavigator";
-import AppNavigatorAdmin from "./components/nav/AppNavigatorAdmin";
-import AppNavigatorStaff from "./components/nav/AppNavigatorStaff";
-import AppNavigatorParent from "./components/nav/AppNavigatorParent";
+import AppNavigator from "../src/components/nav/AppNavigator";
+import AppNavigatorAdmin from "../src/components/nav/AppNavigatorAdmin";
+import AppNavigatorStaff from "../src/components/nav/AppNavigatorStaff";
+import AppNavigatorParent from "../src/components/nav/AppNavigatorParent";
 
 // Screens
-import SkipScreen from "./screens/SkipScreen";
-import CardLoginModal from "./components/LoginPage";
+import SkipScreen from "../src/screens/SkipScreen";
+import CardLoginModal from "../src/components/LoginPage";
 
 function IndexCore() {
   const { colors } = useTheme();

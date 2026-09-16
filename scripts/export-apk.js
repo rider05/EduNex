@@ -63,30 +63,30 @@ if (fs.existsSync(buildGradlePath)) {
 }
 
 // 1d. Sync fallback version in updateService.js
-const updateServicePath = path.join(projectRoot, "app", "services", "updateService.js");
+const updateServicePath = path.join(projectRoot, "src", "services", "updateService.js");
 if (fs.existsSync(updateServicePath)) {
   let content = fs.readFileSync(updateServicePath, "utf-8");
   content = content.replace(/(Constants\.manifest\?\.version\s*\|\|\s*)"[^"]*"/g, `$1"${targetVersion}"`);
   fs.writeFileSync(updateServicePath, content, "utf-8");
-  console.log(`   ✓ Synced app/services/updateService.js fallback -> v${targetVersion}`);
+  console.log(`   ✓ Synced src/services/updateService.js fallback -> v${targetVersion}`);
 }
 
 // 1e. Sync fallback version in AppUpdateModal.js
-const updateModalPath = path.join(projectRoot, "app", "components", "common", "AppUpdateModal.js");
+const updateModalPath = path.join(projectRoot, "src", "components", "common", "AppUpdateModal.js");
 if (fs.existsSync(updateModalPath)) {
   let content = fs.readFileSync(updateModalPath, "utf-8");
   content = content.replace(/Constants\.manifest\?\.version\s*\|\|\s*"[^"]*"/g, `Constants.manifest?.version || "${targetVersion}"`);
   fs.writeFileSync(updateModalPath, content, "utf-8");
-  console.log(`   ✓ Synced app/components/common/AppUpdateModal.js fallback -> v${targetVersion}`);
+  console.log(`   ✓ Synced src/components/common/AppUpdateModal.js fallback -> v${targetVersion}`);
 }
 
 // 1f. Sync FeedbackBugModal.js
-const feedbackModalPath = path.join(projectRoot, "app", "components", "FeedbackBugModal.js");
+const feedbackModalPath = path.join(projectRoot, "src", "components", "FeedbackBugModal.js");
 if (fs.existsSync(feedbackModalPath)) {
   let content = fs.readFileSync(feedbackModalPath, "utf-8");
   content = content.replace(/appVersion:\s*"[^"]*"/g, `appVersion: "${targetVersion} (EduNex Ecosystem)"`);
   fs.writeFileSync(feedbackModalPath, content, "utf-8");
-  console.log(`   ✓ Synced app/components/FeedbackBugModal.js -> v${targetVersion}`);
+  console.log(`   ✓ Synced src/components/FeedbackBugModal.js -> v${targetVersion}`);
 }
 
 // 1g. Sync related sister projects if present
