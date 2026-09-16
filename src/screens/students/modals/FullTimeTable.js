@@ -164,6 +164,7 @@ export default function FullTimetable({ visible = true, onClose }) {
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [timetableData, setTimetableData] = useState({});
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const timetableDataRef = useRef({});
   timetableDataRef.current = timetableData;
 
@@ -229,6 +230,7 @@ export default function FullTimetable({ visible = true, onClose }) {
 
   const fetchTimetable = useCallback(async (isInitial = false) => {
     if (isInitial) setLoading(true);
+    setLoadError(null);
     try {
       const res = await api.get("/timetable").catch(() => null);
       const docs = res?.data || [];
@@ -258,10 +260,21 @@ export default function FullTimetable({ visible = true, onClose }) {
     } catch (err) {
       console.log("Timetable fetch error, showing empty state:", err);
       setTimetableData({});
+      const status = err?.status || err?.data?.status;
+      const tooMany = status === 429 || /too many requests/i.test(err?.message || "");
+      setLoadError(
+        tooMany
+          ? "The server is busy (request limit reached). Pull up the schedule again in a minute."
+          : (err?.message ? `Unable to fetch the timetable. ${err.message}` : "Unable to fetch the timetable.")
+      );
     } finally {
       setLoading(false);
     }
   }, [studentCohort.deptShort, studentCohort.department]);
+
+  const handleRetryTimetable = useCallback(() => {
+    fetchTimetable(true);
+  }, [fetchTimetable]);
 
   useEffect(() => {
     if (visible) {
@@ -542,6 +555,22 @@ export default function FullTimetable({ visible = true, onClose }) {
               <Text style={{ color: colors.secondaryText, marginTop: 10, fontSize: 12 }}>
                 Loading {studentCohort.deptShort} timetable...
               </Text>
+            </View>
+          ) : loadError ? (
+            <View style={[styles.emptyCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
+              <Icon name="cloud-alert-outline" size={44} color="#EF4444" />
+              <Text style={[styles.emptyTitle, { color: colors.primaryText }]}>Couldn't Load Timetable</Text>
+              <Text style={[styles.emptySub, { color: colors.secondaryText }]}>
+                {loadError}
+              </Text>
+              <TouchableOpacity
+                style={[styles.retryBtn, { backgroundColor: colors.primaryAccent }]}
+                onPress={handleRetryTimetable}
+                activeOpacity={0.85}
+              >
+                <Icon name="refresh" size={16} color="#FFFFFF" />
+                <Text style={styles.retryBtnText}>Retry</Text>
+              </TouchableOpacity>
             </View>
           ) : filteredSchedule.length === 0 ? (
             <View style={[styles.emptyCard, { backgroundColor: colors.cardBackground, borderColor: colors.divider }]}>
@@ -1149,6 +1178,21 @@ const getStyles = (colors, _isDarkMode) =>
       fontSize: 12,
       textAlign: "center",
       marginTop: 4,
+    },
+    retryBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      marginTop: 16,
+      paddingHorizontal: 22,
+      paddingVertical: 10,
+      borderRadius: 10,
+    },
+    retryBtnText: {
+      color: "#FFFFFF",
+      fontSize: 12.5,
+      fontWeight: "800",
     },
 
     /* Modal Backdrop & Card */

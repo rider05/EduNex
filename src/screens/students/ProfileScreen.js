@@ -177,6 +177,22 @@ export default function ProfileScreen({ onLogout }) {
             ? s.universityNo
             : formatUniversityRegNo(studentRoll, studentDept);
 
+        const attendanceVal =
+          typeof s.overallAttendance === "number"
+            ? s.overallAttendance
+            : s.attPct !== undefined && s.attPct !== null
+            ? s.attPct
+            : typeof s.attendance === "number"
+            ? s.attendance
+            : typeof s.attendance === "object" && s.attendance !== null
+            ? s.attendance.overall ?? s.attendance.percentage ?? s.attendance.pct
+            : s.attendance ?? "";
+
+        const cleanVal = (v) =>
+          v === undefined || v === null || String(v).trim() === "" || String(v).trim() === "—" || String(v).trim().toLowerCase() === "n/a"
+            ? "-"
+            : v;
+
         setUser({
           name: s.name || sessionUser?.name || "-",
           nickname: initialNick,
@@ -185,12 +201,18 @@ export default function ProfileScreen({ onLogout }) {
           email: s.email || sessionUser?.email || "-",
           phone: s.phone || s.mobile || sessionUser?.mobile || "-",
           program: studentDept,
-          address: s.parent?.address || s.address || "-",
-          bloodGroup: s.bloodGroup || "-",
-          batch: s.batch || "-",
+          address: cleanVal(s.parent?.address || s.permanentAddress || s.address || s.permanent || "-"),
+          bloodGroup: cleanVal(s.bloodGroup || s.blood || "-"),
+          batch: cleanVal(s.batch || s.academicBatch || "-"),
           department: s.department || s.dept || "-",
-          semester: s.semester || "-",
-          dob: s.dob || "-",
+          semester: cleanVal(s.semester || s.session || "-"),
+          year: cleanVal(s.year ? `Year ${s.year}` : s.yearGrade || s.studyYear || "-"),
+          gender: cleanVal(s.gender || s.sex || s.sexTitle || "-"),
+          cgpa: cleanVal(
+            typeof s.cgpa === "object" && s.cgpa !== null ? s.cgpa.cgpa ?? s.cgpa.score ?? "-" : s.cgpa ?? s.gpa ?? "-"
+          ),
+          attendance: attendanceVal !== "" && attendanceVal !== null && attendanceVal !== undefined ? `${attendanceVal}%` : "-",
+          dob: cleanVal(s.dob || s.dateOfBirth || "-"),
           advisor: mentorVal,
           mentor: mentorVal,
           mentorName: mentorVal,
@@ -213,10 +235,12 @@ export default function ProfileScreen({ onLogout }) {
                 : "Day Scholar (Inside)"
               : s.hostel) ||
             "-",
-          fatherName: s.parent?.name || s.fatherName || "-",
-          fatherPhone: s.parentPhone || s.parent?.phone || s.parent?.mobile || s.fatherPhone || "-",
-          motherName: s.motherName || s.parent?.motherName || "-",
-          emergencyContact: s.emergencyContact || s.parentPhone || s.parent?.phone || "-",
+          fatherName: cleanVal(s.fatherName || s.parent?.name || "-"),
+          fatherPhone: cleanVal(s.fatherPhone || s.parentPhone || s.parent?.phone || s.parent?.mobile || "-"),
+          motherName: cleanVal(s.motherName || s.parent?.motherName || "-"),
+          parentEmail: cleanVal(s.parentEmail || s.parent?.email || "-"),
+          parentRelation: cleanVal(s.parentRelation || s.parent?.relation || "Guardian"),
+          emergencyContact: cleanVal(s.emergencyContact || s.parentPhone || s.parent?.phone || "-"),
         });
       } else {
         const local = await secureGet(PROFILE_DATA_KEY);
@@ -648,10 +672,14 @@ export default function ProfileScreen({ onLogout }) {
               <View style={styles.dataGrid}>
                 <DataRow icon="card-account-details-outline" label="University Reg. No." value={user.regNo} colors={colors} />
                 <DataRow icon="identifier" label="Roll Number" value={user.id} colors={colors} />
+                <DataRow icon="calendar-start" label="Year of Study" value={user.year} colors={colors} />
+                <DataRow icon="ladder" label="Semester" value={user.semester} colors={colors} />
                 <DataRow icon="school-outline" label="Academic Batch" value={user.batch} colors={colors} />
                 <DataRow icon="domain" label="Department" value={user.department} colors={colors} />
                 <DataRow icon="account-tie-outline" label="Assigned Mentor" value={user.advisor && user.advisor !== "-" ? user.advisor : user.mentorName || "-"} colors={colors} />
                 <DataRow icon="home-city-outline" label="Residence Status" value={user.residentialStatus || user.hostel || "-"} colors={colors} />
+                <DataRow icon="chart-line" label="Current CGPA" value={user.cgpa} colors={colors} />
+                <DataRow icon="calendar-check-outline" label="Overall Attendance" value={user.attendance} colors={colors} />
               </View>
             </View>
 
@@ -677,6 +705,7 @@ export default function ProfileScreen({ onLogout }) {
                     colors={colors}
                   />
                 </TouchableOpacity>
+                <DataRow icon="gender-male-female" label="Gender" value={user.gender} colors={colors} />
                 <DataRow icon="email-outline" label="Official Email" value={user.email} colors={colors} />
                 <DataRow icon="phone-outline" label="Mobile Number" value={user.phone} colors={colors} />
                 <DataRow icon="calendar-account" label="Date of Birth" value={user.dob} colors={colors} />
@@ -697,7 +726,9 @@ export default function ProfileScreen({ onLogout }) {
               <View style={styles.dataGrid}>
                 <DataRow icon="account-supervisor-circle" label="Father's Name" value={user.fatherName} colors={colors} />
                 <DataRow icon="phone-outline" label="Father's Contact" value={user.fatherPhone} colors={colors} />
-                <DataRow icon="account-heart-outline" label="Mother's Name" value={user.motherName || "—"} colors={colors} />
+                <DataRow icon="account-heart-outline" label="Mother's Name" value={user.motherName || "-"} colors={colors} />
+                <DataRow icon="email-lock-outline" label="Guardian Email" value={user.parentEmail} colors={colors} />
+                <DataRow icon="account-key-outline" label="Relationship to Student" value={user.parentRelation} colors={colors} />
                 <DataRow icon="alert-decagram-outline" label="Emergency Contact" value={user.emergencyContact} colors={colors} />
               </View>
             </View>

@@ -482,17 +482,16 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
 
                     <View style={styles.demoChipsRow}>
                       {[
-                        { role: "Student", user: "aarav", roll: "25BAD001", color: "#6366F1", icon: "school" },
-                        { role: "Parent", user: "aarav_parent", roll: "Parent", color: "#F59E0B", icon: "account-child" },
-                        { role: "Faculty", user: "ananthangel", roll: "Faculty", color: "#0EA5E9", icon: "account-tie" },
-                        { role: "Admin", user: "balaji", roll: "Admin", color: "#10B981", icon: "shield-check" },
+                        { role: "Student", user: "25bad015", pass: "25BAD015", color: "#6366F1", icon: "school" },
+                        { role: "Faculty", user: "ananthangel", pass: "123456", color: "#0EA5E9", icon: "account-tie" },
+                        { role: "Admin", user: "balaji", pass: "123456", color: "#10B981", icon: "shield-check" },
                       ].map((d) => (
                         <TouchableOpacity
                           key={d.user}
                           style={[styles.demoChip, { borderColor: d.color + "55", backgroundColor: d.color + "12" }]}
                           onPress={() => {
                             setUsername(d.user);
-                            setPassword("123456");
+                            setPassword(d.pass);
                             showToastMsg(`Filled ${d.role} credentials (${d.user})`, "success");
                           }}
                           activeOpacity={0.8}
@@ -502,6 +501,10 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
                         </TouchableOpacity>
                       ))}
                     </View>
+                    <Text style={styles.demoHintText}>
+                      Students sign in with your roll number as both username and password (e.g. 25bad015 / 25BAD015).
+                      Faculty & Admin credentials use password 123456.
+                    </Text>
                   </View>
 
                   <TouchableOpacity
@@ -1018,6 +1021,15 @@ const styles = StyleSheet.create({
   demoChipText: {
     fontSize: 12,
     fontWeight: "700",
+  },
+  demoHintText: {
+    marginTop: 10,
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: "#94A3B8",
+    textAlign: "center",
+    fontWeight: "500",
+    paddingHorizontal: 6,
   },
   skipBtn: {
     marginTop: 16,
