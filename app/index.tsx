@@ -70,6 +70,8 @@ function IndexCore() {
           storedRole &&
           ["admin", "staff", "parent", "student", "guest"].includes(storedRole)
             ? storedRole
+            : storedRole === "teacher" || storedRole === "faculty" || storedRole === "prof" || storedRole === "tutor"
+            ? "staff"
             : "guest";
 
         if (!mounted) return;
@@ -102,9 +104,9 @@ function IndexCore() {
   // MAP BACKEND ROLES TO APP NAVIGATOR
   const mapRole = (r?: string | null) => {
     if (!r) return "guest";
-    const v = r.toLowerCase();
+    const v = r.toLowerCase().trim();
     if (v === "stud" || v === "student") return "student";
-    if (v === "staff" || v === "faculty") return "staff";
+    if (v === "staff" || v === "faculty" || v === "teacher" || v === "prof" || v === "tutor") return "staff";
     if (v === "parent") return "parent";
     if (v === "admin") return "admin";
     return "guest";

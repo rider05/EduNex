@@ -293,9 +293,16 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
         // Pull this user's live records from MongoDB into the local sync cache
         syncAfterLogin().catch((e) => console.warn("syncAfterLogin err:", e));
 
-        const role = String(user?.role || "").toLowerCase();
+        const rawRole = String(user?.role || "").toLowerCase().trim();
+        const role =
+          rawRole === "teacher" || rawRole === "faculty" || rawRole === "staff" || rawRole === "prof" || rawRole === "tutor"
+            ? "staff"
+            : rawRole === "stud" || rawRole === "student"
+            ? "student"
+            : rawRole;
+
         let studentDoc = null;
-        if (role === "student" || role === "stud") {
+        if (role === "student") {
           studentDoc = await getStudentData(true).catch(() => null);
         }
         const id = await resolveIdentity(true).catch(() => null);
@@ -328,7 +335,7 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
         }
 
         if (!personName || isRollOrId(personName)) {
-          personName = role.includes("student") || role === "stud" ? "Student" : (role ? role.charAt(0).toUpperCase() + role.slice(1) : "");
+          personName = role === "student" ? "Student" : (role ? role.charAt(0).toUpperCase() + role.slice(1) : "");
         }
 
         setIsSuccess(true);
@@ -472,39 +479,30 @@ export default function CardLoginModal({ visible, onClose, onSkip }) {
                     <Text style={styles.buttonText}>SIGN IN</Text>
                   </TouchableOpacity>
 
-                  {/* Quick Demo Sign-In Pills */}
-                  <View style={styles.demoSection}>
-                    <View style={styles.separatorContainer}>
-                      <View style={styles.line} />
-                      <Text style={styles.separatorText}>Quick Demo Sign-In</Text>
-                      <View style={styles.line} />
-                    </View>
+                  <View style={styles.separatorContainer}>
+                    <View style={styles.line} />
+                    <Text style={styles.separatorText}>or continue with</Text>
+                    <View style={styles.line} />
+                  </View>
 
-                    <View style={styles.demoChipsRow}>
-                      {[
-                        { role: "Student", user: "25bad015", pass: "25BAD015", color: "#6366F1", icon: "school" },
-                        { role: "Faculty", user: "ananthangel", pass: "123456", color: "#0EA5E9", icon: "account-tie" },
-                        { role: "Admin", user: "balaji", pass: "123456", color: "#10B981", icon: "shield-check" },
-                      ].map((d) => (
-                        <TouchableOpacity
-                          key={d.user}
-                          style={[styles.demoChip, { borderColor: d.color + "55", backgroundColor: d.color + "12" }]}
-                          onPress={() => {
-                            setUsername(d.user);
-                            setPassword(d.pass);
-                            showToastMsg(`Filled ${d.role} credentials (${d.user})`, "success");
-                          }}
-                          activeOpacity={0.8}
-                        >
-                          <Icon name={d.icon} size={14} color={d.color} style={{ marginRight: 4 }} />
-                          <Text style={[styles.demoChipText, { color: d.color }]}>{d.role}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                    <Text style={styles.demoHintText}>
-                      Students sign in with your roll number as both username and password (e.g. 25bad015 / 25BAD015).
-                      Faculty & Admin credentials use password 123456.
-                    </Text>
+                  <View style={styles.socialButtonsRow}>
+                    <TouchableOpacity
+                      style={[styles.socialButton, { backgroundColor: "#EA4335" }]}
+                      onPress={handleGoogleLogin}
+                      activeOpacity={0.85}
+                    >
+                      <Icon name="google" size={18} color="#FFFFFF" />
+                      <Text style={styles.socialText}>Google</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.socialButton, { backgroundColor: "#10B981" }]}
+                      onPress={handlePhoneLogin}
+                      activeOpacity={0.85}
+                    >
+                      <Icon name="phone" size={18} color="#FFFFFF" />
+                      <Text style={styles.socialText}>Phone</Text>
+                    </TouchableOpacity>
                   </View>
 
                   <TouchableOpacity
@@ -997,39 +995,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "700",
     fontSize: 13,
-  },
-  demoSection: {
-    width: "100%",
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  demoChipsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 8,
-  },
-  demoChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  demoChipText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  demoHintText: {
-    marginTop: 10,
-    fontSize: 11.5,
-    lineHeight: 16,
-    color: "#94A3B8",
-    textAlign: "center",
-    fontWeight: "500",
-    paddingHorizontal: 6,
   },
   skipBtn: {
     marginTop: 16,

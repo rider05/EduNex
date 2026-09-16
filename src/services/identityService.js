@@ -19,7 +19,12 @@ let memo = null;
 let memoKey = "";
 
 function norm(v) {
-  return String(v || "").trim().toLowerCase();
+  const s = String(v || "").trim().toLowerCase();
+  if (s === "teacher" || s === "faculty" || s === "staff" || s === "prof" || s === "tutor") return "staff";
+  if (s === "student" || s === "stud") return "student";
+  if (s === "parent") return "parent";
+  if (s === "admin") return "admin";
+  return s;
 }
 
 function cleanDoc(doc) {

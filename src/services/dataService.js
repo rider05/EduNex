@@ -173,7 +173,7 @@ export async function syncAfterLogin() {
   try {
     await refreshSessionUserProfile();
     const identity = await resolveIdentity(true);
-    if (identity.role === "staff") await getFacultyData();
+    if (identity.role === "staff" || identity.role === "teacher" || identity.role === "faculty") await getFacultyData();
     else if (identity.role === "parent") await getParentData();
     else if (identity.role === "admin") await getAdminData();
     else await getStudentData(true);

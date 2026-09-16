@@ -69,9 +69,17 @@ export async function setAuthSession(token, user) {
     if (user) {
       await secureSet("userData", user);
       const rawRole = (user?.role || user?.data?.role || user?.user?.role || "student").toString();
-      const role = rawRole.toLowerCase();
+      const role = rawRole.toLowerCase().trim();
       const mappedRole =
-        role === "stud" ? "student" : ["admin", "staff", "parent", "student"].includes(role) ? role : "student";
+        role === "teacher" || role === "faculty" || role === "staff" || role === "prof" || role === "tutor"
+          ? "staff"
+          : role === "stud" || role === "student"
+          ? "student"
+          : role === "parent"
+          ? "parent"
+          : role === "admin"
+          ? "admin"
+          : "student";
       await secureSet("userRole", mappedRole);
       await secureSet("loggedInUser", user?.username || user?.name || "");
     }
